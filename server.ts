@@ -3,7 +3,16 @@ import path from 'path';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
 import { db, User, OtpCode, SocialHandle, FeedItem, Match, Contest, PrizeDraw, NotificationItem, FCMDeviceToken } from './server/db';
-import { runDiscoveryAgent, runSocialAgent, runNewsAgent, runScoresAgent, runContentAgent, runOpsAgent } from './server/agents';
+import { 
+  runDiscoveryAgent, 
+  runSocialAgent, 
+  runNewsAgent, 
+  runScoresAgent, 
+  runContentAgent, 
+  runOpsAgent,
+  seedAnnouncedTeamsAndSearch
+} from './server/agents';
+import { syncRealSocialFeeds } from './server/realFeedFetcher';
 import { computeUserBadges } from './server/badges';
 import { 
   generateMarketingContent, 
@@ -234,6 +243,39 @@ app.get('/api/teams', (req, res) => {
   res.json({ teams: store.teams });
 });
 
+// Seed the 6 announced teams (UAE Bulls, United Tigers, Yas Lions, Arabian Aces, Emirates Eagles, Desert Royal Champions), search their handles dynamically via AI and pull them into the portal
+app.post('/api/teams/seed-announced', async (req, res) => {
+  try {
+    const result = await seedAnnouncedTeamsAndSearch();
+    res.json({
+      success: true,
+      teams: result.teams,
+      handles: result.handles,
+      feedItems: result.feedItems,
+      discoveredCount: result.discoveredCount,
+      summary: result.summary
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Failed to seed announced teams and search handles' });
+  }
+});
+
+app.post('/api/admin/teams/seed-and-search', requireAdmin, async (req, res) => {
+  try {
+    const result = await seedAnnouncedTeamsAndSearch();
+    res.json({
+      success: true,
+      teams: result.teams,
+      handles: result.handles,
+      feedItems: result.feedItems,
+      discoveredCount: result.discoveredCount,
+      summary: result.summary
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Failed to seed announced teams and search handles' });
+  }
+});
+
 app.post('/api/teams', requireAdmin, (req, res) => {
   const teamData = req.body;
   const store = db.get();
@@ -389,6 +431,24 @@ app.get('/api/feeds', (req, res) => {
     totalCurated: curatedSelection.length,
     totalAvailable: allItems.length
   });
+});
+
+// Sync Real Social Media Posts & Official Channel Videos (100% Real from verified handles & live RSS)
+app.post('/api/social/sync-real', async (req, res) => {
+  try {
+    const store = db.get();
+    const result = await syncRealSocialFeeds(store);
+    db.save();
+    res.json({
+      success: true,
+      syncedCount: result.syncedCount,
+      feedItems: result.feedItems,
+      summary: result.summary
+    });
+  } catch (err: any) {
+    console.error('Error syncing real social feeds:', err);
+    res.status(500).json({ error: err.message || 'Failed to sync real social feeds' });
+  }
 });
 
 app.post('/api/feeds', requireAdmin, (req, res) => {
@@ -1765,6 +1825,54 @@ app.post('/api/gemini/video', async (req, res) => {
   res.json(result);
 });
 
+// ----------------- SEO: SITEMAP & ROBOTS.TXT -----------------
+app.get('/robots.txt', (req, res) => {
+  const robots = `# Abu Dhabi T10 Fan Hub - Copyright by Azlir Sport
+User-agent: *
+Allow: /
+
+Sitemap: https://adt10.azlirsport.com/sitemap.xml
+`;
+  res.type('text/plain').send(robots);
+});
+
+app.get('/sitemap.xml', (req, res) => {
+  const baseUrl = 'https://adt10.azlirsport.com';
+  const today = new Date().toISOString().split('T')[0];
+
+  const routes = [
+    { loc: '/', priority: '1.0', changefreq: 'daily' },
+    { loc: '/matches', priority: '0.9', changefreq: 'hourly' },
+    { loc: '/teams', priority: '0.9', changefreq: 'daily' },
+    { loc: '/teams/aces', priority: '0.8', changefreq: 'daily' },
+    { loc: '/teams/bulls', priority: '0.8', changefreq: 'daily' },
+    { loc: '/teams/champions', priority: '0.8', changefreq: 'daily' },
+    { loc: '/teams/tigers', priority: '0.8', changefreq: 'daily' },
+    { loc: '/teams/lions', priority: '0.8', changefreq: 'daily' },
+    { loc: '/teams/eagles', priority: '0.8', changefreq: 'daily' },
+    { loc: '/social', priority: '0.9', changefreq: 'hourly' },
+    { loc: '/forum', priority: '0.8', changefreq: 'hourly' },
+    { loc: '/contests', priority: '0.8', changefreq: 'daily' },
+    { loc: '/draws', priority: '0.7', changefreq: 'daily' },
+    { loc: '/leaderboard', priority: '0.8', changefreq: 'hourly' },
+    { loc: '/fanspaces', priority: '0.9', changefreq: 'daily' },
+    { loc: '/growth', priority: '0.8', changefreq: 'daily' },
+    { loc: '/proposal', priority: '0.9', changefreq: 'weekly' }
+  ];
+
+  const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${routes.map(r => `  <url>
+    <loc>${baseUrl}${r.loc}</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>${r.changefreq}</changefreq>
+    <priority>${r.priority}</priority>
+  </url>`).join('\n')}
+</urlset>`;
+
+  res.type('application/xml').send(sitemapXml);
+});
+
 // ----------------- VITE MIDDLEWARE / STATIC FILES -----------------
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
@@ -1784,6 +1892,29 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`⚡ Abu Dhabi T10 Hub running on http://0.0.0.0:${PORT}`);
+
+    // Auto-seed the 6 announced teams and search their handles dynamically on server startup
+    try {
+      const store = db.get();
+      const announcedNames = ['UAE Bulls', 'United Tigers', 'Yas Lions', 'Arabian Aces', 'Emirates Eagles', 'Desert Royal Champions'];
+      const hasAllAnnounced = announcedNames.every(name => store.teams.some(t => t.name.toLowerCase() === name.toLowerCase()));
+      const teamHandlesCount = store.handles.filter(h => h.teamId !== null).length;
+
+      if (!hasAllAnnounced || teamHandlesCount < 10) {
+        console.log('[STARTUP] Seeding 6 announced teams and searching handles dynamically...');
+        seedAnnouncedTeamsAndSearch().then(res => {
+          console.log(`[STARTUP] ${res.summary}`);
+        }).catch(e => console.warn('[STARTUP] Background handle search notice:', e));
+      } else {
+        // Ensure all feed posts are verified real from official team channels & live RSS
+        syncRealSocialFeeds(store).then(res => {
+          db.save();
+          console.log(`[STARTUP] ${res.summary}`);
+        }).catch(e => console.warn('[STARTUP] Background real feeds sync notice:', e));
+      }
+    } catch (e) {
+      console.warn('[STARTUP] Seeding check notice:', e);
+    }
   });
 }
 

@@ -1,5 +1,6 @@
 import React from 'react';
 import { User, Team } from '../types';
+import { getPathForTab } from '../utils/navigation';
 import { 
   Trophy, 
   Flame, 
@@ -15,7 +16,9 @@ import {
   Award,
   MessageSquare,
   FileText,
-  Bell
+  Bell,
+  MapPin,
+  GraduationCap
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -65,7 +68,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           <div className="hidden md:flex items-center gap-4 text-[11px] font-bold">
             <span className="flex items-center gap-1">
-              <Trophy className="w-3.5 h-3.5" /> 9 FRANCHISES · 90-MIN CRICKET
+              <Trophy className="w-3.5 h-3.5" /> 6 FRANCHISES · 90-MIN CRICKET
             </span>
             <span className="bg-slate-950 text-amber-400 px-2 py-0.5 rounded text-[10px] tracking-wide uppercase">
               Zayed Stadium, Abu Dhabi
@@ -77,8 +80,12 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Main Navbar */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
         {/* Brand Logo */}
-        <div 
-          onClick={() => setActiveTab('home')}
+        <a 
+          href="/"
+          onClick={(e) => {
+            e.preventDefault();
+            setActiveTab('home');
+          }}
           className="flex items-center gap-3 cursor-pointer group select-none"
         >
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 p-0.5 shadow-lg shadow-amber-500/20 group-hover:scale-105 transition-transform flex items-center justify-center">
@@ -88,18 +95,18 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-extrabold text-lg tracking-tight text-white group-hover:text-amber-400 transition-colors">
+              <span className="font-extrabold text-base sm:text-lg tracking-tight text-white group-hover:text-amber-400 transition-colors">
                 ABU DHABI <span className="text-amber-400">T10</span>
               </span>
               <span className="text-[10px] font-black uppercase tracking-wider bg-amber-400/10 text-amber-400 border border-amber-400/30 px-1.5 py-0.5 rounded">
                 Fan Hub
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 font-medium">
-              Official League & Arabian Aces Curator
+            <p className="text-[10px] sm:text-[11px] text-slate-400 font-medium">
+              Official League & Arabian Aces Curator · Azlir Sport
             </p>
           </div>
-        </div>
+        </a>
 
         {/* Navigation Tabs */}
         <nav className="hidden lg:flex items-center gap-1 text-sm font-semibold">
@@ -109,6 +116,8 @@ export const Header: React.FC<HeaderProps> = ({
             { id: 'teams', label: 'Teams & Squads', icon: Trophy },
             { id: 'social', label: 'Social Hub', icon: Share2 },
             { id: 'forum', label: 'Discussion Forum', icon: MessageSquare },
+            { id: 'fanspaces', label: 'Fan Spaces', icon: MapPin },
+            { id: 'growth', label: 'Youth & Creators', icon: GraduationCap },
             { id: 'contests', label: 'Contests & Fantasy', icon: Sparkles },
             { id: 'draws', label: 'Prize Draws', icon: Gift },
             { id: 'leaderboard', label: 'Fan Wars', icon: Flame },
@@ -118,9 +127,13 @@ export const Header: React.FC<HeaderProps> = ({
             const Icon = item.icon;
             const active = activeTab === item.id;
             return (
-              <button
+              <a
                 key={item.id}
-                onClick={() => setActiveTab(item.id)}
+                href={getPathForTab(item.id)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  setActiveTab(item.id);
+                }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
                   active 
                     ? 'bg-amber-400/15 text-amber-400 border border-amber-400/30 font-bold' 
@@ -131,7 +144,7 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <Icon className={`w-4 h-4 ${active ? 'text-amber-400' : item.highlight ? 'text-amber-400' : 'text-slate-400'}`} />
                 {item.label}
-              </button>
+              </a>
             );
           })}
           <button
@@ -254,23 +267,29 @@ export const Header: React.FC<HeaderProps> = ({
           { id: 'teams', label: 'Teams' },
           { id: 'social', label: 'Social' },
           { id: 'forum', label: 'Fan Forum' },
+          { id: 'fanspaces', label: 'Fan Spaces' },
+          { id: 'growth', label: 'Youth & Creators' },
           { id: 'contests', label: 'Contests' },
           { id: 'draws', label: 'Draws' },
           { id: 'leaderboard', label: 'Fan Wars' },
           ...(user ? [{ id: 'profile', label: 'My Badges' }] : []),
           { id: 'proposal', label: 'League Proposal' },
         ].map(item => (
-          <button
+          <a
             key={item.id}
-            onClick={() => setActiveTab(item.id)}
-            className={`whitespace-nowrap px-2.5 py-1 rounded-md transition-colors ${
+            href={getPathForTab(item.id)}
+            onClick={(e) => {
+              e.preventDefault();
+              setActiveTab(item.id);
+            }}
+            className={`whitespace-nowrap px-2.5 py-1.5 rounded-md transition-colors ${
               activeTab === item.id 
                 ? 'bg-amber-400 text-slate-950 font-bold' 
                 : 'text-slate-400 hover:text-white'
             }`}
           >
             {item.label}
-          </button>
+          </a>
         ))}
       </div>
     </header>

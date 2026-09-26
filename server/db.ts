@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { REAL_YOUTUBE_FEEDS, REAL_FACEBOOK_FEEDS, REAL_TEAM_HANDLE_POSTS } from './realFeedFetcher';
 
 export interface User {
   id: string;
@@ -83,6 +84,8 @@ export interface FeedItem {
   createdAt: string;
   likes?: number;
   views?: string;
+  verifiedReal?: boolean;
+  channelVerified?: boolean;
 }
 
 export interface Match {
@@ -554,7 +557,7 @@ function generateInitialForumComments(): ForumComment[] {
       userName: 'Rohan Sharma',
       userAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=200&auto=format&fit=crop',
       userBadge: 'Fantasy Maestro',
-      teamId: 'deccan',
+      teamId: 'champions',
       content: 'The financial budget breakdown in both USD and AED in the proposal makes total sense for the franchise board. The projected 108% ROI through sponsor activations and digital fan memberships is very realistic.',
       upvotes: 9,
       upvotedBy: [],
@@ -567,7 +570,7 @@ function generateInitialForumComments(): ForumComment[] {
       userName: 'Zainab Qureshi',
       userAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200&auto=format&fit=crop',
       userBadge: 'Centurion Streak',
-      teamId: 'delhi',
+      teamId: 'tigers',
       content: 'The Discussion Forum alone is a game changer. Now fans don’t just watch and leave, we have a continuous home to debate tactics, dream teams, and celebrate wins.',
       upvotes: 11,
       upvotedBy: ['user-fan-1'],
@@ -606,8 +609,8 @@ function generateInitialForumComments(): ForumComment[] {
       userName: 'Rohan Sharma',
       userAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=200&auto=format&fit=crop',
       userBadge: 'Fantasy Maestro',
-      teamId: 'deccan',
-      content: 'Don’t underestimate Deccan Gladiators bowling attack. Richard Gleeson and Akeal Hosein in the powerplay are lethal. It’s going to be a cliffhanger!',
+      teamId: 'champions',
+      content: 'Don’t underestimate Desert Royal Champions bowling attack. Nicholas Pooran and their pace unit in the powerplay are lethal. It’s going to be a cliffhanger!',
       upvotes: 8,
       upvotedBy: [],
       createdAt: new Date(Date.now() - 1000 * 60 * 60).toISOString()
@@ -645,7 +648,7 @@ function generateInitialForumComments(): ForumComment[] {
       userName: 'Rohan Sharma',
       userAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=200&auto=format&fit=crop',
       userBadge: 'Fantasy Maestro',
-      teamId: 'mumbai',
+      teamId: 'bulls',
       content: 'Mumbai would be massive. A pop-up clubhouse in Bandra with live VR batting cages against 140km/h T10 bowling will see lines around the block.',
       upvotes: 19,
       upvotedBy: ['user-fan-1', 'user-admin'],
@@ -658,7 +661,7 @@ function generateInitialForumComments(): ForumComment[] {
       userName: 'Zainab Qureshi',
       userAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200&auto=format&fit=crop',
       userBadge: 'Centurion Streak',
-      teamId: 'delhi',
+      teamId: 'eagles',
       content: 'London Regent St during the UK winter would be magical! Diaspora fans would flock there to watch night matches in Abu Dhabi warmth and ambiance.',
       upvotes: 15,
       upvotedBy: [],
@@ -682,7 +685,7 @@ function generateInitialFanSpaces(): FanSpace[] {
       features: [
         '360° Cylindrical LED Stadium Screen with Immersive Surround Audio',
         'VR Batting Pods (Face 140km/h simulated deliveries from international stars)',
-        'Official 9-Franchise Pop-Up Jersey & Memorabilia Boutique',
+        'Official 6-Franchise Pop-Up Jersey & Memorabilia Boutique',
         'Emirati Specialty Coffee & Artisanal Karak Barista Bar',
         'Live Player Dugout Cam, Press Conference & Studio Broadcast Links',
         'Pitch-Side VIP Majlis Enclosure with Private Butler Hospitality'
@@ -1092,7 +1095,7 @@ export function generateInitialProposalSettings(): ProposalSettings {
       tag: 'Digital Core',
       need: 'Current league and franchise web presence is fragmented across temporary event micro-sites, leading to an 87% fan drop-off between annual 2-week tournament cycles. Fans have no single persistent home for live scores, squads, tickets, and team engagement.',
       relevance: 'T10’s 90-minute format is the most fast-paced, digital-native spectacle in sports. Digital-first Gen-Z audiences expect instant load times, live ball-by-ball simulated telemetry, mobile responsiveness, and continuous 365-day access.',
-      what: 'Build and deploy a unified official Abu Dhabi T10 League & 9-Franchise web ecosystem as a Progressive Web App (PWA). Includes automated match schedules, real-time ball-by-ball live tickers, dynamic player & squad dossiers, unified ticketing portal, and automated multilingual content feeds.',
+      what: 'Build and deploy a unified official Abu Dhabi T10 League & 6-Franchise web ecosystem as a Progressive Web App (PWA). Includes automated match schedules, real-time ball-by-ball live tickers, dynamic player & squad dossiers, unified ticketing portal, and automated multilingual content feeds.',
       usdCost: 165000,
       aedCost: Math.round(165000 * USD_TO_AED),
       capexUsd: 110000,
@@ -1100,7 +1103,7 @@ export function generateInitialProposalSettings(): ProposalSettings {
       timeline: 'Months 1-3 (Launch before Season Opener)',
       outcome: 'A world-class digital flagship delivering sub-second load times globally, capturing 750,000+ registered fan accounts in Year 1, and establishing a unified first-party fan data pipeline (CDP).',
       kpis: ['750K+ Registered Users', '4.2M Monthly Page Views', '4.8m Avg Session Duration', 'Sub-800ms Global PWA Latency'],
-      franchiseBenefit: 'Direct branded digital home for Arabian Aces and all 8 partner franchises with dedicated sponsor inventory.',
+      franchiseBenefit: 'Direct branded digital home for Arabian Aces and all 5 partner franchises with dedicated sponsor inventory.',
       leagueBenefit: 'Full ownership of first-party fan customer data, increasing media rights valuation by 25%.'
     },
     {
@@ -1264,51 +1267,8 @@ export function generateInitialProposalSettings(): ProposalSettings {
   };
 }
 
-function generateInitialStore(): AppStore {
-  const teamsData: Team[] = [
-    {
-      id: 'aces',
-      name: 'Arabian Aces',
-      short: 'AAC',
-      color: '#E8B04A',
-      secondaryColor: '#1E293B',
-      home: 'Zayed Cricket Stadium, Abu Dhabi',
-      iconPlayer: 'Moeen Ali',
-      headCoach: 'Lance Klusener',
-      website: 'https://arabianaces.com',
-      note: 'Dynamic 2026 Abu Dhabi T10 Franchise. Powerful explosive hitters & tactical mastery.',
-      sort: 1,
-      squad: [
-        { id: 'aces-moeen', teamId: 'aces', name: 'Moeen Ali', role: 'allrounder', credits: 10.5, isIcon: true },
-        { id: 'aces-alex-hales', teamId: 'aces', name: 'Alex Hales', role: 'batter', credits: 9.5, isIcon: false },
-        { id: 'aces-sherfane-rutherford', teamId: 'aces', name: 'Sherfane Rutherford', role: 'batter', credits: 9.0, isIcon: false },
-        { id: 'aces-chris-jordan', teamId: 'aces', name: 'Chris Jordan', role: 'bowler', credits: 9.0, isIcon: false },
-        { id: 'aces-rahmanullah-gurbaz', teamId: 'aces', name: 'Rahmanullah Gurbaz', role: 'wicketkeeper', credits: 9.0, isIcon: false },
-        { id: 'aces-azmatullah-omarzai', teamId: 'aces', name: 'Azmatullah Omarzai', role: 'allrounder', credits: 8.5, isIcon: false },
-        { id: 'aces-george-scrimshaw', teamId: 'aces', name: 'George Scrimshaw', role: 'bowler', credits: 8.0, isIcon: false },
-        { id: 'aces-ali-naseer', teamId: 'aces', name: 'Ali Naseer', role: 'allrounder', credits: 7.5, isIcon: false },
-      ]
-    },
-    {
-      id: 'deccan',
-      name: 'Deccan Gladiators',
-      short: 'DG',
-      color: '#E85A6B',
-      secondaryColor: '#0F172A',
-      home: 'Zayed Cricket Stadium, Abu Dhabi',
-      iconPlayer: 'Nicholas Pooran',
-      website: 'https://deccangladiators.com',
-      note: 'Defending powerhouse and multiple-time Abu Dhabi T10 champions.',
-      sort: 2,
-      squad: [
-        { id: 'deccan-pooran', teamId: 'deccan', name: 'Nicholas Pooran', role: 'wicketkeeper', credits: 10.5, isIcon: true },
-        { id: 'deccan-stoinis', teamId: 'deccan', name: 'Marcus Stoinis', role: 'allrounder', credits: 9.5, isIcon: false },
-        { id: 'deccan-russell', teamId: 'deccan', name: 'Andre Russell', role: 'allrounder', credits: 9.5, isIcon: false },
-        { id: 'deccan-hosein', teamId: 'deccan', name: 'Akeal Hosein', role: 'bowler', credits: 9.0, isIcon: false },
-        { id: 'deccan-cadmore', teamId: 'deccan', name: 'Tom Kohler-Cadmore', role: 'batter', credits: 8.5, isIcon: false },
-        { id: 'deccan-gleeson', teamId: 'deccan', name: 'Richard Gleeson', role: 'bowler', credits: 8.0, isIcon: false },
-      ]
-    },
+export function getAnnouncedTeams(): Team[] {
+  return [
     {
       id: 'bulls',
       name: 'UAE Bulls',
@@ -1317,9 +1277,9 @@ function generateInitialStore(): AppStore {
       secondaryColor: '#0C4A6E',
       home: 'Zayed Cricket Stadium, Abu Dhabi',
       iconPlayer: 'Rovman Powell',
-      website: 'https://delhibullst10.com',
-      note: '2025 Abu Dhabi T10 Champions with relentless firepower.',
-      sort: 3,
+      website: 'https://uaebullst10.com',
+      note: 'Defending Abu Dhabi T10 Champions with relentless boundary firepower.',
+      sort: 1,
       squad: [
         { id: 'bulls-powell', teamId: 'bulls', name: 'Rovman Powell', role: 'batter', credits: 10.5, isIcon: true },
         { id: 'bulls-salt', teamId: 'bulls', name: 'Phil Salt', role: 'wicketkeeper', credits: 9.5, isIcon: false },
@@ -1330,104 +1290,114 @@ function generateInitialStore(): AppStore {
       ]
     },
     {
-      id: 'warriors',
-      name: 'Northern Warriors',
-      short: 'NW',
+      id: 'tigers',
+      name: 'United Tigers',
+      short: 'UT',
+      color: '#EA580C',
+      secondaryColor: '#431407',
+      home: 'Zayed Cricket Stadium, Abu Dhabi',
+      iconPlayer: 'Shakib Al Hasan',
+      website: 'https://unitedtigerst10.com',
+      note: 'Ferocious attacking unit with passionate diaspora fan backing and world-class spinners.',
+      sort: 2,
+      squad: [
+        { id: 'tigers-shakib', teamId: 'tigers', name: 'Shakib Al Hasan', role: 'allrounder', credits: 10.5, isIcon: true },
+        { id: 'tigers-fletcher', teamId: 'tigers', name: 'Andre Fletcher', role: 'batter', credits: 9.0, isIcon: false },
+        { id: 'tigers-amir', teamId: 'tigers', name: 'Mohammad Amir', role: 'bowler', credits: 9.0, isIcon: false },
+        { id: 'tigers-charles', teamId: 'tigers', name: 'Johnson Charles', role: 'wicketkeeper', credits: 8.5, isIcon: false },
+        { id: 'tigers-shamsi', teamId: 'tigers', name: 'Tabraiz Shamsi', role: 'bowler', credits: 8.5, isIcon: false },
+        { id: 'tigers-raza', teamId: 'tigers', name: 'Sikandar Raza', role: 'allrounder', credits: 8.5, isIcon: false },
+      ]
+    },
+    {
+      id: 'lions',
+      name: 'Yas Lions',
+      short: 'YL',
       color: '#10B981',
       secondaryColor: '#064E3B',
+      home: 'Yas Island / Zayed Stadium, Abu Dhabi',
+      iconPlayer: 'Faf du Plessis',
+      website: 'https://yaslionscricket.com',
+      note: 'Local Yas Island powerhouse combining veteran tactical brilliance with fiery pace bowling.',
+      sort: 3,
+      squad: [
+        { id: 'lions-faf', teamId: 'lions', name: 'Faf du Plessis', role: 'batter', credits: 10.5, isIcon: true },
+        { id: 'lions-hetmyer', teamId: 'lions', name: 'Shimron Hetmyer', role: 'batter', credits: 9.5, isIcon: false },
+        { id: 'lions-wade', teamId: 'lions', name: 'Matthew Wade', role: 'wicketkeeper', credits: 9.0, isIcon: false },
+        { id: 'lions-gleeson', teamId: 'lions', name: 'Richard Gleeson', role: 'bowler', credits: 8.5, isIcon: false },
+        { id: 'lions-pretorius', teamId: 'lions', name: 'Dwaine Pretorius', role: 'allrounder', credits: 8.5, isIcon: false },
+        { id: 'lions-billings', teamId: 'lions', name: 'Sam Billings', role: 'wicketkeeper', credits: 8.5, isIcon: false },
+      ]
+    },
+    {
+      id: 'aces',
+      name: 'Arabian Aces',
+      short: 'AAC',
+      color: '#E8B04A',
+      secondaryColor: '#1E293B',
       home: 'Zayed Cricket Stadium, Abu Dhabi',
-      iconPlayer: 'Shimron Hetmyer',
-      note: 'Two-time champions known for Caribbean flair.',
+      iconPlayer: 'Moeen Ali',
+      headCoach: 'Lance Klusener',
+      website: 'https://arabianaces.com',
+      note: 'Flagship 2026 Abu Dhabi T10 Franchise. Powerful explosive hitters & tactical mastery.',
       sort: 4,
       squad: [
-        { id: 'warriors-hetmyer', teamId: 'warriors', name: 'Shimron Hetmyer', role: 'batter', credits: 10.5, isIcon: true },
-        { id: 'warriors-boult', teamId: 'warriors', name: 'Trent Boult', role: 'bowler', credits: 9.5, isIcon: false },
-        { id: 'warriors-charles', teamId: 'warriors', name: 'Johnson Charles', role: 'wicketkeeper', credits: 9.0, isIcon: false },
-        { id: 'warriors-shamsi', teamId: 'warriors', name: 'Tabraiz Shamsi', role: 'bowler', credits: 8.5, isIcon: false },
+        { id: 'aces-moeen', teamId: 'aces', name: 'Moeen Ali', role: 'allrounder', credits: 10.5, isIcon: true },
+        { id: 'aces-alex-hales', teamId: 'aces', name: 'Alex Hales', role: 'batter', credits: 9.5, isIcon: false },
+        { id: 'aces-russell', teamId: 'aces', name: 'Andre Russell', role: 'allrounder', credits: 10.0, isIcon: false },
+        { id: 'aces-livingstone', teamId: 'aces', name: 'Liam Livingstone', role: 'allrounder', credits: 9.5, isIcon: false },
+        { id: 'aces-chris-jordan', teamId: 'aces', name: 'Chris Jordan', role: 'bowler', credits: 9.0, isIcon: false },
+        { id: 'aces-rahmanullah-gurbaz', teamId: 'aces', name: 'Rahmanullah Gurbaz', role: 'wicketkeeper', credits: 9.0, isIcon: false },
+        { id: 'aces-azmatullah-omarzai', teamId: 'aces', name: 'Azmatullah Omarzai', role: 'allrounder', credits: 8.5, isIcon: false },
+        { id: 'aces-ali-naseer', teamId: 'aces', name: 'Ali Naseer', role: 'allrounder', credits: 7.5, isIcon: false },
       ]
     },
     {
-      id: 'qavalry',
-      name: 'Quetta Qavalry',
-      short: 'QQ',
-      color: '#A855F7',
-      secondaryColor: '#581C87',
-      home: 'Zayed Cricket Stadium, Abu Dhabi',
-      iconPlayer: 'Liam Livingstone',
-      note: 'High octane power hitters and aggressive spinners.',
-      sort: 5,
-      squad: [
-        { id: 'qavalry-livingstone', teamId: 'qavalry', name: 'Liam Livingstone', role: 'allrounder', credits: 10.5, isIcon: true },
-        { id: 'qavalry-holder', teamId: 'qavalry', name: 'Jason Holder', role: 'allrounder', credits: 9.5, isIcon: false },
-        { id: 'qavalry-amir', teamId: 'qavalry', name: 'Mohammad Amir', role: 'bowler', credits: 9.0, isIcon: false },
-        { id: 'qavalry-raza', teamId: 'qavalry', name: 'Sikandar Raza', role: 'allrounder', credits: 9.0, isIcon: false },
-      ]
-    },
-    {
-      id: 'champs',
-      name: 'Royal Champs',
-      short: 'RC',
-      color: '#F97316',
-      secondaryColor: '#7C2D12',
+      id: 'eagles',
+      name: 'Emirates Eagles',
+      short: 'EE',
+      color: '#8B5CF6',
+      secondaryColor: '#2E1065',
       home: 'Zayed Cricket Stadium, Abu Dhabi',
       iconPlayer: 'Jason Roy',
-      note: 'Aggressive opening partnerships and experienced pace bowling.',
+      website: 'https://emirateseaglescricket.com',
+      note: 'Sky-high run scorers with aggressive 360-degree top order hitters and death yorker specialists.',
+      sort: 5,
+      squad: [
+        { id: 'eagles-roy', teamId: 'eagles', name: 'Jason Roy', role: 'batter', credits: 10.5, isIcon: true },
+        { id: 'eagles-holder', teamId: 'eagles', name: 'Jason Holder', role: 'allrounder', credits: 9.5, isIcon: false },
+        { id: 'eagles-rossouw', teamId: 'eagles', name: 'Rilee Rossouw', role: 'batter', credits: 9.0, isIcon: false },
+        { id: 'eagles-mills', teamId: 'eagles', name: 'Tymal Mills', role: 'bowler', credits: 8.5, isIcon: false },
+        { id: 'eagles-sams', teamId: 'eagles', name: 'Daniel Sams', role: 'allrounder', credits: 8.5, isIcon: false },
+        { id: 'eagles-mathews', teamId: 'eagles', name: 'Angelo Mathews', role: 'allrounder', credits: 8.0, isIcon: false },
+      ]
+    },
+    {
+      id: 'champions',
+      name: 'Desert Royal Champions',
+      short: 'DRC',
+      color: '#F59E0B',
+      secondaryColor: '#78350F',
+      home: 'Zayed Cricket Stadium, Abu Dhabi',
+      iconPlayer: 'Nicholas Pooran',
+      headCoach: 'Robin Singh',
+      website: 'https://desertroyalchampions.com',
+      note: 'Formidable new 2026 Abu Dhabi T10 franchise led by West Indies captain Nicholas Pooran and director Robin Singh.',
       sort: 6,
       squad: [
-        { id: 'champs-roy', teamId: 'champs', name: 'Jason Roy', role: 'batter', credits: 10.5, isIcon: true },
-        { id: 'champs-mathews', teamId: 'champs', name: 'Angelo Mathews', role: 'allrounder', credits: 9.0, isIcon: false },
-        { id: 'champs-sams', teamId: 'champs', name: 'Daniel Sams', role: 'allrounder', credits: 9.0, isIcon: false },
-      ]
-    },
-    {
-      id: 'riders',
-      name: 'Vista Riders',
-      short: 'VR',
-      color: '#06B6D4',
-      secondaryColor: '#164E63',
-      home: 'Zayed Cricket Stadium, Abu Dhabi',
-      iconPlayer: 'Faf du Plessis',
-      note: 'Master tacticians with exceptional fielding unit.',
-      sort: 7,
-      squad: [
-        { id: 'riders-faf', teamId: 'riders', name: 'Faf du Plessis', role: 'batter', credits: 10.5, isIcon: true },
-        { id: 'riders-wade', teamId: 'riders', name: 'Matthew Wade', role: 'wicketkeeper', credits: 9.5, isIcon: false },
-        { id: 'riders-pretorius', teamId: 'riders', name: 'Dwaine Pretorius', role: 'allrounder', credits: 9.0, isIcon: false },
-      ]
-    },
-    {
-      id: 'ajman',
-      name: 'Ajman Titans',
-      short: 'AJT',
-      color: '#94A3B8',
-      secondaryColor: '#334155',
-      home: 'Zayed Cricket Stadium, Abu Dhabi',
-      iconPlayer: 'Rilee Rossouw',
-      note: 'Dangerous southpaw hitters and lethal death bowling.',
-      sort: 8,
-      squad: [
-        { id: 'ajman-rossouw', teamId: 'ajman', name: 'Rilee Rossouw', role: 'batter', credits: 10.5, isIcon: true },
-        { id: 'ajman-lawrence', teamId: 'ajman', name: 'Dan Lawrence', role: 'allrounder', credits: 9.0, isIcon: false },
-        { id: 'ajman-behrendorff', teamId: 'ajman', name: 'Jason Behrendorff', role: 'bowler', credits: 8.5, isIcon: false },
-      ]
-    },
-    {
-      id: 'stallions',
-      name: 'Aspin Stallions',
-      short: 'ASP',
-      color: '#EC4899',
-      secondaryColor: '#831843',
-      home: 'Zayed Cricket Stadium, Abu Dhabi',
-      iconPlayer: 'Sam Billings',
-      note: 'Dynamic 360-degree stroke makers.',
-      sort: 9,
-      squad: [
-        { id: 'stallions-billings', teamId: 'stallions', name: 'Sam Billings', role: 'wicketkeeper', credits: 10.5, isIcon: true },
-        { id: 'stallions-mills', teamId: 'stallions', name: 'Tymal Mills', role: 'bowler', credits: 9.0, isIcon: false },
-        { id: 'stallions-fletcher', teamId: 'stallions', name: 'Andre Fletcher', role: 'batter', credits: 8.5, isIcon: false },
+        { id: 'drc-pooran', teamId: 'champions', name: 'Nicholas Pooran', role: 'wicketkeeper', credits: 10.5, isIcon: true },
+        { id: 'drc-rutherford', teamId: 'champions', name: 'Sherfane Rutherford', role: 'batter', credits: 9.5, isIcon: false },
+        { id: 'drc-stoinis', teamId: 'champions', name: 'Marcus Stoinis', role: 'allrounder', credits: 9.5, isIcon: false },
+        { id: 'drc-hosein', teamId: 'champions', name: 'Akeal Hosein', role: 'bowler', credits: 9.0, isIcon: false },
+        { id: 'drc-boult', teamId: 'champions', name: 'Trent Boult', role: 'bowler', credits: 9.5, isIcon: false },
+        { id: 'drc-cadmore', teamId: 'champions', name: 'Tom Kohler-Cadmore', role: 'batter', credits: 8.5, isIcon: false },
       ]
     }
   ];
+}
+
+function generateInitialStore(): AppStore {
+  const teamsData: Team[] = getAnnouncedTeams();
 
   const handlesData: SocialHandle[] = [
     // League Official Handles
@@ -1490,429 +1460,13 @@ function generateInitialStore(): AppStore {
       meta: {},
       verifiedAt: new Date().toISOString(),
       foundAt: new Date().toISOString()
-    },
-
-    // Arabian Aces Official Handles (User's team!)
-    {
-      id: 'h-aces-x',
-      teamId: 'aces',
-      platform: 'X',
-      handle: '@arabianacesT10',
-      url: 'https://x.com/arabianacesT10',
-      status: 'verified',
-      source: 'owner',
-      meta: {},
-      verifiedAt: new Date().toISOString(),
-      foundAt: new Date().toISOString()
-    },
-    {
-      id: 'h-aces-linkedin',
-      teamId: 'aces',
-      platform: 'LinkedIn',
-      handle: 'arabianaces',
-      url: 'https://www.linkedin.com/in/arabianaces/',
-      status: 'verified',
-      source: 'owner',
-      meta: {},
-      verifiedAt: new Date().toISOString(),
-      foundAt: new Date().toISOString()
-    },
-    {
-      id: 'h-aces-ig',
-      teamId: 'aces',
-      platform: 'Instagram',
-      handle: '@arabianacesofficial',
-      url: 'https://www.instagram.com/arabianacesofficial',
-      status: 'verified',
-      source: 'owner',
-      meta: {},
-      verifiedAt: new Date().toISOString(),
-      foundAt: new Date().toISOString()
-    },
-    {
-      id: 'h-aces-threads',
-      teamId: 'aces',
-      platform: 'Threads',
-      handle: '@arabianacesofficial',
-      url: 'https://www.threads.com/@arabianacesofficial',
-      status: 'verified',
-      source: 'owner',
-      meta: {},
-      verifiedAt: new Date().toISOString(),
-      foundAt: new Date().toISOString()
-    },
-    {
-      id: 'h-aces-fb',
-      teamId: 'aces',
-      platform: 'Facebook',
-      handle: 'arabianacesofficial',
-      url: 'https://www.facebook.com/arabianacesofficial/',
-      status: 'verified',
-      source: 'owner',
-      meta: {},
-      verifiedAt: new Date().toISOString(),
-      foundAt: new Date().toISOString()
-    },
-    {
-      id: 'h-aces-tiktok',
-      teamId: 'aces',
-      platform: 'TikTok',
-      handle: '@arabianaces',
-      url: 'https://www.tiktok.com/@arabianaces',
-      status: 'verified',
-      source: 'owner',
-      meta: {},
-      verifiedAt: new Date().toISOString(),
-      foundAt: new Date().toISOString()
-    },
-
-    // Other Team Handles
-    {
-      id: 'h-deccan-ig',
-      teamId: 'deccan',
-      platform: 'Instagram',
-      handle: '@deccangladiators',
-      url: 'https://www.instagram.com/deccangladiators/',
-      status: 'verified',
-      source: 'seed',
-      meta: {},
-      verifiedAt: new Date().toISOString(),
-      foundAt: new Date().toISOString()
-    },
-    {
-      id: 'h-deccan-x',
-      teamId: 'deccan',
-      platform: 'X',
-      handle: '@TeamDGladiators',
-      url: 'https://x.com/TeamDGladiators',
-      status: 'verified',
-      source: 'seed',
-      meta: {},
-      verifiedAt: new Date().toISOString(),
-      foundAt: new Date().toISOString()
-    },
-    {
-      id: 'h-warriors-ig',
-      teamId: 'warriors',
-      platform: 'Instagram',
-      handle: '@northernwarriorst10',
-      url: 'https://www.instagram.com/northernwarriorst10/',
-      status: 'verified',
-      source: 'seed',
-      meta: {},
-      verifiedAt: new Date().toISOString(),
-      foundAt: new Date().toISOString()
-    },
-    {
-      id: 'h-bulls-ig',
-      teamId: 'bulls',
-      platform: 'Instagram',
-      handle: '@delhibullst10',
-      url: 'https://www.instagram.com/delhibullst10/',
-      status: 'verified',
-      source: 'seed',
-      meta: {},
-      verifiedAt: new Date().toISOString(),
-      foundAt: new Date().toISOString()
     }
   ];
 
   const feedItemsData: FeedItem[] = [
-    // YouTube Video / Live feeds
-    {
-      id: 'feed-yt-1',
-      teamId: 'aces',
-      platform: 'YouTube',
-      kind: 'live',
-      category: 'social',
-      title: 'LIVE: Arabian Aces Abu Dhabi T10 Pre-Season Training Camp & Lance Klusener Press Conference',
-      url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-      image: 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?q=80&w=800&auto=format&fit=crop',
-      source: '@T10LeagueOfficial',
-      summary: 'Head Coach Lance Klusener and icon captain Moeen Ali outline the aggressive gameplay and tactical depth for the 2026 Abu Dhabi T10.',
-      status: 'pinned',
-      publishedAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-      createdAt: new Date().toISOString(),
-      views: '18.4K live viewers'
-    },
-    {
-      id: 'feed-yt-2',
-      teamId: null,
-      platform: 'YouTube',
-      kind: 'video',
-      category: 'social',
-      title: 'Abu Dhabi T10 Season 2026 Official Launch | Zayed Cricket Stadium',
-      url: 'https://www.youtube.com/watch?v=3JZ_D3ELwOQ',
-      image: 'https://images.unsplash.com/photo-1531415074868-036b1c57e3ce?q=80&w=800&auto=format&fit=crop',
-      source: '@T10LeagueOfficial',
-      summary: '9 franchises, 90-minute spectacles, world-class superstars ready to clash under the lights in Abu Dhabi.',
-      status: 'live',
-      publishedAt: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
-      createdAt: new Date().toISOString(),
-      views: '42K views'
-    },
-    {
-      id: 'feed-yt-3',
-      teamId: 'aces',
-      platform: 'YouTube',
-      kind: 'video',
-      category: 'social',
-      title: 'Moeen Ali: "We are building an explosive culture at Arabian Aces" | Exclusive Interview',
-      url: 'https://www.youtube.com/watch?v=21X5lGlDOfg',
-      image: 'https://images.unsplash.com/photo-1512719355433-ebe3b5325c77?q=80&w=800&auto=format&fit=crop',
-      source: '@arabianacesofficial',
-      summary: 'Icon player Moeen Ali discusses the team vision, draft strategy, and what UAE cricket fans can look forward to.',
-      status: 'live',
-      publishedAt: new Date(Date.now() - 1000 * 60 * 420).toISOString(),
-      createdAt: new Date().toISOString(),
-      views: '12.8K views'
-    },
-
-    // X (Twitter) Posts
-    {
-      id: 'feed-x-1',
-      teamId: 'aces',
-      platform: 'X',
-      kind: 'post',
-      category: 'social',
-      title: 'The desert roars! 🔥 Meet the Arabian Aces powerhouse lineup. Ready to redefine T10 cricket at Zayed Stadium! #ArabianAces #AbuDhabiT10 #AcesRising',
-      url: 'https://x.com/arabianacesT10/status/188810001',
-      source: '@arabianacesT10',
-      summary: 'Official franchise announcement with iconic gold & black kit preview.',
-      status: 'pinned',
-      publishedAt: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-      createdAt: new Date().toISOString(),
-      likes: 1240
-    },
-    {
-      id: 'feed-x-2',
-      teamId: 'aces',
-      platform: 'X',
-      kind: 'post',
-      category: 'social',
-      title: 'Tactics in motion. Head coach Lance Klusener on the training paddock today: "Every single ball is a scoring opportunity in 10 overs." 🏏⚡',
-      url: 'https://x.com/arabianacesT10/status/188810002',
-      source: '@arabianacesT10',
-      summary: 'Intensive drills underway for the upcoming clash with Deccan Gladiators.',
-      status: 'live',
-      publishedAt: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-      createdAt: new Date().toISOString(),
-      likes: 856
-    },
-    {
-      id: 'feed-x-3',
-      teamId: null,
-      platform: 'X',
-      kind: 'post',
-      category: 'social',
-      title: 'OFFICIAL: Tickets for Abu Dhabi T10 2026 are now live on Platinumlist! Catch 28 matches in 12 days. #AbuDhabiT10',
-      url: 'https://x.com/T10League/status/188810003',
-      source: '@T10League',
-      summary: 'Grandstand and VIP hospitality tickets available now.',
-      status: 'live',
-      publishedAt: new Date(Date.now() - 1000 * 60 * 300).toISOString(),
-      createdAt: new Date().toISOString(),
-      likes: 3102
-    },
-    {
-      id: 'feed-x-4',
-      teamId: 'deccan',
-      platform: 'X',
-      kind: 'post',
-      category: 'social',
-      title: 'Nicholas Pooran in the nets today clearing the Zayed Stadium roof! Can anyone stop the Gladiators this year? ⚔️',
-      url: 'https://x.com/TeamDGladiators/status/188810004',
-      source: '@TeamDGladiators',
-      summary: 'Gladiators captain gearing up for the tournament opener.',
-      status: 'live',
-      publishedAt: new Date(Date.now() - 1000 * 60 * 500).toISOString(),
-      createdAt: new Date().toISOString(),
-      likes: 920
-    },
-    {
-      id: 'feed-x-5',
-      teamId: 'aces',
-      platform: 'X',
-      kind: 'post',
-      category: 'social',
-      title: 'Fan Contest Alert! 🏆 Predict our highest run scorer in Match 1 against Deccan Gladiators & win signed Arabian Aces merchandise! #AcesContest',
-      url: 'https://x.com/arabianacesT10/status/188810005',
-      source: '@arabianacesT10',
-      summary: 'Fans can submit their entries on the official hub.',
-      status: 'live',
-      publishedAt: new Date(Date.now() - 1000 * 60 * 720).toISOString(),
-      createdAt: new Date().toISOString(),
-      likes: 1450
-    },
-
-    // Instagram Posts
-    {
-      id: 'feed-ig-1',
-      teamId: 'aces',
-      platform: 'Instagram',
-      kind: 'post',
-      category: 'social',
-      title: 'Golden era unlocked. 🌟 Introducing the official 2026 Arabian Aces match kit. Designed for speed, power, and prestige in Abu Dhabi.',
-      url: 'https://www.instagram.com/p/DF9Aces01/',
-      image: 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?q=80&w=800&auto=format&fit=crop',
-      source: '@arabianacesofficial',
-      summary: 'Jersey launch featuring Moeen Ali and squad members.',
-      status: 'pinned',
-      publishedAt: new Date(Date.now() - 1000 * 60 * 90).toISOString(),
-      createdAt: new Date().toISOString(),
-      likes: 4210
-    },
-    {
-      id: 'feed-ig-2',
-      teamId: 'aces',
-      platform: 'Instagram',
-      kind: 'post',
-      category: 'social',
-      title: 'Behind the scenes at Zayed Cricket Stadium media day. The energy is unmatched! 🏟️✨',
-      url: 'https://www.instagram.com/p/DF9Aces02/',
-      image: 'https://images.unsplash.com/photo-1512719355433-ebe3b5325c77?q=80&w=800&auto=format&fit=crop',
-      source: '@arabianacesofficial',
-      summary: 'Exclusive locker room and media day photoshoot.',
-      status: 'live',
-      publishedAt: new Date(Date.now() - 1000 * 60 * 220).toISOString(),
-      createdAt: new Date().toISOString(),
-      likes: 2890
-    },
-    {
-      id: 'feed-ig-3',
-      teamId: null,
-      platform: 'Instagram',
-      kind: 'post',
-      category: 'social',
-      title: 'Fast. Fierce. Unforgiving. 90 minutes of pure cricketing adrenaline returns to Abu Dhabi! Are you ready?',
-      url: 'https://www.instagram.com/p/DF9T1001/',
-      image: 'https://images.unsplash.com/photo-1531415074868-036b1c57e3ce?q=80&w=800&auto=format&fit=crop',
-      source: '@t10league',
-      summary: 'League countdown promo clip highlighting top moments from previous seasons.',
-      status: 'live',
-      publishedAt: new Date(Date.now() - 1000 * 60 * 400).toISOString(),
-      createdAt: new Date().toISOString(),
-      likes: 8940
-    },
-
-    // Threads Posts
-    {
-      id: 'feed-th-1',
-      teamId: 'aces',
-      platform: 'Threads',
-      kind: 'post',
-      category: 'social',
-      title: 'T10 cricket is not just a game; it is a test of ruthless intent from the very first ball. Who is your pick to hit the fastest fifty this year? ⚡',
-      url: 'https://www.threads.com/@arabianacesofficial/post/1',
-      source: '@arabianacesofficial',
-      summary: 'Engaging fan discussion on batting tempo and boundary percentages.',
-      status: 'live',
-      publishedAt: new Date(Date.now() - 1000 * 60 * 150).toISOString(),
-      createdAt: new Date().toISOString(),
-      likes: 340
-    },
-    {
-      id: 'feed-th-2',
-      teamId: 'aces',
-      platform: 'Threads',
-      kind: 'post',
-      category: 'social',
-      title: 'Night cricket under the Abu Dhabi floodlights. There is honestly nothing quite like it in world sport. Come say hi at the fan booth! 🇦🇪',
-      url: 'https://www.threads.com/@arabianacesofficial/post/2',
-      source: '@arabianacesofficial',
-      summary: 'Stadium atmosphere and fan activation updates.',
-      status: 'live',
-      publishedAt: new Date(Date.now() - 1000 * 60 * 360).toISOString(),
-      createdAt: new Date().toISOString(),
-      likes: 512
-    },
-
-    // Facebook Posts
-    {
-      id: 'feed-fb-1',
-      teamId: 'aces',
-      platform: 'Facebook',
-      kind: 'post',
-      category: 'social',
-      title: 'Welcome to the official Facebook community of Arabian Aces! Head Coach Lance Klusener shares our roadmap to the championship trophy.',
-      url: 'https://www.facebook.com/arabianacesofficial/posts/1001',
-      image: 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?q=80&w=800&auto=format&fit=crop',
-      source: 'arabianacesofficial',
-      summary: 'Full video interview and franchise announcement for global supporters.',
-      status: 'live',
-      publishedAt: new Date(Date.now() - 1000 * 60 * 600).toISOString(),
-      createdAt: new Date().toISOString(),
-      likes: 1840
-    },
-
-    // TikTok Highlights
-    {
-      id: 'feed-tt-1',
-      teamId: 'aces',
-      platform: 'TikTok',
-      kind: 'video',
-      category: 'social',
-      title: 'POV: Walking out to bat at Zayed Cricket Stadium with Arabian Aces 🔥🏏 #AbuDhabiT10 #CricketTok #ArabianAces',
-      url: 'https://www.tiktok.com/@arabianaces/video/1',
-      image: 'https://images.unsplash.com/photo-1512719355433-ebe3b5325c77?q=80&w=800&auto=format&fit=crop',
-      source: '@arabianaces',
-      summary: 'Immersive tunnel walkout with stadium sound and fireworks.',
-      status: 'live',
-      publishedAt: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
-      createdAt: new Date().toISOString(),
-      views: '54.2K'
-    },
-    {
-      id: 'feed-tt-2',
-      teamId: 'aces',
-      platform: 'TikTok',
-      kind: 'video',
-      category: 'social',
-      title: 'Six or Out? 150km/h yorker challenge in practice with George Scrimshaw 🎯',
-      url: 'https://www.tiktok.com/@arabianaces/video/2',
-      image: 'https://images.unsplash.com/photo-1531415074868-036b1c57e3ce?q=80&w=800&auto=format&fit=crop',
-      source: '@arabianaces',
-      summary: 'Death bowling target practice in high-speed slow motion.',
-      status: 'live',
-      publishedAt: new Date(Date.now() - 1000 * 60 * 480).toISOString(),
-      createdAt: new Date().toISOString(),
-      views: '38.9K'
-    },
-
-    // LinkedIn Posts (Franchise Business & Sponsorship)
-    {
-      id: 'feed-li-1',
-      teamId: 'aces',
-      platform: 'LinkedIn',
-      kind: 'post',
-      category: 'marketing',
-      title: 'Pleased to announce Arabian Aces participation in the upcoming Abu Dhabi T10 season. Partnering with top sports technology and fan engagement leaders across the Middle East.',
-      url: 'https://www.linkedin.com/in/arabianaces/',
-      image: 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?q=80&w=800&auto=format&fit=crop',
-      source: 'arabianaces',
-      summary: 'Franchise executive statement on sports business growth in the UAE.',
-      status: 'live',
-      publishedAt: new Date(Date.now() - 1000 * 60 * 1440).toISOString(),
-      createdAt: new Date().toISOString(),
-      likes: 670
-    },
-
-    // Web / League News Articles
-    {
-      id: 'feed-news-1',
-      teamId: null,
-      platform: 'Web',
-      kind: 'article',
-      category: 'news',
-      title: 'Abu Dhabi T10 2026: Record Global Broadcast Reach Across 110 Countries Confirmed',
-      url: 'https://abudhabit10.com/news/broadcast-announcement-2026',
-      image: 'https://images.unsplash.com/photo-1531415074868-036b1c57e3ce?q=80&w=800&auto=format&fit=crop',
-      source: 'abudhabit10.com',
-      summary: 'The league signs major international broadcast and digital streaming partnerships for the marquee season.',
-      status: 'live',
-      publishedAt: new Date(Date.now() - 1000 * 60 * 700).toISOString(),
-      createdAt: new Date().toISOString()
-    }
+    ...REAL_YOUTUBE_FEEDS,
+    ...REAL_FACEBOOK_FEEDS,
+    ...REAL_TEAM_HANDLE_POSTS
   ];
 
   const matchesData: Match[] = [
@@ -1921,7 +1475,7 @@ function generateInitialStore(): AppStore {
       matchNo: 1,
       stage: 'Inaugural Blockbuster',
       teamA: 'aces',
-      teamB: 'deccan',
+      teamB: 'bulls',
       startsAt: new Date(Date.now() - 1000 * 60 * 45).toISOString(), // currently LIVE
       venue: 'Zayed Cricket Stadium, Abu Dhabi',
       status: 'live',
@@ -1929,8 +1483,8 @@ function generateInitialStore(): AppStore {
       oversA: '10.0',
       scoreB: '84/2',
       oversB: '6.4',
-      currentOver: '6.4 ov · Deccan need 35 off 20 balls',
-      lastCommentary: 'SIX! Marcus Stoinis hammers a slower ball over mid-wicket into the second tier! What a contest!',
+      currentOver: '6.4 ov · UAE Bulls need 35 off 20 balls',
+      lastCommentary: 'SIX! Rovman Powell hammers a slower ball over mid-wicket into the second tier! What a contest!',
       totalSixes: 14,
       firstInnings: 118,
       topScorer: 'Alex Hales (54 off 21)',
@@ -1942,8 +1496,8 @@ function generateInitialStore(): AppStore {
       id: 'm-2',
       matchNo: 2,
       stage: 'Group Stage',
-      teamA: 'bulls',
-      teamB: 'warriors',
+      teamA: 'tigers',
+      teamB: 'lions',
       startsAt: new Date(Date.now() + 1000 * 60 * 120).toISOString(), // upcoming today
       venue: 'Zayed Cricket Stadium, Abu Dhabi',
       status: 'upcoming',
@@ -1954,8 +1508,8 @@ function generateInitialStore(): AppStore {
       id: 'm-3',
       matchNo: 3,
       stage: 'Group Stage',
-      teamA: 'qavalry',
-      teamB: 'champs',
+      teamA: 'eagles',
+      teamB: 'champions',
       startsAt: new Date(Date.now() + 1000 * 60 * 360).toISOString(),
       venue: 'Zayed Cricket Stadium, Abu Dhabi',
       status: 'upcoming',
@@ -1966,9 +1520,33 @@ function generateInitialStore(): AppStore {
       id: 'm-4',
       matchNo: 4,
       stage: 'Super Saturday',
-      teamA: 'riders',
-      teamB: 'ajman',
+      teamA: 'aces',
+      teamB: 'tigers',
       startsAt: new Date(Date.now() + 1000 * 60 * 1440).toISOString(),
+      venue: 'Zayed Cricket Stadium, Abu Dhabi',
+      status: 'upcoming',
+      isDemo: true,
+      updatedAt: new Date().toISOString()
+    },
+    {
+      id: 'm-5',
+      matchNo: 5,
+      stage: 'Super Saturday',
+      teamA: 'lions',
+      teamB: 'eagles',
+      startsAt: new Date(Date.now() + 1000 * 60 * 1620).toISOString(),
+      venue: 'Zayed Cricket Stadium, Abu Dhabi',
+      status: 'upcoming',
+      isDemo: true,
+      updatedAt: new Date().toISOString()
+    },
+    {
+      id: 'm-6',
+      matchNo: 6,
+      stage: 'Desert Rivalry',
+      teamA: 'bulls',
+      teamB: 'champions',
+      startsAt: new Date(Date.now() + 1000 * 60 * 2880).toISOString(),
       venue: 'Zayed Cricket Stadium, Abu Dhabi',
       status: 'upcoming',
       isDemo: true,
@@ -1980,7 +1558,7 @@ function generateInitialStore(): AppStore {
     {
       id: 'contest-m1-pred',
       type: 'predictor',
-      title: 'Match 1 Predictor: Arabian Aces vs Deccan Gladiators',
+      title: 'Match 1 Predictor: Arabian Aces vs UAE Bulls',
       description: 'Call the winner and key match parameters to earn 150 points for your team in Fan Wars!',
       matchId: 'm-1',
       locksAt: new Date(Date.now() + 1000 * 60 * 60).toISOString(),
@@ -1990,7 +1568,7 @@ function generateInitialStore(): AppStore {
         {
           id: 'q1-winner',
           prompt: 'Who will triumph in this clash?',
-          options: ['Arabian Aces', 'Deccan Gladiators'],
+          options: ['Arabian Aces', 'UAE Bulls'],
           points: 50
         },
         {
@@ -2133,18 +1711,18 @@ function generateInitialStore(): AppStore {
     {
       id: 'ap-1',
       kind: 'handle',
-      title: 'YouTube channel discovered for Quetta Qavalry',
-      detail: 'Discovery Agent matched @QuettaQavalryOfficial via official league press release.',
-      payload: { teamId: 'qavalry', platform: 'YouTube', handle: '@QuettaQavalryOfficial', url: 'https://youtube.com/@QuettaQavalryOfficial' },
+      title: 'YouTube channel discovered for Yas Lions',
+      detail: 'Discovery Agent matched @YasLionsOfficial via official league press release.',
+      payload: { teamId: 'lions', platform: 'YouTube', handle: '@YasLionsOfficial', url: 'https://youtube.com/@YasLionsOfficial' },
       status: 'pending',
       createdAt: new Date().toISOString()
     },
     {
       id: 'ap-2',
       kind: 'website',
-      title: 'Team website discovered for Royal Champs',
-      detail: 'Verified domain https://royalchamps.ae submitted by AI Discovery crawler.',
-      payload: { teamId: 'champs', website: 'https://royalchamps.ae' },
+      title: 'Team website discovered for Desert Royal Champions',
+      detail: 'Verified domain https://desertroyalchampions.ae submitted by AI Discovery crawler.',
+      payload: { teamId: 'champions', website: 'https://desertroyalchampions.ae' },
       status: 'pending',
       createdAt: new Date().toISOString()
     }
@@ -2400,6 +1978,18 @@ class DatabaseManager {
         if (!parsed.proposalSettings) {
           parsed.proposalSettings = generateInitialProposalSettings();
         }
+
+        // Ensure store has the 6 officially announced teams:
+        // UAE Bulls, United Tigers, Yas Lions, Arabian Aces, Emirates Eagles, Desert Royal Champions
+        const announced = getAnnouncedTeams();
+        const hasAllAnnounced = announced.every(at => 
+          parsed.teams && parsed.teams.some((t: any) => t.name.toLowerCase() === at.name.toLowerCase())
+        );
+        if (!hasAllAnnounced || !parsed.teams || parsed.teams.length !== 6) {
+          parsed.teams = announced;
+          this.saveDirect(parsed);
+        }
+
         return parsed;
       }
     } catch (e) {

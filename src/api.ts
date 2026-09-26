@@ -65,6 +65,17 @@ export const api = {
 
   // Teams & Handles
   getTeams: () => fetchJson<{ teams: Team[] }>('/api/teams'),
+  seedAnnouncedTeamsAndSearch: () =>
+    fetchJson<{
+      success: boolean;
+      teams: Team[];
+      handles: SocialHandle[];
+      feedItems: FeedItem[];
+      discoveredCount: number;
+      summary: string;
+    }>('/api/teams/seed-announced', {
+      method: 'POST',
+    }),
   saveTeam: (team: Partial<Team>) =>
     fetchJson<{ success: boolean; teams: Team[] }>('/api/teams', {
       method: 'POST',
@@ -107,6 +118,10 @@ export const api = {
   deleteFeedItem: (id: string) =>
     fetchJson<{ success: boolean }>(`/api/feeds/${id}`, {
       method: 'DELETE',
+    }),
+  syncRealFeeds: () =>
+    fetchJson<{ success: boolean; syncedCount: number; feedItems: FeedItem[]; summary: string }>('/api/social/sync-real', {
+      method: 'POST',
     }),
 
   // Matches

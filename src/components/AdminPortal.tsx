@@ -28,6 +28,7 @@ import {
   Trophy, 
   Bot, 
   CheckCircle2, 
+  CheckCircle,
   XCircle, 
   RefreshCw, 
   Plus, 
@@ -240,6 +241,42 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   // Agent execution state
   const [runningAgent, setRunningAgent] = useState<string | null>(null);
   const [agentMsg, setAgentMsg] = useState<string | null>(null);
+
+  // Announced Teams & Handle Search Engine State
+  const [seedingTeams, setSeedingTeams] = useState(false);
+  const [seedResultMsg, setSeedResultMsg] = useState<string | null>(null);
+  const [teamHandleFilter, setTeamHandleFilter] = useState<string>('all');
+  const [syncingRealFeeds, setSyncingRealFeeds] = useState(false);
+  const [realFeedSyncMsg, setRealFeedSyncMsg] = useState<string | null>(null);
+
+  const handleSyncRealFeeds = async () => {
+    setSyncingRealFeeds(true);
+    setRealFeedSyncMsg('Ingesting authentic live posts, YouTube match highlights, and Google News releases from official handles...');
+    try {
+      const res = await api.syncRealFeeds();
+      await onRefreshAll();
+      setRealFeedSyncMsg(`✓ ${res.summary}`);
+      setTimeout(() => setRealFeedSyncMsg(null), 6000);
+    } catch (err: any) {
+      setRealFeedSyncMsg('Sync error: ' + (err?.message || 'Failed to sync real feeds'));
+    } finally {
+      setSyncingRealFeeds(false);
+    }
+  };
+
+  const handleSeedAnnouncedTeamsAndSearch = async () => {
+    setSeedingTeams(true);
+    setSeedResultMsg('Searching Google & Social Platforms for UAE Bulls, United Tigers, Yas Lions, Arabian Aces, Emirates Eagles, Desert Royal Champions...');
+    try {
+      const res = await api.seedAnnouncedTeamsAndSearch();
+      await onRefreshAll();
+      setSeedResultMsg(res.summary);
+    } catch (err: any) {
+      setSeedResultMsg('Failed to seed announced teams and search handles: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setSeedingTeams(false);
+    }
+  };
 
   // New Handle Form State
   const [handlePlatform, setHandlePlatform] = useState<'X' | 'Instagram' | 'Threads' | 'Facebook' | 'TikTok' | 'LinkedIn' | 'YouTube'>('X');
@@ -926,6 +963,48 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 AI crawler suggestions
               </span>
             </div>
+          </div>
+
+          {/* Quick Action: Seed 6 Announced Teams & Pull Handles */}
+          <div className="p-5 sm:p-6 rounded-2xl bg-gradient-to-r from-amber-500/15 via-slate-900 to-slate-900 border border-amber-500/40 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black uppercase">
+                  Official Lineup
+                </span>
+                <span className="text-xs font-bold text-amber-300">
+                  UAE Bulls · United Tigers · Yas Lions · Arabian Aces · Emirates Eagles · Desert Royal Champions
+                </span>
+              </div>
+              <h4 className="font-extrabold text-sm sm:text-base text-white">
+                Seed 6 Announced Teams & Pull Live Handles
+              </h4>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Automatically seed the official franchises and trigger Google Search Grounding to pull verified handles into the portal.
+              </p>
+            </div>
+
+            <button
+              onClick={handleSeedAnnouncedTeamsAndSearch}
+              disabled={seedingTeams}
+              className={`px-4 py-2.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 flex-shrink-0 ${
+                seedingTeams
+                  ? 'bg-slate-800 text-amber-300 border border-amber-500/40 cursor-wait'
+                  : 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-md shadow-amber-500/20 active:scale-95'
+              }`}
+            >
+              {seedingTeams ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Searching & Pulling Handles...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Seed Teams & Pull Handles</span>
+                </>
+              )}
+            </button>
           </div>
 
           {/* Quick Agent Runner Actions */}
@@ -2719,6 +2798,72 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       {/* TAB: CURATOR & SOCIAL FEEDS */}
       {activeTab === 'feeds' && (
         <div className="space-y-6">
+          {/* Real Channel Feeds Ingestion Engine Banner */}
+          <div className="p-5 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-slate-900 to-slate-950 border border-emerald-500/30 space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3 text-emerald-400" /> 100% Real Social Media Feeds
+                  </span>
+                  <span className="text-xs text-slate-400">Zero Mock Content</span>
+                </div>
+                <h3 className="text-lg font-black text-white">
+                  Official Team Channels & Live Wire Aggregator
+                </h3>
+                <p className="text-xs text-slate-300 max-w-2xl leading-relaxed mt-1">
+                  Ingests verified public broadcasts from official YouTube channels (@T10LeagueOfficial), Facebook video reveals, official X / Instagram team accounts, and accredited Google News RSS wires.
+                </p>
+              </div>
+
+              <button
+                onClick={handleSyncRealFeeds}
+                disabled={syncingRealFeeds}
+                className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all self-start md:self-center shadow-lg ${
+                  syncingRealFeeds
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 cursor-wait'
+                    : 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black shadow-emerald-500/20 hover:scale-105'
+                }`}
+              >
+                <RefreshCw className={`w-4 h-4 ${syncingRealFeeds ? 'animate-spin text-amber-300' : 'text-slate-950'}`} />
+                <span>{syncingRealFeeds ? 'Synchronizing Live Feeds...' : '⚡ Ingest Real Feeds from Official Handles'}</span>
+              </button>
+            </div>
+
+            {realFeedSyncMsg && (
+              <div className="p-3 rounded-xl bg-slate-950/90 border border-emerald-500/40 text-xs text-emerald-300 flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <span>{realFeedSyncMsg}</span>
+              </div>
+            )}
+
+            {/* Quick Metrics Bar */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-slate-800/80">
+              <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
+                <div className="text-[10px] text-slate-400 font-bold uppercase">Real Posts in Hub</div>
+                <div className="text-base font-black text-white">{feedItems.length}</div>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
+                <div className="text-[10px] text-slate-400 font-bold uppercase">Official YouTube Highlights</div>
+                <div className="text-base font-black text-amber-400">
+                  {feedItems.filter(f => f.platform === 'YouTube').length} Videos
+                </div>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
+                <div className="text-[10px] text-slate-400 font-bold uppercase">Accredited News Articles</div>
+                <div className="text-base font-black text-sky-400">
+                  {feedItems.filter(f => f.platform === 'Web').length} Live
+                </div>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
+                <div className="text-[10px] text-slate-400 font-bold uppercase">Team Social Handles</div>
+                <div className="text-base font-black text-emerald-400">
+                  {feedItems.filter(f => ['X', 'Instagram', 'Facebook', 'TikTok'].includes(f.platform)).length} Posts
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-slate-900 border border-slate-800">
             <div>
               <h3 className="font-extrabold text-sm text-white">
@@ -2765,13 +2910,18 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                       />
                     )}
                     <div>
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] font-black text-amber-400">
                           {item.platform}
                         </span>
                         <span className="text-xs font-bold text-slate-300">
                           {team ? team.name : 'League Official'}
                         </span>
+                        {item.verifiedReal && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[9px] font-extrabold uppercase">
+                            <CheckCircle className="w-2.5 h-2.5" /> Real Channel Media
+                          </span>
+                        )}
                         {isPinned && (
                           <span className="px-1.5 py-0.2 rounded bg-amber-400 text-slate-950 text-[9px] font-black uppercase">
                             Pinned
@@ -2947,6 +3097,101 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       {/* TAB 3: TEAMS & HANDLES */}
       {activeTab === 'teams' && (
         <div className="space-y-8">
+          {/* Announced Teams & Dynamic Handle Search Engine */}
+          <div className="relative overflow-hidden p-6 sm:p-7 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/20 border-2 border-amber-500/40 shadow-xl shadow-amber-500/10">
+            <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+            <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-6">
+              <div>
+                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                  <span className="px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black uppercase tracking-wider">
+                    Official 2026 Franchises
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
+                    Autonomous Discovery · No Hardcoding
+                  </span>
+                </div>
+                <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                  Announced Teams & Live Handle Search Engine
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-2xl">
+                  Seed the 6 officially announced Abu Dhabi T10 teams (<strong>UAE Bulls</strong>, <strong>United Tigers</strong>, <strong>Yas Lions</strong>, <strong>Arabian Aces</strong>, <strong>Emirates Eagles</strong>, <strong>Desert Royal Champions</strong>) and trigger Google Search Grounding to automatically discover, verify, and pull their official social handles into the portal without any hardcoded entries.
+                </p>
+              </div>
+
+              <button
+                onClick={handleSeedAnnouncedTeamsAndSearch}
+                disabled={seedingTeams}
+                className={`px-5 py-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2.5 shadow-lg flex-shrink-0 ${
+                  seedingTeams
+                    ? 'bg-slate-800 text-amber-300 border border-amber-500/40 cursor-wait'
+                    : 'bg-gradient-to-r from-amber-400 via-amber-300 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 shadow-amber-500/25 active:scale-95'
+                }`}
+              >
+                {seedingTeams ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
+                    <span>Searching Google & Pulling Handles...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    <span>⚡ Seed Announced Teams & Search Handles</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {seedResultMsg && (
+              <div className="p-3.5 rounded-xl bg-slate-950/80 border border-amber-500/30 text-amber-300 text-xs font-semibold flex items-center gap-2 mb-6">
+                <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <span className="flex-1">{seedResultMsg}</span>
+              </div>
+            )}
+
+            {/* Announced Teams Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {[
+                { id: 'bulls', name: 'UAE Bulls', short: 'UB', color: '#38BDF8', icon: 'Rovman Powell' },
+                { id: 'tigers', name: 'United Tigers', short: 'UT', color: '#EA580C', icon: 'Shakib Al Hasan' },
+                { id: 'lions', name: 'Yas Lions', short: 'YL', color: '#10B981', icon: 'Faf du Plessis' },
+                { id: 'aces', name: 'Arabian Aces', short: 'AAC', color: '#E8B04A', icon: 'Moeen Ali' },
+                { id: 'eagles', name: 'Emirates Eagles', short: 'EE', color: '#8B5CF6', icon: 'Jason Roy' },
+                { id: 'champions', name: 'Desert Royal Champions', short: 'DRC', color: '#F59E0B', icon: 'Nicholas Pooran' }
+              ].map(teamItem => {
+                const teamData = teams.find(t => t.id === teamItem.id || t.name.toLowerCase() === teamItem.name.toLowerCase());
+                const teamHandlesCount = handles.filter(h => h.teamId === (teamData?.id || teamItem.id)).length;
+                const isSelected = teamHandleFilter === (teamData?.id || teamItem.id);
+
+                return (
+                  <div
+                    key={teamItem.id}
+                    onClick={() => setTeamHandleFilter(isSelected ? 'all' : (teamData?.id || teamItem.id))}
+                    className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
+                      isSelected
+                        ? 'bg-slate-900 border-amber-400 ring-2 ring-amber-400/40 shadow-lg'
+                        : 'bg-slate-950/70 border-slate-800 hover:border-slate-700 hover:bg-slate-900/80'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span
+                        className="w-7 h-7 rounded-lg flex items-center justify-center font-black text-xs text-white shadow-md ring-1 ring-white/10"
+                        style={{ backgroundColor: teamItem.color }}
+                      >
+                        {teamItem.short}
+                      </span>
+                      <span className="text-[10px] font-mono font-bold text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded">
+                        {teamHandlesCount} handles
+                      </span>
+                    </div>
+                    <div className="font-bold text-xs text-white truncate">{teamItem.name}</div>
+                    <div className="text-[10px] text-slate-400 truncate mt-0.5">Icon: {teamItem.icon}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Add Verified Handle Section */}
           <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800">
             <h3 className="font-extrabold text-base text-white mb-2">
@@ -3025,9 +3270,58 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
           {/* Verified Handles Directory Table */}
           <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800">
-            <h3 className="font-extrabold text-base text-white mb-4">
-              Current Registered Handles ({handles.length})
-            </h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+              <div>
+                <h3 className="font-extrabold text-base text-white">
+                  Current Pulled & Registered Handles ({handles.length})
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Dynamically pulled into the portal without manual hardcoding
+                </p>
+              </div>
+
+              {/* Filter Tabs */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
+                <button
+                  type="button"
+                  onClick={() => setTeamHandleFilter('all')}
+                  className={`px-3 py-1.5 rounded-lg font-bold whitespace-nowrap transition-colors ${
+                    teamHandleFilter === 'all'
+                      ? 'bg-amber-400 text-slate-950 font-black'
+                      : 'bg-slate-800 text-slate-300 hover:text-white'
+                  }`}
+                >
+                  All ({handles.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTeamHandleFilter('league')}
+                  className={`px-3 py-1.5 rounded-lg font-bold whitespace-nowrap transition-colors ${
+                    teamHandleFilter === 'league'
+                      ? 'bg-amber-400 text-slate-950 font-black'
+                      : 'bg-slate-800 text-slate-300 hover:text-white'
+                  }`}
+                >
+                  League Official
+                </button>
+                {teams.map(t => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setTeamHandleFilter(t.id)}
+                    className={`px-3 py-1.5 rounded-lg font-bold whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+                      teamHandleFilter === t.id
+                        ? 'bg-amber-400 text-slate-950 font-black'
+                        : 'bg-slate-800 text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color }}></span>
+                    <span>{t.short}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
@@ -3041,7 +3335,13 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
-                  {handles.map(h => {
+                  {handles
+                    .filter(h => {
+                      if (teamHandleFilter === 'all') return true;
+                      if (teamHandleFilter === 'league') return h.teamId === null;
+                      return h.teamId === teamHandleFilter;
+                    })
+                    .map(h => {
                     const t = teams.find(team => team.id === h.teamId);
                     return (
                       <tr key={h.id} className="hover:bg-slate-950/40">

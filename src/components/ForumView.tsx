@@ -345,7 +345,7 @@ export const ForumView: React.FC<ForumViewProps> = ({
         </div>
 
         {/* Search & Team Filter */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3">
           <select
             value={selectedTeamFilter}
             onChange={(e) => setSelectedTeamFilter(e.target.value)}
@@ -700,8 +700,8 @@ export const ForumView: React.FC<ForumViewProps> = ({
 
       {/* ================= MODAL: CREATE NEW THREAD ================= */}
       {newThreadModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-slate-900 border border-amber-500/30 rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-amber-500/30 rounded-2xl sm:rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl max-h-[92vh] flex flex-col">
             <div className="p-6 border-b border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-amber-400/20 border border-amber-400/40 flex items-center justify-center text-amber-400">
@@ -720,7 +720,7 @@ export const ForumView: React.FC<ForumViewProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleCreateThread} className="p-6 space-y-4">
+            <form onSubmit={handleCreateThread} className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-1.5">
                   Thread Title *

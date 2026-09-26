@@ -136,6 +136,8 @@ export interface FeedItem {
   createdAt: string;
   likes?: number;
   views?: string;
+  verifiedReal?: boolean;
+  channelVerified?: boolean;
 }
 
 export interface Match {

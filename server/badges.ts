@@ -360,7 +360,7 @@ export function computeUserBadges(user: User, store: AppStore): {
       tier: 'diamond',
       description: 'Ranked among the premier franchise tacticians with 500+ total fantasy points.',
       requirement: 'Reach 500+ total fantasy points across matches',
-      lore: 'Tactical genius recognized across all 9 franchises. A true master of the 10-over game.',
+      lore: 'Tactical genius recognized across all 6 franchises. A true master of the 10-over game.',
       tip: 'Compete in every scheduled matchday to build your supreme fantasy tally.',
       actionTab: 'contests',
       actionLabel: 'Enter Next Match',

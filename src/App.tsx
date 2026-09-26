@@ -26,8 +26,13 @@ import { AdminPortal } from './components/AdminPortal';
 import { GeminiStudioModal } from './components/GeminiStudioModal';
 import { UserProfileSection } from './components/UserProfileSection';
 import { ForumView } from './components/ForumView';
+import { FanSpacesView } from './components/FanSpacesView';
+import { GrowthCatalystsView } from './components/GrowthCatalystsView';
 import { LeagueProposalView } from './components/LeagueProposalView';
 import { NotificationModal } from './components/NotificationModal';
+import { MobileBottomNav } from './components/MobileBottomNav';
+import { updatePageSeo, ROUTE_SEO } from './utils/seo';
+import { parsePath, getPathForTab } from './utils/navigation';
 import { requestFCMToken, registerForegroundPushListener } from './firebase';
 import { 
   Flame, 
@@ -112,13 +117,65 @@ export default function App() {
     }
   });
 
-  const [activeTab, setActiveTab] = useState<string>('home');
+  const initialRoute = typeof window !== 'undefined' ? parsePath(window.location.pathname) : { tab: 'home', param: null, path: '/' };
+  const [activeTab, setActiveTabState] = useState<string>(initialRoute.tab);
+  const [selectedTeamRouteId, setSelectedTeamRouteId] = useState<string | null>(initialRoute.param);
+
+  const handleNavigate = (tab: string, param: string | null = null, replace: boolean = false) => {
+    setActiveTabState(tab);
+    if (tab === 'teams') {
+      setSelectedTeamRouteId(param);
+    } else {
+      setSelectedTeamRouteId(null);
+    }
+    const newPath = getPathForTab(tab, param);
+    if (typeof window !== 'undefined') {
+      if (replace) {
+        window.history.replaceState({ tab, param }, '', newPath);
+      } else {
+        window.history.pushState({ tab, param }, '', newPath);
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    const seoBuilder = ROUTE_SEO[tab];
+    if (seoBuilder) {
+      updatePageSeo(seoBuilder(param));
+    }
+  };
+
+  const setActiveTab = (tab: string, param?: string | null) => {
+    handleNavigate(tab, param || null);
+  };
+
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [teamPickerOpen, setTeamPickerOpen] = useState(false);
   const [geminiModalOpen, setGeminiModalOpen] = useState(false);
   const [checkingIn, setCheckingIn] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedWallTeamId, setSelectedWallTeamId] = useState<string | null>(null);
+
+  // Sync browser popstate and set initial SEO metadata
+  useEffect(() => {
+    const onPopState = () => {
+      const route = parsePath(window.location.pathname);
+      setActiveTabState(route.tab);
+      setSelectedTeamRouteId(route.param);
+      const seoBuilder = ROUTE_SEO[route.tab];
+      if (seoBuilder) {
+        updatePageSeo(seoBuilder(route.param));
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+
+    // Initial SEO update on mount
+    const current = parsePath(window.location.pathname);
+    const seoBuilder = ROUTE_SEO[current.tab];
+    if (seoBuilder) {
+      updatePageSeo(seoBuilder(current.param));
+    }
+
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   // Check initial Notification permission
   useEffect(() => {
@@ -288,6 +345,15 @@ export default function App() {
     }
   };
 
+  const handleRefreshFeeds = async () => {
+    try {
+      const feedsRes = await api.getFeeds();
+      setFeedItems(feedsRes.items || []);
+    } catch (e) {
+      console.warn('Failed to refresh feeds:', e);
+    }
+  };
+
   useEffect(() => {
     loadData();
   }, []);
@@ -375,7 +441,7 @@ export default function App() {
       />
 
       {/* Main Body */}
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-8">
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-8 pb-28 lg:pb-12">
         {/* ================= VIEW 1: HOME ================= */}
         {activeTab === 'home' && (
           <div className="space-y-10">
@@ -485,6 +551,7 @@ export default function App() {
               limitPerPlatform={settings.maxSocialPerPlatform}
               title="Consolidated Team Social Wall"
               subtitle="Crawling verified public feeds, YouTube live broadcasts, and media across all franchises."
+              onRefreshFeeds={handleRefreshFeeds}
             />
 
             {/* Contests, Forum, Draws & League Proposal Teasers */}
@@ -528,7 +595,7 @@ export default function App() {
                     Discussion Forum
                   </h3>
                   <p className="text-xs text-slate-300 mb-4 leading-relaxed">
-                    Open new discussion threads, debate team selections, analyze boundary tactics, and join active conversations across all 9 franchises.
+                    Open new discussion threads, debate team selections, analyze boundary tactics, and join active conversations across all 6 franchises.
                   </p>
                 </div>
 
@@ -694,6 +761,8 @@ export default function App() {
             feedItems={feedItems}
             user={user}
             onSelectTeam={handleSelectTeam}
+            selectedTeamId={selectedTeamRouteId}
+            onNavigateTeam={(tId) => handleNavigate('teams', tId)}
           />
         )}
 
@@ -711,6 +780,7 @@ export default function App() {
               limitPerPlatform={settings.maxSocialPerPlatform}
               title="Official Social Media Hub"
               subtitle="Real-time public postings, YouTube live streams, and verified announcements from Arabian Aces and all franchises."
+              onRefreshFeeds={handleRefreshFeeds}
             />
           </div>
         )}
@@ -810,13 +880,44 @@ export default function App() {
           />
         )}
 
-        {/* ================= VIEW 11: LEAGUE PROPOSAL ================= */}
+        {/* ================= VIEW 11: GLOBAL FAN SPACES ================= */}
+        {activeTab === 'fanspaces' && (
+          <FanSpacesView
+            user={user}
+            onOpenAuth={() => setAuthModalOpen(true)}
+            onOpenAdmin={() => {
+              if (user?.role === 'admin') setActiveTab('admin');
+              else setAuthModalOpen(true);
+            }}
+          />
+        )}
+
+        {/* ================= VIEW 12: GROWTH CATALYSTS & CREATORS ================= */}
+        {activeTab === 'growth' && (
+          <GrowthCatalystsView
+            user={user}
+            onOpenAuth={() => setAuthModalOpen(true)}
+            onOpenAdmin={() => {
+              if (user?.role === 'admin') setActiveTab('admin');
+              else setAuthModalOpen(true);
+            }}
+          />
+        )}
+
+        {/* ================= VIEW 13: LEAGUE PROPOSAL ================= */}
         {activeTab === 'proposal' && (
           <LeagueProposalView
             onNavigateToForum={() => setActiveTab('forum')}
             onNavigateToContests={() => setActiveTab('contests')}
             onNavigateToSocial={() => setActiveTab('social')}
             onNavigateToDraws={() => setActiveTab('draws')}
+            onNavigateToFanSpaces={() => setActiveTab('fanspaces')}
+            onNavigateToGrowth={() => setActiveTab('growth')}
+            onOpenAdmin={() => {
+              if (user?.role === 'admin') setActiveTab('admin');
+              else setAuthModalOpen(true);
+            }}
+            isAdmin={user?.role === 'admin'}
           />
         )}
       </main>
@@ -902,61 +1003,73 @@ export default function App() {
       {/* Floating AI Strategist & Studio Trigger */}
       <button
         onClick={() => setGeminiModalOpen(true)}
-        className="fixed bottom-6 right-6 z-40 px-4 py-3 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 rounded-2xl shadow-2xl shadow-amber-500/30 font-black text-xs flex items-center gap-2 transition-transform hover:scale-105 active:scale-95 border border-amber-300 select-none"
+        className="fixed bottom-20 right-4 lg:bottom-6 lg:right-6 z-40 px-3.5 py-2.5 sm:px-4 sm:py-3 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 rounded-2xl shadow-2xl shadow-amber-500/30 font-black text-xs flex items-center gap-2 transition-transform hover:scale-105 active:scale-95 border border-amber-300 select-none"
         title="Open Gemini AI Chatbot, Search Grounding, Voice & Media Studio"
       >
-        <Sparkles className="w-4 h-4 fill-slate-950" />
+        <Sparkles className="w-4 h-4 fill-slate-950 shrink-0" />
         <span className="hidden sm:inline">AI Strategist & Studio</span>
       </button>
 
-      {/* Footer */}
-      <footer className="border-t border-slate-900 bg-slate-950/80 py-8 text-xs text-slate-500">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <span className="font-black text-amber-400 tracking-tight">ABU DHABI T10</span>
-            <span>·</span>
-            <span>Arabian Aces Franchise & League Platform</span>
+      {/* Mobile Bottom Navigation Bar */}
+      <MobileBottomNav
+        activeTab={activeTab}
+        onNavigate={handleNavigate}
+        user={user}
+        userTeam={userTeam}
+        onOpenAuth={() => setAuthModalOpen(true)}
+        onOpenAI={() => setGeminiModalOpen(true)}
+      />
+
+      {/* Global Multi-Page SEO & Crawlable Footer with Copyright by Azlir Sport */}
+      <footer className="border-t border-slate-900 bg-slate-950/95 py-10 text-xs text-slate-400">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 space-y-6">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-6 border-b border-slate-900">
+            <div>
+              <div className="flex items-center gap-2.5">
+                <span className="font-black text-amber-400 text-base tracking-tight">ABU DHABI T10</span>
+                <span className="text-slate-600">·</span>
+                <span className="font-bold text-white">Official Fan Hub & Arabian Aces Franchise</span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1 max-w-xl leading-relaxed">
+                Official platform for the Abu Dhabi T10 Cricket League. Real-time live scorecards, ball-by-ball simulators, verified franchise social curation, fantasy 10, VIP fan draws, and global expansion strategy.
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-amber-500/30 text-left md:text-right shrink-0">
+              <span className="text-[10px] uppercase font-black text-amber-400 tracking-wider block">Official Copyright</span>
+              <span className="text-xs font-black text-white">Copyright by Azlir Sport © 2026</span>
+              <span className="text-[10px] text-slate-400 block mt-0.5">All rights reserved · Powered by Autonomous AI Agents</span>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-4">
-            <button
-              onClick={() => setActiveTab('forum')}
-              className="hover:text-slate-300 transition-colors"
-            >
-              Discussion Forum
-            </button>
-            <button
-              onClick={() => setActiveTab('proposal')}
-              className="text-amber-400 font-bold hover:text-amber-300 transition-colors"
-            >
-              ADT10 League Proposal
-            </button>
-            <button
-              onClick={() => setActiveTab('social')}
-              className="hover:text-slate-300 transition-colors"
-            >
-              Social Directory
-            </button>
-            <button
-              onClick={() => setActiveTab('contests')}
-              className="hover:text-slate-300 transition-colors"
-            >
-              Fan Rules
-            </button>
-            <button
-              onClick={() => {
-                if (user?.role === 'admin') setActiveTab('admin');
-                else setAuthModalOpen(true);
-              }}
-              className="text-amber-400/70 hover:text-amber-300 font-semibold transition-colors"
-            >
-              Admin Portal
-            </button>
-          </div>
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pt-2">
+            <nav aria-label="Footer Site Directory" className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs font-semibold">
+              <a href="/" onClick={(e) => { e.preventDefault(); handleNavigate('home'); }} className="hover:text-amber-400 transition-colors">Home</a>
+              <a href="/matches" onClick={(e) => { e.preventDefault(); handleNavigate('matches'); }} className="hover:text-amber-400 transition-colors">Matches & Live Center</a>
+              <a href="/teams" onClick={(e) => { e.preventDefault(); handleNavigate('teams'); }} className="hover:text-amber-400 transition-colors">All Franchises</a>
+              <a href="/social" onClick={(e) => { e.preventDefault(); handleNavigate('social'); }} className="hover:text-amber-400 transition-colors">Social Directory</a>
+              <a href="/forum" onClick={(e) => { e.preventDefault(); handleNavigate('forum'); }} className="hover:text-amber-400 transition-colors">Discussion Forum</a>
+              <a href="/fanspaces" onClick={(e) => { e.preventDefault(); handleNavigate('fanspaces'); }} className="hover:text-amber-400 transition-colors">Global Fan Spaces</a>
+              <a href="/growth" onClick={(e) => { e.preventDefault(); handleNavigate('growth'); }} className="hover:text-amber-400 transition-colors">Youth Cup & Creators</a>
+              <a href="/contests" onClick={(e) => { e.preventDefault(); handleNavigate('contests'); }} className="hover:text-amber-400 transition-colors">Fantasy 10 & Contests</a>
+              <a href="/draws" onClick={(e) => { e.preventDefault(); handleNavigate('draws'); }} className="hover:text-amber-400 transition-colors">VIP Prize Draws</a>
+              <a href="/leaderboard" onClick={(e) => { e.preventDefault(); handleNavigate('leaderboard'); }} className="hover:text-amber-400 transition-colors">Fan Wars</a>
+              <a href="/proposal" onClick={(e) => { e.preventDefault(); handleNavigate('proposal'); }} className="text-amber-400 font-bold hover:text-amber-300 transition-colors">ADT10 Proposal</a>
+              <button
+                onClick={() => {
+                  if (user?.role === 'admin') handleNavigate('admin');
+                  else setAuthModalOpen(true);
+                }}
+                className="text-amber-400/80 hover:text-amber-300 font-semibold transition-colors"
+              >
+                Admin Portal
+              </button>
+            </nav>
 
-          <p className="text-[11px] text-slate-600">
-            Powered by Autonomous AI Studio Agents & Gemini 3.8 Flash
-          </p>
+            <div className="text-[11px] text-slate-500">
+              <span>Copyright by <strong className="text-slate-300 font-semibold">Azlir Sport</strong>. Commissioned for Abu Dhabi T10 League.</span>
+            </div>
+          </div>
         </div>
       </footer>
     </div>

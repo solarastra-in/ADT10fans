@@ -79,26 +79,26 @@ export const LiveMatchTicker: React.FC<LiveMatchTickerProps> = ({
       </div>
 
       {/* Scoreboard Cards */}
-      <div className="relative grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+      <div className="relative grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-center">
         {/* Team A */}
-        <div className="lg:col-span-4 flex items-center justify-between lg:justify-start gap-4 p-3 rounded-xl bg-slate-950/60 border border-slate-800/80">
-          <div className="flex items-center gap-3">
+        <div className="lg:col-span-4 flex items-center justify-between gap-3 sm:gap-4 p-3.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <div
-              className="w-12 h-12 rounded-xl flex items-center justify-center font-black text-lg text-white shadow-md"
+              className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center font-black text-base sm:text-lg text-white shadow-md shrink-0"
               style={{ backgroundColor: teamA?.color || '#E8B04A' }}
             >
               {teamA?.short || 'AAC'}
             </div>
-            <div>
-              <h3 className="font-black text-base text-white tracking-tight">
+            <div className="min-w-0">
+              <h3 className="font-black text-sm sm:text-base text-white tracking-tight truncate">
                 {teamA?.name || 'Arabian Aces'}
               </h3>
-              <p className="text-xs text-slate-400">Icon: {teamA?.iconPlayer}</p>
+              <p className="text-xs text-slate-400 truncate">Icon: {teamA?.iconPlayer}</p>
             </div>
           </div>
 
-          <div className="text-right">
-            <div className="text-2xl font-black text-white font-mono">
+          <div className="text-right shrink-0">
+            <div className="text-xl sm:text-2xl font-black text-white font-mono">
               {liveMatch.scoreA || '118/3'}
             </div>
             <div className="text-[11px] font-bold text-slate-400">
@@ -108,7 +108,7 @@ export const LiveMatchTicker: React.FC<LiveMatchTickerProps> = ({
         </div>
 
         {/* Center Versus & Status */}
-        <div className="lg:col-span-4 text-center">
+        <div className="lg:col-span-4 text-center py-1 lg:py-0">
           <div className="inline-block px-3 py-1 rounded-full bg-slate-800/90 border border-slate-700/80 text-[11px] font-bold text-amber-300 mb-1">
             {liveMatch.currentOver || '6.4 ov · Deccan need 35 off 20 balls'}
           </div>
@@ -124,28 +124,28 @@ export const LiveMatchTicker: React.FC<LiveMatchTickerProps> = ({
         </div>
 
         {/* Team B */}
-        <div className="lg:col-span-4 flex items-center justify-between lg:justify-end gap-4 p-3 rounded-xl bg-slate-950/60 border border-slate-800/80">
-          <div className="text-left lg:text-right order-2 lg:order-1">
-            <div className="text-2xl font-black text-white font-mono">
+        <div className="lg:col-span-4 flex items-center justify-between gap-3 sm:gap-4 p-3.5 rounded-xl bg-slate-950/60 border border-slate-800/80">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div
+              className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center font-black text-base sm:text-lg text-white shadow-md shrink-0"
+              style={{ backgroundColor: teamB?.color || '#E85A6B' }}
+            >
+              {teamB?.short || 'DG'}
+            </div>
+            <div className="min-w-0">
+              <h3 className="font-black text-sm sm:text-base text-white tracking-tight truncate">
+                {teamB?.name || 'Deccan Gladiators'}
+              </h3>
+              <p className="text-xs text-slate-400 truncate">Icon: {teamB?.iconPlayer}</p>
+            </div>
+          </div>
+
+          <div className="text-right shrink-0">
+            <div className="text-xl sm:text-2xl font-black text-white font-mono">
               {liveMatch.scoreB || '84/2'}
             </div>
             <div className="text-[11px] font-bold text-slate-400">
               {liveMatch.oversB || '6.4'} ov
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 order-1 lg:order-2">
-            <div className="text-left lg:text-right hidden sm:block">
-              <h3 className="font-black text-base text-white tracking-tight">
-                {teamB?.name || 'Deccan Gladiators'}
-              </h3>
-              <p className="text-xs text-slate-400">Icon: {teamB?.iconPlayer}</p>
-            </div>
-            <div
-              className="w-12 h-12 rounded-xl flex items-center justify-center font-black text-lg text-white shadow-md"
-              style={{ backgroundColor: teamB?.color || '#E85A6B' }}
-            >
-              {teamB?.short || 'DG'}
             </div>
           </div>
         </div>

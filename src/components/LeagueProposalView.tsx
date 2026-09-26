@@ -69,7 +69,7 @@ const ACTIVITIES: ActivityItem[] = [
     tag: 'Digital Core',
     need: 'Current league and franchise web presence is fragmented across temporary event micro-sites, leading to an 87% fan drop-off between annual 2-week tournament cycles. Fans have no single persistent home for live scores, squads, tickets, and team engagement.',
     relevance: 'T10’s 90-minute format is the most fast-paced, digital-native spectacle in sports. Digital-first Gen-Z audiences expect instant load times, live ball-by-ball simulated telemetry, mobile responsiveness, and continuous 365-day access.',
-    what: 'Build and deploy a unified official Abu Dhabi T10 League & 9-Franchise web ecosystem as a Progressive Web App (PWA). Includes automated match schedules, real-time ball-by-ball live tickers, dynamic player & squad dossiers, unified ticketing portal, and automated multilingual content feeds.',
+    what: 'Build and deploy a unified official Abu Dhabi T10 League & 6-Franchise web ecosystem as a Progressive Web App (PWA). Includes automated match schedules, real-time ball-by-ball live tickers, dynamic player & squad dossiers, unified ticketing portal, and automated multilingual content feeds.',
     usdCost: 165000,
     aedCost: Math.round(165000 * USD_TO_AED),
     capexUsd: 110000,
@@ -313,7 +313,7 @@ export const LeagueProposalView: React.FC<LeagueProposalViewProps> = ({
     },
     {
       title: 'The Core Strategic Need & Attention Economy',
-      subtitle: 'Why the League Must Unify its 9 Franchise Audiences Today',
+      subtitle: 'Why the League Must Unify its 6 Franchise Audiences Today',
       bullets: [
         'Attention Economy Competition: Gen-Z audiences demand micro-content, instant gamification, and second-screen interactivity.',
         'The Silo Dilemma: Disparate franchise social accounts create noise rather than collective gravity.',
@@ -426,7 +426,7 @@ Submitted to: ADT10 Governing Council & Franchise Board
 
 1. THE NEED:
 - Traditional cricket leagues suffer from an 87% off-season engagement drop.
-- 9 franchises operate in silos without a centralized fan platform.
+- 6 franchises operate in silos without a centralized fan platform.
 - 80%+ of viewers live outside Abu Dhabi (India, UK, North America, GCC) with zero physical engagement touchpoints.
 
 2. STRATEGIC RELEVANCE:
@@ -490,6 +490,9 @@ Submitted to: ADT10 Governing Council & Franchise Board
               </span>
               <span className="px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 text-[11px] font-bold">
                 Doc Ref: ADT10-FAN-EXP-2026-v1
+              </span>
+              <span className="px-2.5 py-1 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/40 text-[11px] font-black">
+                Copyright by Azlir Sport
               </span>
             </div>
 
@@ -768,7 +771,7 @@ Submitted to: ADT10 Governing Council & Franchise Board
               <div className="p-4 rounded-2xl bg-slate-950 border border-amber-500/20 space-y-2">
                 <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
                   <Users className="w-4 h-4" />
-                  <span>For 9 Franchises</span>
+                  <span>For 6 Franchises</span>
                 </div>
                 <ul className="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
                   <li>Direct fan monetization & merchandise sales</li>
@@ -1354,6 +1357,17 @@ Submitted to: ADT10 Governing Council & Franchise Board
           </div>
         </div>
       )}
+
+      {/* Proposal Copyright & Attribution */}
+      <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/80 border border-amber-500/30 text-center text-xs text-slate-400 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-amber-400" />
+          <span className="font-bold text-white">Abu Dhabi T10 League Fan Base & Experiential Spaces Proposal</span>
+        </div>
+        <div className="font-semibold text-amber-300">
+          Copyright by Azlir Sport © 2026. All rights reserved.
+        </div>
+      </div>
     </div>
   );
 };

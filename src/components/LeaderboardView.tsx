@@ -59,7 +59,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
               return (
                 <div
                   key={item.team.id}
-                  className={`p-4 rounded-xl border transition-all flex items-center justify-between ${
+                  className={`p-3 sm:p-4 rounded-xl border transition-all flex items-center justify-between gap-2 ${
                     isUserTeam
                       ? 'bg-amber-500/15 border-amber-400/80 ring-1 ring-amber-400'
                       : isFirst
@@ -67,38 +67,38 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({
                       : 'bg-slate-950/70 border-slate-800'
                   }`}
                 >
-                  <div className="flex items-center gap-3.5">
-                    <span className={`w-7 text-center font-black text-sm ${isFirst ? 'text-amber-400' : 'text-slate-400'}`}>
+                  <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
+                    <span className={`w-6 sm:w-7 text-center font-black text-xs sm:text-sm shrink-0 ${isFirst ? 'text-amber-400' : 'text-slate-400'}`}>
                       #{index + 1}
                     </span>
 
                     <div
-                      className="w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm text-white shadow-md"
+                      className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center font-black text-xs sm:text-sm text-white shadow-md shrink-0"
                       style={{ backgroundColor: item.team.color }}
                     >
                       {item.team.short}
                     </div>
 
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-extrabold text-sm text-white">{item.team.name}</h4>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 sm:gap-2">
+                        <h4 className="font-extrabold text-xs sm:text-sm text-white truncate max-w-[130px] sm:max-w-none">{item.team.name}</h4>
                         {isUserTeam && (
-                          <span className="px-1.5 py-0.2 rounded bg-amber-400 text-slate-950 font-black text-[9px] uppercase">
+                          <span className="px-1.5 py-0.2 rounded bg-amber-400 text-slate-950 font-black text-[9px] uppercase shrink-0">
                             Your Team
                           </span>
                         )}
                       </div>
-                      <span className="text-xs text-slate-400 flex items-center gap-1">
-                        <Users className="w-3 h-3" /> {item.fansCount.toLocaleString()} Active Fans
+                      <span className="text-[11px] sm:text-xs text-slate-400 flex items-center gap-1 truncate">
+                        <Users className="w-3 h-3 shrink-0" /> {item.fansCount.toLocaleString()} Active Fans
                       </span>
                     </div>
                   </div>
 
-                  <div className="text-right">
-                    <div className="text-base sm:text-lg font-black font-mono text-amber-400">
+                  <div className="text-right shrink-0">
+                    <div className="text-sm sm:text-lg font-black font-mono text-amber-400">
                       {item.points.toLocaleString()}
                     </div>
-                    <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">
+                    <span className="text-[9px] sm:text-[10px] text-slate-400 uppercase font-bold tracking-wider block">
                       Fan Points
                     </span>
                   </div>
