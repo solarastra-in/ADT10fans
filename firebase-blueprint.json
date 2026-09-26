@@ -1,0 +1,120 @@
+{
+  "entities": {
+    "User": {
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "fan"] },
+        "teamId": { "type": "string" },
+        "points": { "type": "number" },
+        "streak": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["email", "name", "role", "points"]
+    },
+    "Team": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "short": { "type": "string" },
+        "color": { "type": "string" },
+        "home": { "type": "string" },
+        "iconPlayer": { "type": "string" }
+      },
+      "required": ["name", "short", "color"]
+    },
+    "FeedItem": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "url": { "type": "string" },
+        "platform": { "type": "string" },
+        "kind": { "type": "string" },
+        "status": { "type": "string" },
+        "publishedAt": { "type": "string" }
+      },
+      "required": ["title", "url", "platform", "status"]
+    },
+    "ContestEntry": {
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "contestId": { "type": "string" },
+        "answers": { "type": "object" },
+        "pointsAwarded": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "contestId", "answers"]
+    },
+    "DrawEntry": {
+      "type": "object",
+      "properties": {
+        "drawId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "userName": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["drawId", "userId", "userEmail"]
+    },
+    "NotificationItem": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "category": { "type": "string", "enum": ["match_result", "contest_deadline", "announcement", "perk"] },
+        "targetAudience": { "type": "string", "enum": ["all", "logged_in", "team"] },
+        "teamId": { "type": "string" },
+        "priority": { "type": "string", "enum": ["normal", "high"] },
+        "createdAt": { "type": "string" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["title", "body", "category", "targetAudience", "createdAt"]
+    },
+    "FCMDeviceToken": {
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "token": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "deviceType": { "type": "string" },
+        "userAgent": { "type": "string" },
+        "enabled": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["token", "enabled", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "User" },
+      "description": "User profile with points, streak, and team choice"
+    },
+    "/teams/{teamId}": {
+      "schema": { "$ref": "Team" },
+      "description": "Abu Dhabi T10 Franchise teams"
+    },
+    "/feed_items/{itemId}": {
+      "schema": { "$ref": "FeedItem" },
+      "description": "Curated social media and news posts"
+    },
+    "/contest_entries/{entryId}": {
+      "schema": { "$ref": "ContestEntry" },
+      "description": "Contest predictions"
+    },
+    "/draw_entries/{drawEntryId}": {
+      "schema": { "$ref": "DrawEntry" },
+      "description": "Provably fair draw entries"
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "NotificationItem" },
+      "description": "Real-time push alerts and match/contest notifications"
+    },
+    "/fcm_tokens/{tokenId}": {
+      "schema": { "$ref": "FCMDeviceToken" },
+      "description": "Firebase Cloud Messaging registered device tokens"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Abu Dhabi T10 Fan Hub & Agentic Social Curator",
+  "description": "Official Abu Dhabi T10 League & Franchise platform with agentic social media curation, live match scores, fantasy 10, interactive fan contests, and comprehensive admin console.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
