@@ -1,35 +1,32 @@
-export interface ForumComment {
+export interface User {
   id: string;
-  threadId: string;
-  userId: string;
-  userName: string;
-  userAvatar: string;
-  userBadge?: string;
-  teamId?: string | null;
-  content: string;
-  upvotes: number;
-  upvotedBy?: string[];
+  email: string;
+  name: string;
+  avatar: string;
+  provider: 'google' | 'email';
+  teamId: string | null;
+  teamChanges: number;
+  points: number;
+  streak: number;
+  lastCheckin?: string;
+  badges: string[];
+  role: 'fan' | 'admin';
   createdAt: string;
+  stats?: UserStats;
 }
 
-export interface ForumThread {
-  id: string;
-  title: string;
-  content: string;
-  category: 'matchday' | 'tactics' | 'franchises' | 'fantasy' | 'fanspaces' | 'giveaways' | 'general';
-  tags: string[];
-  teamId?: string | null;
-  userId: string;
-  userName: string;
-  userAvatar: string;
-  userBadge?: string;
-  pinned?: boolean;
-  upvotes: number;
-  upvotedBy?: string[];
-  views: number;
-  commentsCount: number;
-  lastActivityAt: string;
-  createdAt: string;
+export interface UserStats {
+  contestsEntered: number;
+  contestsWon: number;
+  predictionPoints: number;
+  fantasyTeamsCreated: number;
+  fantasyBestScore: number;
+  fantasyTotalPoints: number;
+  currentStreak: number;
+  highestStreak: number;
+  drawsEntered: number;
+  totalBadgesUnlocked: number;
+  badgesClaimedCount: number;
 }
 
 export interface AchievementBadge {
@@ -52,37 +49,6 @@ export interface AchievementBadge {
   rewardPoints: number;
 }
 
-export interface UserStats {
-  contestsEntered: number;
-  contestsWon: number;
-  predictionPoints: number;
-  fantasyTeamsCreated: number;
-  fantasyBestScore: number;
-  fantasyTotalPoints: number;
-  currentStreak: number;
-  highestStreak: number;
-  drawsEntered: number;
-  totalBadgesUnlocked: number;
-  badgesClaimedCount: number;
-}
-
-export interface User {
-  id: string;
-  email: string;
-  name: string;
-  avatar: string;
-  provider: 'google' | 'email';
-  teamId?: string | null;
-  teamChanges: number;
-  points: number;
-  streak: number;
-  lastCheckin?: string;
-  badges: string[];
-  role: 'admin' | 'fan';
-  stats?: UserStats;
-  createdAt: string;
-}
-
 export interface Player {
   id: string;
   teamId: string;
@@ -90,6 +56,8 @@ export interface Player {
   role: 'batter' | 'bowler' | 'allrounder' | 'wicketkeeper';
   credits: number;
   isIcon: boolean;
+  /** Draft category, e.g. 'Icon', 'Platinum', 'Gold', 'Diamond', 'Silver', 'Local' */
+  category?: string;
 }
 
 export interface Team {
@@ -103,8 +71,11 @@ export interface Team {
   headCoach?: string;
   website?: string;
   note?: string;
+  logo?: string;
   sort: number;
   squad: Player[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface SocialHandle {
@@ -114,8 +85,8 @@ export interface SocialHandle {
   handle: string;
   url: string;
   status: 'verified' | 'pending';
-  source: string;
-  meta: Record<string, any>;
+  source: 'official' | 'discovery' | 'admin' | 'ai-suggestion' | 'official-preset';
+  meta?: Record<string, any>;
   verifiedAt?: string;
   foundAt: string;
 }
@@ -136,8 +107,65 @@ export interface FeedItem {
   createdAt: string;
   likes?: number;
   views?: string;
+  /** true only when the item was ingested from a verified official handle's own feed */
   verifiedReal?: boolean;
   channelVerified?: boolean;
+  /** How the item got here: youtube-rss (official channel RSS), news-rss (Google News), admin (added by an admin), ai (admin-approved AI draft) */
+  sourceType?: 'youtube-rss' | 'news-rss' | 'admin' | 'ai';
+  handleId?: string | null;
+}
+
+export interface BattingScorecardEntry {
+  batsman: string;
+  dismissal: string;
+  runs: number;
+  balls: number;
+  fours: number;
+  sixes: number;
+  strikeRate: number;
+  isNotOut?: boolean;
+}
+
+export interface BowlingScorecardEntry {
+  bowler: string;
+  overs: string | number;
+  maidens: number;
+  runs: number;
+  wickets: number;
+  economy: number;
+  dots?: number;
+}
+
+export interface FallOfWicketEntry {
+  wicket: number;
+  score: number;
+  over: string;
+  player: string;
+}
+
+export interface InningsScorecard {
+  teamId: string;
+  teamName?: string;
+  totalRuns: number;
+  wickets: number;
+  overs: string;
+  runRate?: number;
+  extras?: {
+    total: number;
+    wides?: number;
+    noBalls?: number;
+    byes?: number;
+    legByes?: number;
+  };
+  batting: BattingScorecardEntry[];
+  bowling: BowlingScorecardEntry[];
+  didNotBat?: string[];
+  fallOfWickets?: FallOfWicketEntry[];
+}
+
+export interface MatchScorecard {
+  innings1?: InningsScorecard;
+  innings2?: InningsScorecard;
 }
 
 export interface Match {
@@ -150,19 +178,30 @@ export interface Match {
   venue: string;
   status: 'upcoming' | 'live' | 'completed';
   scoreA?: string;
-  scoreB?: string;
   oversA?: string;
+  scoreB?: string;
   oversB?: string;
+  firstInnings?: number;
   winner?: string;
   result?: string;
   totalSixes?: number;
-  firstInnings?: number;
   topScorer?: string;
   topWicketTaker?: string;
   currentOver?: string;
   lastCommentary?: string;
-  isDemo?: boolean;
   updatedAt: string;
+  toss?: string;
+  playerOfTheMatch?: string;
+  scorecard?: MatchScorecard;
+}
+
+export interface ContestQuestion {
+  id: string;
+  prompt: string;
+  options: string[];
+  points: number;
+  answer?: string;
+  explain?: string;
 }
 
 export interface Contest {
@@ -170,19 +209,12 @@ export interface Contest {
   type: 'predictor' | 'sixes' | 'captain' | 'season' | 'trivia';
   title: string;
   description: string;
-  matchId?: string;
-  locksAt?: string;
+  matchId?: string | null;
+  locksAt?: string | null;
   status: 'open' | 'locked' | 'settled';
   prize: string;
+  questions: ContestQuestion[];
   instant?: boolean;
-  questions: {
-    id: string;
-    prompt: string;
-    options: string[];
-    points: number;
-    answer?: string;
-    explain?: string;
-  }[];
   createdAt: string;
 }
 
@@ -212,11 +244,16 @@ export interface PrizeDraw {
   closesAt: string;
   status: 'open' | 'closed' | 'drawn';
   teamOnly?: string | null;
-  winnerUserId?: string | null;
-  winnerName?: string | null;
+  winnerUserId?: string;
+  winnerName?: string;
   seed?: string | null;
   entrantsHash?: string | null;
   drawnAt?: string | null;
+  /** Number of entrants (computed by the server) */
+  entriesCount?: number;
+  /** Whether the signed-in user has entered (computed by the server) */
+  entered?: boolean;
+  createdAt?: string;
 }
 
 export interface DrawEntry {
@@ -229,10 +266,10 @@ export interface DrawEntry {
 
 export interface Approval {
   id: string;
-  kind: 'handle' | 'website' | 'post';
+  kind: 'handle' | 'post' | 'score' | 'website';
   title: string;
   detail: string;
-  payload: Record<string, any>;
+  payload: any;
   status: 'pending' | 'approved' | 'rejected';
   createdAt: string;
   decidedAt?: string;
@@ -250,21 +287,58 @@ export interface AgentRun {
 
 export interface SystemSettings {
   adminEmails: string[];
-  publicUserCountOverride: number;
-  tickerText: string;
+  brandName: string;
+  tagline: string;
+  copyrightHolder: string;
+  seasonLabel: string;
+  seasonStart: string; // ISO date, '' when not set
+  seasonEnd: string;   // ISO date, '' when not set
+  venue: string;
+  tickerText: string; // '' hides the ticker
   curatorFeedId: string;
   curatorContainerId: string;
   curatorFeedUuid: string;
   curatorApiKey: string;
   curatorHashtags: string;
   maxSocialPerPlatform: number;
+  newsQueries: string; // one Google News query per line; blank lines ignored
   smtp: {
     host: string;
     port: number;
     user: string;
-    pass: string;
+    pass: string; // write-only; the server returns '' or '********'
     from: string;
     enabled: boolean;
+  };
+}
+
+/** Public, non-secret configuration returned by GET /api/config */
+export interface PublicConfig {
+  brandName: string;
+  tagline: string;
+  copyrightHolder: string;
+  seasonLabel: string;
+  seasonStart: string;
+  seasonEnd: string;
+  venue: string;
+  tickerText: string;
+  curatorFeedId: string;
+  curatorContainerId: string;
+  maxSocialPerPlatform: number;
+  features: {
+    googleSignIn: boolean;
+    emailOtp: boolean;
+    gemini: boolean;
+    pushNotifications: boolean;
+  };
+  fcmVapidKey: string;
+  stats: {
+    teams: number;
+    fans: number;       // real registered users
+    handles: number;    // verified handles
+    matches: number;
+    openContests: number;
+    openDraws: number;
   };
 }
 
@@ -275,32 +349,25 @@ export interface NotificationItem {
   category: 'match_result' | 'contest_deadline' | 'announcement' | 'perk';
   targetAudience: 'all' | 'logged_in' | 'team';
   teamId?: string | null;
-  data?: {
-    matchId?: string;
-    contestId?: string;
-    url?: string;
-    scoreSummary?: string;
-    winnerName?: string;
-    locksAt?: string;
-    prize?: string;
-    [key: string]: any;
-  };
-  priority?: 'normal' | 'high';
+  data?: Record<string, any>;
+  priority: 'normal' | 'high';
   createdAt: string;
   createdBy: string;
   recipientCount?: number;
   fcmSuccessCount?: number;
   fcmFailureCount?: number;
+  /** 'fcm' when pushed via Firebase Cloud Messaging, 'in-app' when stored only */
+  delivery?: 'fcm' | 'in-app';
   read?: boolean;
 }
 
 export interface FCMDeviceToken {
   id: string;
-  userId?: string | null;
   token: string;
+  userId?: string | null;
   userEmail?: string | null;
   deviceType: string;
-  userAgent: string;
+  userAgent?: string;
   enabled: boolean;
   createdAt: string;
   updatedAt: string;
@@ -326,6 +393,8 @@ export interface FanSpace {
   merchBoutique: string;
   menuHighlights: string;
   totalBookings: number;
+  mapUrl?: string;
+  bookingEnabled?: boolean;
 }
 
 export interface FanSpaceBooking {
@@ -336,7 +405,7 @@ export interface FanSpaceBooking {
   userName: string;
   userEmail: string;
   date: string;
-  ticketType: 'standard_entry' | 'vip_pass' | 'vr_cage_reservation';
+  ticketType: 'standard_entry' | 'vip_pass';
   ticketsCount: number;
   passCode: string;
   createdAt: string;
@@ -345,7 +414,7 @@ export interface FanSpaceBooking {
 export interface YouthCupSchool {
   id: string;
   name: string;
-  region: 'UAE' | 'UK';
+  region: string;
   city: string;
   studentsCount: number;
   tapeBallTeam: string;
@@ -359,12 +428,12 @@ export interface CreatorPartner {
   name: string;
   handle: string;
   platform: 'YouTube' | 'Twitch' | 'Kick' | 'TikTok';
-  followers: string;
-  streamUrl: string;
+  followers?: string; // optional; only show when an admin has entered it
+  streamUrl: string;  // must be the creator's real channel/profile URL
   specialty: string;
   status: 'live' | 'scheduled' | 'partnered';
-  totalWatchViews: string;
-  avatar: string;
+  totalWatchViews?: string;
+  avatar?: string;
 }
 
 export interface CommentaryAudioFeed {
@@ -372,9 +441,11 @@ export interface CommentaryAudioFeed {
   language: 'Arabic' | 'English' | 'Hindi' | 'Urdu' | 'Bengali';
   commentator: string;
   status: 'live' | 'standby';
-  sampleAudioText: string;
-  bitrate: string;
-  listenersCount: number;
+  streamUrl: string; // real audio stream / broadcast URL
+  description?: string;
+  sampleAudioText?: string;
+  bitrate?: string;
+  listenersCount?: number;
 }
 
 export interface SuperfanPassportTier {
@@ -386,7 +457,11 @@ export interface SuperfanPassportTier {
   fanSpacePriorityEntry: boolean;
   exclusiveBadge: string;
   doublePointsMultiplier: boolean;
+  /** Real count of fans who registered interest */
   totalSubscribers: number;
+  description?: string;
+  /** Optional external checkout/registration URL; when empty the button registers interest only */
+  signupUrl?: string;
 }
 
 export interface ProposalActivity {
@@ -397,10 +472,10 @@ export interface ProposalActivity {
   need: string;
   relevance: string;
   what: string;
-  capexUsd: number;
-  opexUsd: number;
   usdCost: number;
   aedCost: number;
+  capexUsd: number;
+  opexUsd: number;
   timeline: string;
   outcome: string;
   kpis: string[];
@@ -422,3 +497,36 @@ export interface ProposalSettings {
   updatedAt: string;
 }
 
+export interface ForumComment {
+  id: string;
+  threadId: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  userBadge?: string;
+  teamId?: string | null;
+  content: string;
+  upvotes: number;
+  upvotedBy: string[];
+  createdAt: string;
+}
+
+export interface ForumThread {
+  id: string;
+  title: string;
+  content: string;
+  category: 'matchday' | 'tactics' | 'franchises' | 'fantasy' | 'fanspaces' | 'giveaways' | 'general';
+  tags: string[];
+  teamId?: string | null;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  userBadge?: string;
+  pinned: boolean;
+  upvotes: number;
+  upvotedBy: string[];
+  views: number;
+  commentsCount: number;
+  lastActivityAt: string;
+  createdAt: string;
+}

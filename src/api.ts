@@ -1,57 +1,68 @@
-import { User, Team, SocialHandle, FeedItem, Match, Contest, PrizeDraw, SystemSettings, AchievementBadge, UserStats, ForumThread, ForumComment, NotificationItem, FCMDeviceToken } from './types';
+import { PublicConfig, User, Team, SocialHandle, FeedItem, Match, Contest, PrizeDraw, SystemSettings, AchievementBadge, UserStats, ForumThread, ForumComment, NotificationItem, FCMDeviceToken } from './types';
 
 const TOKEN_KEY = 't10_auth_token';
 
-export function getStoredToken(): string | null {
+export const getStoredToken = () => {
+  if (typeof window === 'undefined') return null;
   return localStorage.getItem(TOKEN_KEY);
-}
+};
 
-export function setStoredToken(token: string) {
-  localStorage.setItem(TOKEN_KEY, token);
-}
+export const setStoredToken = (token: string) => {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(TOKEN_KEY, token);
+  }
+};
 
-export function clearStoredToken() {
-  localStorage.removeItem(TOKEN_KEY);
-}
+export const clearStoredToken = () => {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem(TOKEN_KEY);
+  }
+};
 
 async function fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> {
   const token = getStoredToken();
   const headers = new Headers(options.headers || {});
+  headers.set('Content-Type', 'application/json');
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
   }
-  if (!headers.has('Content-Type') && options.body && typeof options.body === 'string') {
-    headers.set('Content-Type', 'application/json');
+
+  const response = await fetch(url, {
+    ...options,
+    headers,
+  });
+
+  if (!response.ok) {
+    let errorMsg = 'An error occurred';
+    try {
+      const data = await response.json();
+      errorMsg = data.error || data.message || errorMsg;
+    } catch {
+      // ignore
+    }
+    throw new Error(errorMsg);
   }
 
-  const response = await fetch(url, { ...options, headers });
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({}));
-    throw new Error(errorBody.error || `HTTP error ${response.status}`);
-  }
   return response.json();
 }
 
 export const api = {
-  // Auth & Profile
+  // Auth
   getMe: () => fetchJson<{ user: User | null }>('/api/me'),
-  getProfile: () =>
-    fetchJson<{ user: User; badges: AchievementBadge[]; stats: UserStats }>('/api/me/profile'),
-  claimBadge: (badgeId: string) =>
-    fetchJson<{ success: boolean; pointsAdded: number; user: User }>('/api/me/claim-badge', {
-      method: 'POST',
-      body: JSON.stringify({ badgeId }),
-    }),
+  getProfile: () => fetchJson<{ user: User; badges: AchievementBadge[]; stats: UserStats }>('/api/me/profile'),
   updateProfile: (data: { name?: string; avatar?: string }) =>
     fetchJson<{ success: boolean; user: User }>('/api/me/profile/update', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  loginGoogle: (email: string, name?: string, avatar?: string) =>
+  /** Exchange a Firebase Auth ID token (from signInWithPopup) for a session */
+  loginGoogle: (idToken: string) =>
     fetchJson<{ token: string; user: User }>('/api/auth/google', {
       method: 'POST',
-      body: JSON.stringify({ email, name, avatar }),
+      body: JSON.stringify({ idToken }),
     }),
+  logout: () => fetchJson<{ success: boolean }>('/api/auth/logout', { method: 'POST' }),
+  getConfig: () => fetchJson<{ config: PublicConfig }>('/api/config'),
   requestOtp: (email: string) =>
     fetchJson<{ success: boolean; message: string; devCode?: string }>('/api/auth/otp/request', {
       method: 'POST',
@@ -62,19 +73,27 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ email, code }),
     }),
+  claimBadge: (badgeId: string) =>
+    fetchJson<{ success: boolean; pointsAdded: number; user: User }>('/api/me/claim-badge', {
+      method: 'POST',
+      body: JSON.stringify({ badgeId }),
+    }),
 
   // Teams & Handles
   getTeams: () => fetchJson<{ teams: Team[] }>('/api/teams'),
-  seedAnnouncedTeamsAndSearch: () =>
+  /** Admin: create the six official 2026 franchises (with their direct signings) and the league's official handles. Existing teams are kept unless overwrite=true. */
+  seedOfficialTeams: (overwrite = false) =>
     fetchJson<{
       success: boolean;
       teams: Team[];
       handles: SocialHandle[];
-      feedItems: FeedItem[];
-      discoveredCount: number;
+      created: string[];
+      updated: string[];
+      skipped: string[];
       summary: string;
-    }>('/api/teams/seed-announced', {
+    }>('/api/admin/teams/seed-official', {
       method: 'POST',
+      body: JSON.stringify({ overwrite }),
     }),
   saveTeam: (team: Partial<Team>) =>
     fetchJson<{ success: boolean; teams: Team[] }>('/api/teams', {
@@ -85,9 +104,9 @@ export const api = {
     fetchJson<{ success: boolean; teams: Team[] }>(`/api/teams/${id}`, {
       method: 'DELETE',
     }),
-  getHandles: (params?: { teamId?: string; platform?: string }) => {
+  getHandles: (params?: { teamId?: string; platform?: string; status?: string }) => {
     const search = new URLSearchParams(params as any).toString();
-    return fetchJson<{ handles: SocialHandle[] }>(`/api/handles${search ? '?' + search : ''}`);
+    return fetchJson<{ handles: SocialHandle[] }>(`/api/handles?${search}`);
   },
   saveHandle: (handle: Partial<SocialHandle>) =>
     fetchJson<{ success: boolean; handles: SocialHandle[] }>('/api/handles', {
@@ -100,15 +119,16 @@ export const api = {
     }),
 
   // Feeds (Curator style)
-  getFeeds: (params?: { teamId?: string; platform?: string; category?: string }) => {
+  getFeeds: (params?: { teamId?: string; platform?: string; category?: string; status?: string }) => {
     const search = new URLSearchParams(params as any).toString();
     return fetchJson<{
       items: FeedItem[];
+      allItemsRaw?: FeedItem[];
       countsByPlatform: Record<string, number>;
       limitPerPlatform: number;
       totalCurated: number;
       totalAvailable: number;
-    }>(`/api/feeds${search ? '?' + search : ''}`);
+    }>(`/api/feeds?${search}`);
   },
   saveFeedItem: (item: Partial<FeedItem>) =>
     fetchJson<{ success: boolean; item: FeedItem }>('/api/feeds', {
@@ -120,37 +140,44 @@ export const api = {
       method: 'DELETE',
     }),
   syncRealFeeds: () =>
-    fetchJson<{ success: boolean; syncedCount: number; feedItems: FeedItem[]; summary: string }>('/api/social/sync-real', {
+    fetchJson<{ success: boolean; syncedCount: number; added: number; feedItems: FeedItem[]; summary: string; errors: string[] }>('/api/admin/feeds/sync', {
       method: 'POST',
     }),
 
   // Matches
   getMatches: () => fetchJson<{ matches: Match[] }>('/api/matches'),
   saveMatch: (match: Partial<Match>) =>
-    fetchJson<{ success: boolean; matches: Match[] }>('/api/matches', {
+    fetchJson<{ success: boolean; matches: Match[]; targetMatch: Match; notification?: NotificationItem }>('/api/matches', {
       method: 'POST',
       body: JSON.stringify(match),
     }),
-  simulateBall: (matchId: string) =>
-    fetchJson<{ success: boolean; match: Match; summary: string }>(`/api/matches/${matchId}/simulate-ball`, {
-      method: 'POST',
-    }),
 
   // Contests & Draws
-  getContests: () => fetchJson<{ contests: Contest[]; entries: any[] }>('/api/contests'),
+  /** Contests; answers are stripped until a contest is settled. myEntries = the signed-in user's entries only. */
+  getContests: () => fetchJson<{ contests: Contest[]; myEntries: any[]; entryCounts: Record<string, number> }>('/api/contests'),
   enterContest: (contestId: string, answers: Record<string, string>) =>
     fetchJson<{ success: boolean; pointsAwarded?: number; user: User }>(`/api/contests/${contestId}/enter`, {
       method: 'POST',
       body: JSON.stringify({ answers }),
     }),
   getFantasy: (matchId: string) =>
-    fetchJson<{ fantasyTeam: any }>('/api/fantasy/${matchId}'),
+    fetchJson<{ fantasyTeam: any }>(`/api/fantasy/${matchId}`),
   submitFantasy: (matchId: string, playerIds: string[], captainId: string) =>
     fetchJson<{ success: boolean; fantasyTeam: any; user: User }>(`/api/fantasy/${matchId}`, {
       method: 'POST',
       body: JSON.stringify({ playerIds, captainId }),
     }),
-  getDraws: () => fetchJson<{ draws: PrizeDraw[]; entries: any[] }>('/api/draws'),
+  /** Draws with entriesCount/entered computed server-side; no entrant emails are exposed. */
+  getDraws: () => fetchJson<{ draws: PrizeDraw[]; myEntries: string[] }>('/api/draws'),
+  saveDraw: (draw: Partial<PrizeDraw>) =>
+    fetchJson<{ success: boolean; draws: PrizeDraw[] }>('/api/admin/draws', {
+      method: 'POST',
+      body: JSON.stringify(draw),
+    }),
+  deleteDraw: (id: string) =>
+    fetchJson<{ success: boolean; draws: PrizeDraw[] }>(`/api/admin/draws/${id}`, { method: 'DELETE' }),
+  getDrawEntries: (id: string) =>
+    fetchJson<{ entries: { userName: string; userEmail: string; createdAt: string }[] }>(`/api/admin/draws/${id}/entries`),
   enterDraw: (drawId: string) =>
     fetchJson<{ success: boolean; message: string }>(`/api/draws/${drawId}/enter`, {
       method: 'POST',
@@ -160,37 +187,32 @@ export const api = {
       method: 'POST',
     }),
 
-  // Fan Actions
-  checkin: () => fetchJson<{ success: boolean; user: User; pointsAdded: number }>('/api/checkin', {
-    method: 'POST',
-  }),
+  // Leaderboard & Checkin
+  getLeaderboard: () => fetchJson<{ fanWars: any[]; topFans: User[] }>('/api/leaderboard'),
+  checkin: () => fetchJson<{ success: boolean; user: User; pointsAdded: number }>('/api/checkin', { method: 'POST' }),
   selectTeam: (teamId: string) =>
     fetchJson<{ success: boolean; user: User }>('/api/me/team', {
       method: 'POST',
       body: JSON.stringify({ teamId }),
     }),
-  getLeaderboard: () => fetchJson<{ fanWars: any[]; topFans: any[] }>('/api/leaderboard'),
 
   // Discussion Forum
   getForumThreads: (params?: { category?: string; teamId?: string; search?: string }) => {
-    const searchParams = new URLSearchParams(params as any).toString();
-    return fetchJson<{ threads: ForumThread[] }>(`/api/forum/threads${searchParams ? '?' + searchParams : ''}`);
+    const search = new URLSearchParams(params as any).toString();
+    return fetchJson<{ threads: ForumThread[] }>(`/api/forum/threads?${search}`);
   },
+  getForumThreadDetail: (id: string) =>
+    fetchJson<{ thread: ForumThread; comments: ForumComment[] }>(`/api/forum/threads/${id}`),
   createForumThread: (data: { title: string; content: string; category?: string; teamId?: string; tags?: string[] }) =>
     fetchJson<{ success: boolean; thread: ForumThread; pointsAdded: number; user: User }>('/api/forum/threads', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  getForumThreadDetail: (threadId: string) =>
-    fetchJson<{ thread: ForumThread; comments: ForumComment[] }>(`/api/forum/threads/${threadId}`),
   addForumComment: (threadId: string, content: string) =>
-    fetchJson<{ success: boolean; comment: ForumComment; thread: ForumThread; pointsAdded: number; user: User }>(
-      `/api/forum/threads/${threadId}/comments`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ content }),
-      }
-    ),
+    fetchJson<{ success: boolean; comment: ForumComment; thread: ForumThread; pointsAdded: number; user: User }>(`/api/forum/threads/${threadId}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    }),
   upvoteForumThread: (threadId: string) =>
     fetchJson<{ success: boolean; upvotes: number; upvoted: boolean }>(`/api/forum/threads/${threadId}/upvote`, {
       method: 'POST',
@@ -199,6 +221,16 @@ export const api = {
     fetchJson<{ success: boolean; upvotes: number; upvoted: boolean }>(`/api/forum/comments/${commentId}/upvote`, {
       method: 'POST',
     }),
+  // Forum moderation (admin)
+  deleteForumThread: (threadId: string) =>
+    fetchJson<{ success: boolean }>(`/api/admin/forum/threads/${threadId}`, { method: 'DELETE' }),
+  deleteForumComment: (commentId: string) =>
+    fetchJson<{ success: boolean }>(`/api/admin/forum/comments/${commentId}`, { method: 'DELETE' }),
+  pinForumThread: (threadId: string, pinned: boolean) =>
+    fetchJson<{ success: boolean; thread: ForumThread }>(`/api/admin/forum/threads/${threadId}/pin`, {
+      method: 'POST',
+      body: JSON.stringify({ pinned }),
+    }),
 
   // Admin Portal
   getAdminDashboard: () => fetchJson<any>('/api/admin/dashboard'),
@@ -206,8 +238,8 @@ export const api = {
     fetchJson<{ success: boolean; agent: string; result: any }>(`/api/admin/agents/${agentName}/run`, {
       method: 'POST',
     }),
-  decideApproval: (id: string, decision: 'approve' | 'reject') =>
-    fetchJson<{ success: boolean; approval: any }>(`/api/admin/approvals/${id}/decide`, {
+  decideApproval: (approvalId: string, decision: 'approve' | 'reject') =>
+    fetchJson<{ success: boolean; approval: any }>(`/api/admin/approvals/${approvalId}/decide`, {
       method: 'POST',
       body: JSON.stringify({ decision }),
     }),
@@ -217,23 +249,22 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(settings),
     }),
-  resetDemo: () => fetchJson<{ success: boolean; store: any }>('/api/admin/demo-reset', { method: 'POST' }),
 
   // Notifications & FCM Real-Time Alerts
   getNotifications: (params?: { category?: string }) => {
-    const search = params ? new URLSearchParams(params as any).toString() : '';
+    const search = new URLSearchParams(params as any).toString();
     return fetchJson<{
       notifications: NotificationItem[];
       unreadCount: number;
       total: number;
       fcmSubscribed: boolean;
-    }>(`/api/notifications${search ? '?' + search : ''}`);
+    }>(`/api/notifications?${search}`);
   },
   getNotificationDetails: (id: string) =>
     fetchJson<{
       notification: NotificationItem;
-      relatedEntity?: any;
-      documentation?: Record<string, any>;
+      relatedEntity: any;
+      documentation?: any;
     }>(`/api/notifications/${id}`),
   markNotificationRead: (id: string) =>
     fetchJson<{ success: boolean; notificationId: string; read: boolean }>(`/api/notifications/${id}/read`, {
@@ -250,10 +281,10 @@ export const api = {
     }),
   getFCMTokens: () =>
     fetchJson<{ totalTokens: number; activeSubscribers: number; tokens: FCMDeviceToken[] }>('/api/fcm/tokens'),
-  sendPushNotification: (payload: {
+  sendPushNotification: (data: {
     title: string;
     body: string;
-    category?: string;
+    category?: 'match_result' | 'contest_deadline' | 'announcement' | 'perk';
     targetAudience?: 'all' | 'logged_in' | 'team';
     teamId?: string | null;
     url?: string;
@@ -262,26 +293,45 @@ export const api = {
   }) =>
     fetchJson<{ success: boolean; notification: NotificationItem; message: string }>('/api/fcm/send', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify(data),
+    }),
+  triggerMatchResult: (matchId: string) =>
+    fetchJson<{ success: boolean; notification: NotificationItem }>('/api/admin/notifications/trigger-match-result', {
+      method: 'POST',
+      body: JSON.stringify({ matchId }),
     }),
   triggerContestDeadline: (contestId: string, customMinutes?: number) =>
-    fetchJson<{ success: boolean; notification: NotificationItem }>(
-      '/api/admin/notifications/trigger-contest-deadline',
-      {
-        method: 'POST',
-        body: JSON.stringify({ contestId, customMinutes }),
-      }
-    ),
-  triggerMatchResult: (matchId: string) =>
-    fetchJson<{ success: boolean; notification: NotificationItem }>(
-      '/api/admin/notifications/trigger-match-result',
-      {
-        method: 'POST',
-        body: JSON.stringify({ matchId }),
-      }
-    ),
+    fetchJson<{ success: boolean; notification: NotificationItem }>('/api/admin/notifications/trigger-contest-deadline', {
+      method: 'POST',
+      body: JSON.stringify({ contestId, customMinutes }),
+    }),
 
-  // Gemini AI Features
+  // Contests & Admin
+  saveContest: (contest: Partial<Contest>) =>
+    fetchJson<{ success: boolean; contests: Contest[] }>('/api/admin/contests', {
+      method: 'POST',
+      body: JSON.stringify(contest),
+    }),
+  deleteContest: (id: string) =>
+    fetchJson<{ success: boolean; contests: Contest[] }>(`/api/admin/contests/${id}`, {
+      method: 'DELETE',
+    }),
+  toggleContestStatus: (id: string, status?: string) =>
+    fetchJson<{ success: boolean; contest: Contest }>(`/api/admin/contests/${id}/toggle-status`, {
+      method: 'POST',
+      body: JSON.stringify({ status }),
+    }),
+  settleContest: (id: string, answers: Record<string, string>) =>
+    fetchJson<{ success: boolean; contest: Contest; settledEntriesCount: number; totalPointsDistributed: number }>(`/api/admin/contests/${id}/settle`, {
+      method: 'POST',
+      body: JSON.stringify({ answers }),
+    }),
+  deleteMatch: (id: string) =>
+    fetchJson<{ success: boolean; matches: Match[] }>(`/api/matches/${id}`, {
+      method: 'DELETE',
+    }),
+
+  // AI & Gemini SDK Features
   generateMarketing: (prompt: string, teamName?: string) =>
     fetchJson<{ text: string; source: string }>('/api/gemini/marketing', {
       method: 'POST',
@@ -302,24 +352,14 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ audioBase64, mimeType }),
     }),
-  generateMusic: (prompt: string) =>
-    fetchJson<{ status: string; message: string; audioData?: string; audioUrl?: string }>('/api/gemini/music', {
-      method: 'POST',
-      body: JSON.stringify({ prompt }),
-    }),
-  generateVideo: (prompt: string, imageBase64?: string, aspectRatio?: '16:9' | '9:16') =>
-    fetchJson<{ status: string; videoUrl?: string; operationName?: string; message: string }>('/api/gemini/video', {
-      method: 'POST',
-      body: JSON.stringify({ prompt, imageBase64, aspectRatio }),
-    }),
 
   // Activity 8: Global Physical Fan Spaces
   getFanSpaces: () =>
     fetchJson<{ spaces: any[]; bookings: any[]; totalHubs: number; activeCities: string[] }>('/api/fanspaces'),
-  bookFanSpace: (id: string, payload: { date?: string; ticketType?: string; ticketsCount?: number }) =>
-    fetchJson<{ success: boolean; booking: any; passCode: string; user?: any }>(`/api/fanspaces/${id}/book`, {
+  bookFanSpace: (id: string, data: { date: string; ticketType: string; ticketsCount: number }) =>
+    fetchJson<{ success: boolean; booking: any; passCode: string; user: User }>(`/api/fanspaces/${id}/book`, {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify(data),
     }),
   getAdminFanSpaceBookings: () =>
     fetchJson<{ bookings: any[] }>('/api/admin/fanspaces/bookings'),
@@ -333,7 +373,7 @@ export const api = {
       method: 'DELETE',
     }),
 
-  // Activity 9: Growth Catalysts
+  // Activity 9: Next-Gen Growth Catalysts
   getGrowthCatalysts: () =>
     fetchJson<{ youthSchools: any[]; creatorPartners: any[]; commentaryFeeds: any[]; passportTiers: any[] }>('/api/growth-catalysts'),
   saveYouthSchool: (school: any) =>
@@ -359,14 +399,26 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(feed),
     }),
-  subscribeSuperfanPassport: () =>
-    fetchJson<{ success: boolean; user: any }>('/api/growth/superfan-passport/subscribe', {
+  deleteAudioFeed: (id: string) =>
+    fetchJson<{ success: boolean; commentaryFeeds: any[] }>(`/api/admin/growth/audio-feed/${id}`, { method: 'DELETE' }),
+  savePassportTier: (tier: any) =>
+    fetchJson<{ success: boolean; passportTiers: any[] }>('/api/admin/growth/passport-tier', {
       method: 'POST',
+      body: JSON.stringify(tier),
+    }),
+  deletePassportTier: (id: string) =>
+    fetchJson<{ success: boolean; passportTiers: any[] }>(`/api/admin/growth/passport-tier/${id}`, { method: 'DELETE' }),
+  /** Registers the signed-in fan's interest in a passport tier (no payment is taken). */
+  subscribeSuperfanPassport: (tierId: string) =>
+    fetchJson<{ success: boolean; user: any; alreadyRegistered: boolean; tier: any }>('/api/growth/superfan-passport/subscribe', {
+      method: 'POST',
+      body: JSON.stringify({ tierId }),
     }),
 
   // Proposal & Financial Budget
+  /** Admin only: the proposal is confidential and not served to fans. */
   getProposalSettings: () =>
-    fetchJson<{ proposalSettings: any }>('/api/proposal'),
+    fetchJson<{ proposalSettings: any }>('/api/admin/proposal'),
   saveProposalSettings: (settings: any) =>
     fetchJson<{ success: boolean; proposalSettings: any }>('/api/admin/proposal', {
       method: 'POST',
@@ -375,30 +427,5 @@ export const api = {
   resetProposalSettings: () =>
     fetchJson<{ success: boolean; proposalSettings: any }>('/api/admin/proposal/reset', {
       method: 'POST',
-    }),
-
-  // Contests & Matches Admin
-  saveContest: (contest: any) =>
-    fetchJson<{ success: boolean; contests: any[] }>('/api/admin/contests', {
-      method: 'POST',
-      body: JSON.stringify(contest),
-    }),
-  deleteContest: (id: string) =>
-    fetchJson<{ success: boolean; contests: any[] }>(`/api/admin/contests/${id}`, {
-      method: 'DELETE',
-    }),
-  toggleContestStatus: (id: string, status?: string) =>
-    fetchJson<{ success: boolean; contest: any }>(`/api/admin/contests/${id}/toggle-status`, {
-      method: 'POST',
-      body: JSON.stringify({ status }),
-    }),
-  settleContest: (id: string, answers: Record<string, string>) =>
-    fetchJson<{ success: boolean; contest: any; settledEntriesCount: number; totalPointsDistributed: number }>(`/api/admin/contests/${id}/settle`, {
-      method: 'POST',
-      body: JSON.stringify({ answers }),
-    }),
-  deleteMatch: (id: string) =>
-    fetchJson<{ success: boolean; matches: any[] }>(`/api/matches/${id}`, {
-      method: 'DELETE',
     }),
 };

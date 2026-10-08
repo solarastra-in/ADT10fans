@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { AnimatePresence, motion, useReducedMotion, type Variants } from 'framer-motion';
 import { 
   User, 
   Team, 
@@ -10,7 +11,8 @@ import {
   SystemSettings, 
   Approval, 
   AgentRun,
-  NotificationItem
+  NotificationItem,
+  PublicConfig
 } from './types';
 import { api, clearStoredToken } from './api';
 import { Header } from './components/Header';
@@ -31,9 +33,15 @@ import { GrowthCatalystsView } from './components/GrowthCatalystsView';
 import { LeagueProposalView } from './components/LeagueProposalView';
 import { NotificationModal } from './components/NotificationModal';
 import { MobileBottomNav } from './components/MobileBottomNav';
+import { MatchOverviewModal } from './components/MatchOverviewModal';
 import { updatePageSeo, ROUTE_SEO } from './utils/seo';
 import { parsePath, getPathForTab } from './utils/navigation';
 import { requestFCMToken, registerForegroundPushListener } from './firebase';
+import { 
+  getScheduledReminders, 
+  toggleMatchReminder, 
+  initMatchReminders 
+} from './utils/matchReminders';
 import { 
   Flame, 
   Trophy, 
@@ -49,9 +57,12 @@ import {
   MessageSquare,
   FileText,
   Bell,
+  BellRing,
+  MapPin,
   X,
   CheckCircle2,
-  Clock
+  Clock,
+  ChevronRight
 } from 'lucide-react';
 
 function playNotificationChime() {
@@ -94,19 +105,31 @@ export default function App() {
   const [fcmStatus, setFcmStatus] = useState<'granted' | 'denied' | 'default' | 'unsupported'>('default');
   const [foregroundToast, setForegroundToast] = useState<NotificationItem | null>(null);
 
+  // User-Specific Match Reminders State
+  const [remindedMatchIds, setRemindedMatchIds] = useState<string[]>([]);
+  const [reminderToast, setReminderToast] = useState<{ id: string; message: string; active: boolean } | null>(null);
+
   // Admin Data
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [agentRuns, setAgentRuns] = useState<AgentRun[]>([]);
+  const [config, setConfig] = useState<PublicConfig | null>(null);
   const [settings, setSettings] = useState<SystemSettings>({
     adminEmails: ['solarastra.in@gmail.com'],
-    publicUserCountOverride: 18450,
-    tickerText: '⚡ ABU DHABI T10 2026 LIVE · ARABIAN ACES VS DECCAN GLADIATORS · PREDICT & WIN VIP PASSES ⚡',
+    brandName: 'ADT10 Fans',
+    tagline: 'The Abu Dhabi T10 fan hub',
+    copyrightHolder: 'Azlir Sports',
+    seasonLabel: '',
+    seasonStart: '',
+    seasonEnd: '',
+    venue: '',
+    tickerText: '⚡ ABU DHABI T10 2026 LIVE · ARABIAN ACES & FRANCHISE HUB ⚡',
     curatorFeedId: '',
     curatorContainerId: 'curator-feed-default-feed-layout',
     curatorFeedUuid: '',
     curatorApiKey: '',
     curatorHashtags: 'AbuDhabiT10,ArabianAces,T10League',
     maxSocialPerPlatform: 5,
+    newsQueries: '',
     smtp: {
       host: 'smtp.gmail.com',
       port: 587,
@@ -117,11 +140,64 @@ export default function App() {
     }
   });
 
+  const TAB_ORDER = [
+    'home',
+    'matches',
+    'teams',
+    'social',
+    'contests',
+    'draws',
+    'leaderboard',
+    'forum',
+    'fanspaces',
+    'growth',
+    'profile',
+    'proposal',
+    'admin'
+  ];
+
   const initialRoute = typeof window !== 'undefined' ? parsePath(window.location.pathname) : { tab: 'home', param: null, path: '/' };
   const [activeTab, setActiveTabState] = useState<string>(initialRoute.tab);
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
+
+  const [tabDirection, setTabDirection] = useState<number>(1);
+  const [isTransitioning, setIsTransitioning] = useState<boolean>(false);
+  const shouldReduceMotion = useReducedMotion();
+
+  const tabTransitionVariants: Variants = {
+    initial: (dir: number) => ({
+      opacity: 0,
+      x: shouldReduceMotion ? 0 : dir >= 0 ? 18 : -18,
+    }),
+    animate: {
+      opacity: 1,
+      x: 0,
+      transition: {
+        duration: shouldReduceMotion ? 0.15 : 0.22,
+        ease: [0.22, 1, 0.36, 1],
+      },
+    },
+    exit: (dir: number) => ({
+      opacity: 0,
+      x: shouldReduceMotion ? 0 : dir >= 0 ? -18 : 18,
+      transition: {
+        duration: shouldReduceMotion ? 0.12 : 0.16,
+        ease: [0.36, 0, 0.66, 0.04],
+      },
+    }),
+  };
+
   const [selectedTeamRouteId, setSelectedTeamRouteId] = useState<string | null>(initialRoute.param);
 
   const handleNavigate = (tab: string, param: string | null = null, replace: boolean = false) => {
+    const prevIndex = TAB_ORDER.indexOf(activeTab);
+    const nextIndex = TAB_ORDER.indexOf(tab);
+    if (prevIndex !== -1 && nextIndex !== -1 && prevIndex !== nextIndex) {
+      setTabDirection(nextIndex > prevIndex ? 1 : -1);
+    } else {
+      setTabDirection(1);
+    }
     setActiveTabState(tab);
     if (tab === 'teams') {
       setSelectedTeamRouteId(param);
@@ -150,6 +226,7 @@ export default function App() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [teamPickerOpen, setTeamPickerOpen] = useState(false);
   const [geminiModalOpen, setGeminiModalOpen] = useState(false);
+  const [selectedMatchForModal, setSelectedMatchForModal] = useState<Match | null>(null);
   const [checkingIn, setCheckingIn] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedWallTeamId, setSelectedWallTeamId] = useState<string | null>(null);
@@ -158,6 +235,11 @@ export default function App() {
   useEffect(() => {
     const onPopState = () => {
       const route = parsePath(window.location.pathname);
+      const prevIndex = TAB_ORDER.indexOf(activeTabRef.current);
+      const nextIndex = TAB_ORDER.indexOf(route.tab);
+      if (prevIndex !== -1 && nextIndex !== -1 && prevIndex !== nextIndex) {
+        setTabDirection(nextIndex > prevIndex ? 1 : -1);
+      }
       setActiveTabState(route.tab);
       setSelectedTeamRouteId(route.param);
       const seoBuilder = ROUTE_SEO[route.tab];
@@ -198,6 +280,7 @@ export default function App() {
         body: payload.notification?.body || payload.data?.body || 'New live update from the tournament.',
         category: (payload.data?.category as any) || 'announcement',
         targetAudience: 'all',
+        priority: (payload.data?.priority as any) || 'normal',
         createdAt: new Date().toISOString(),
         createdBy: 'FCM Push Engine',
         data: payload.data,
@@ -257,6 +340,80 @@ export default function App() {
     }
   }, [user?.teamId]);
 
+  // User-Specific Match Reminders schedule initialization
+  useEffect(() => {
+    const list = getScheduledReminders(user?.id);
+    setRemindedMatchIds(list.filter(r => !r.notified).map(r => r.matchId));
+
+    const cleanup = initMatchReminders(user?.id, (reminder) => {
+      playNotificationChime();
+      const notifItem: NotificationItem = {
+        id: `remind-${reminder.matchId}-${Date.now()}`,
+        title: `🏏 MATCH STARTING: ${reminder.teamAName} vs ${reminder.teamBName}`,
+        body: `Match #${reminder.matchNo} (${reminder.stage}) has begun at ${reminder.venue}! Tap for live scorecard.`,
+        category: 'match_result',
+        targetAudience: 'all',
+        priority: 'high',
+        createdAt: new Date().toISOString(),
+        createdBy: 'Match Schedule Alert',
+        data: { matchId: reminder.matchId },
+        read: false
+      };
+      setForegroundToast(notifItem);
+      setNotifications(prev => [notifItem, ...prev]);
+      setUnreadNotificationsCount(c => c + 1);
+      setTimeout(() => {
+        setForegroundToast(current => current?.id === notifItem.id ? null : current);
+      }, 8000);
+    });
+
+    return cleanup;
+  }, [user?.id]);
+
+  // Toggle user-specific match start reminder
+  const handleToggleMatchReminder = async (m: Match, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const teamA = teams.find(t => t.id === m.teamA);
+    const teamB = teams.find(t => t.id === m.teamB);
+    const res = await toggleMatchReminder(
+      m,
+      teamA?.name || m.teamA,
+      teamB?.name || m.teamB,
+      user?.id,
+      (reminder) => {
+        playNotificationChime();
+        const notifItem: NotificationItem = {
+          id: `remind-${reminder.matchId}-${Date.now()}`,
+          title: `🏏 MATCH STARTING: ${reminder.teamAName} vs ${reminder.teamBName}`,
+          body: `Match #${reminder.matchNo} (${reminder.stage}) has begun at ${reminder.venue}! Tap for live scorecard.`,
+          category: 'match_result',
+          targetAudience: 'all',
+          priority: 'high',
+          createdAt: new Date().toISOString(),
+          createdBy: 'Match Schedule Alert',
+          data: { matchId: reminder.matchId },
+          read: false
+        };
+        setForegroundToast(notifItem);
+        setNotifications(prev => [notifItem, ...prev]);
+        setUnreadNotificationsCount(c => c + 1);
+      }
+    );
+
+    const updated = getScheduledReminders(user?.id);
+    setRemindedMatchIds(updated.filter(r => !r.notified).map(r => r.matchId));
+
+    setReminderToast({
+      id: `${Date.now()}`,
+      message: res.message,
+      active: res.active
+    });
+
+    setTimeout(() => {
+      setReminderToast(null);
+    }, 4500);
+  };
+
   // Request FCM Notification Permission
   const handleRequestFCMPermission = async () => {
     const res = await requestFCMToken();
@@ -294,6 +451,7 @@ export default function App() {
     try {
       const [
         meRes,
+        configRes,
         teamsRes,
         handlesRes,
         feedsRes,
@@ -304,6 +462,7 @@ export default function App() {
         notifsRes
       ] = await Promise.all([
         api.getMe().catch(() => ({ user: null })),
+        api.getConfig().catch(() => ({ config: null as any })),
         api.getTeams().catch(() => ({ teams: [] })),
         api.getHandles().catch(() => ({ handles: [] })),
         api.getFeeds().catch(() => ({ items: [], countsByPlatform: {}, limitPerPlatform: 5, totalCurated: 0, totalAvailable: 0 })),
@@ -315,6 +474,7 @@ export default function App() {
       ]);
 
       setUser(meRes.user);
+      if (configRes && configRes.config) setConfig(configRes.config);
       setTeams(teamsRes.teams);
       setHandles(handlesRes.handles);
       setFeedItems(feedsRes.items);
@@ -369,9 +529,8 @@ export default function App() {
     try {
       const res = await api.checkin();
       setUser(res.user);
-      alert(`Daily Check-in Complete! +${res.pointsAdded} Fan Points Added.`);
     } catch (e: any) {
-      alert(e?.message || 'Check-in failed');
+      console.warn('Check-in error:', e?.message);
     } finally {
       setCheckingIn(false);
     }
@@ -381,28 +540,15 @@ export default function App() {
     setSelectedWallTeamId(teamId);
     if (!user) {
       setTeamPickerOpen(false);
-      const team = teams.find(t => t.id === teamId);
-      // Let guests enjoy dynamic theming even before sign in
       return;
     }
     try {
       const res = await api.selectTeam(teamId);
       setUser(res.user);
       setTeamPickerOpen(false);
-      const team = teams.find(t => t.id === teamId);
-      alert(`Success! You are now backing ${team?.name || 'your chosen franchise'} in Fan Wars! Dynamic theme applied.`);
       await loadData();
     } catch (e: any) {
-      alert(e?.message || 'Error selecting team');
-    }
-  };
-
-  const handleSimulateBall = async (matchId: string) => {
-    try {
-      const res = await api.simulateBall(matchId);
-      setMatches(prev => prev.map(m => m.id === res.match.id ? res.match : m));
-    } catch (e: any) {
-      alert(e?.message);
+      console.warn('Error selecting team:', e?.message);
     }
   };
 
@@ -441,8 +587,21 @@ export default function App() {
       />
 
       {/* Main Body */}
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-8 pb-28 lg:pb-12">
-        {/* ================= VIEW 1: HOME ================= */}
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-8 pb-28 lg:pb-12 overflow-x-hidden">
+        <AnimatePresence mode="wait" custom={tabDirection} initial={false}>
+          <motion.div
+            key={activeTab}
+            custom={tabDirection}
+            variants={tabTransitionVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            onAnimationStart={() => setIsTransitioning(true)}
+            onAnimationComplete={() => setIsTransitioning(false)}
+            style={!isTransitioning ? { transform: 'none' } : undefined}
+            className="w-full"
+          >
+            {/* ================= VIEW 1: HOME ================= */}
         {activeTab === 'home' && (
           <div className="space-y-10">
             {/* Hero Section */}
@@ -512,12 +671,12 @@ export default function App() {
               {/* Stats Bar */}
               <div className="relative z-10 grid grid-cols-2 sm:grid-cols-4 gap-4 mt-8 pt-8 border-t border-slate-800/80">
                 <div>
-                  <span className="text-2xl font-black text-white font-mono">9</span>
+                  <span className="text-2xl font-black text-white font-mono">{teams.length || 6}</span>
                   <p className="text-xs text-slate-400 font-medium">Franchise Teams</p>
                 </div>
                 <div>
                   <span className="text-2xl font-black text-amber-400 font-mono">
-                    {settings.publicUserCountOverride.toLocaleString()}
+                    {config?.stats?.fans ?? (user ? 1 : 0)}
                   </span>
                   <p className="text-xs text-slate-400 font-medium">Registered Fans</p>
                 </div>
@@ -526,8 +685,8 @@ export default function App() {
                   <p className="text-xs text-slate-400 font-medium">Curated / Platform</p>
                 </div>
                 <div>
-                  <span className="text-2xl font-black text-emerald-400 font-mono">SHA-256</span>
-                  <p className="text-xs text-slate-400 font-medium">Provably Fair Draws</p>
+                  <span className="text-2xl font-black text-emerald-400 font-mono">{config?.stats?.openDraws ?? draws.length}</span>
+                  <p className="text-xs text-slate-400 font-medium">Active Prize Draws</p>
                 </div>
               </div>
             </div>
@@ -536,7 +695,7 @@ export default function App() {
             <LiveMatchTicker
               matches={matches}
               teams={teams}
-              onSimulateBall={handleSimulateBall}
+              onSelectMatch={setSelectedMatchForModal}
             />
 
             {/* Curated Social Media Wall with Dynamic Team Theme Generation */}
@@ -634,31 +793,58 @@ export default function App() {
                 </button>
               </div>
 
-              {/* ADT10 League Proposal Preview */}
-              <div className="p-6 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border border-amber-500/30 hover:border-amber-400/60 flex flex-col justify-between transition-colors shadow-lg">
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-black uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
-                      <FileText className="w-4 h-4" /> ADT10 Board Doc
-                    </span>
-                    <span className="text-xs text-emerald-400 font-bold">+108% ROI</span>
+              {/* 4th Card: Global Fan Spaces for fans, or Proposal for admin */}
+              {user?.role === 'admin' ? (
+                <div className="p-6 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border border-amber-500/30 hover:border-amber-400/60 flex flex-col justify-between transition-colors shadow-lg">
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-black uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+                        <FileText className="w-4 h-4" /> Confidential Proposal
+                      </span>
+                      <span className="text-xs text-amber-400 font-bold">Admin Only</span>
+                    </div>
+                    <h3 className="text-lg font-black text-white mb-2">
+                      League Expansion Proposal
+                    </h3>
+                    <p className="text-xs text-slate-300 mb-4 leading-relaxed">
+                      Commercial projection, activity budgets, physical fan spaces across global cities, and ROI planning models.
+                    </p>
                   </div>
-                  <h3 className="text-lg font-black text-white mb-2">
-                    League Fan Base Proposal
-                  </h3>
-                  <p className="text-xs text-slate-300 mb-4 leading-relaxed">
-                    Turnkey expansion proposal with detailed USD/AED activity budgets, physical fan spaces across 5 global cities, and ROI projections.
-                  </p>
-                </div>
 
-                <button
-                  onClick={() => setActiveTab('proposal')}
-                  className="w-full py-2.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 text-xs font-black rounded-xl shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 transition-colors"
-                >
-                  <span>Read Official Proposal</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
+                  <button
+                    onClick={() => setActiveTab('proposal')}
+                    className="w-full py-2.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 text-xs font-black rounded-xl shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <span>Open League Proposal</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col justify-between hover:border-amber-400/40 transition-colors">
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                        <Users className="w-4 h-4" /> Global Fan Spaces
+                      </span>
+                      <span className="text-xs text-amber-300 font-bold">Live Hubs</span>
+                    </div>
+                    <h3 className="text-lg font-black text-white mb-2">
+                      Screenings & Fan Spaces
+                    </h3>
+                    <p className="text-xs text-slate-300 mb-4 leading-relaxed">
+                      Discover official Abu Dhabi T10 matchday screening venues, VIP hospitality hubs, and book fan passes.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => setActiveTab('fanspaces')}
+                    className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-amber-400 text-xs font-black rounded-xl border border-slate-700 flex items-center justify-center gap-2"
+                  >
+                    <span>Explore Fan Spaces</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -675,7 +861,7 @@ export default function App() {
                   Abu Dhabi T10 Match Center
                 </h2>
                 <p className="text-xs sm:text-sm text-slate-400 mt-1">
-                  Real-time ball-by-ball simulation, scorecards, and tournament standings.
+                  Official match schedule, live scorecards, and tournament standings.
                 </p>
               </div>
             </div>
@@ -683,73 +869,181 @@ export default function App() {
             <LiveMatchTicker
               matches={matches}
               teams={teams}
-              onSimulateBall={handleSimulateBall}
+              onSelectMatch={setSelectedMatchForModal}
             />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {matches.map(m => {
-                const teamA = teams.find(t => t.id === m.teamA);
-                const teamB = teams.find(t => t.id === m.teamB);
-
-                return (
-                  <div
-                    key={m.id}
-                    className="p-5 rounded-2xl bg-slate-900 border border-slate-800 hover:border-amber-400/50 transition-all flex flex-col justify-between"
+            {matches.length === 0 ? (
+              <div className="p-8 sm:p-12 rounded-2xl bg-slate-900/60 border border-slate-800 text-center max-w-lg mx-auto space-y-4">
+                <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
+                  <Calendar className="w-7 h-7" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">Fixtures & Scorecards Announced Soon</h3>
+                  <p className="text-xs sm:text-sm text-slate-400 mt-1">
+                    Official Abu Dhabi T10 fixtures, live scorecards, toss outcomes, and match results will appear here once announced.
+                  </p>
+                </div>
+                {user?.role === 'admin' && (
+                  <button
+                    onClick={() => setActiveTab('admin')}
+                    className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs transition-colors shadow-md shadow-amber-500/20"
                   >
-                    <div>
-                      <div className="flex items-center justify-between gap-2 mb-3">
-                        <span className="text-xs font-bold text-slate-400">
-                          Match #{m.matchNo} · {m.stage}
-                        </span>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
-                          m.status === 'live' ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-800 text-slate-300'
-                        }`}>
-                          {m.status}
-                        </span>
-                      </div>
+                    Add Fixtures in Admin Console →
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {matches.map(m => {
+                  const teamA = teams.find(t => t.id === m.teamA);
+                  const teamB = teams.find(t => t.id === m.teamB);
+                  const isReminded = remindedMatchIds.includes(m.id);
 
-                      <div className="space-y-2 mb-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 rounded-full" style={{ backgroundColor: teamA?.color }} />
-                            <span className="font-bold text-sm text-white">{teamA?.name}</span>
-                          </div>
-                          <span className="font-mono font-bold text-sm text-slate-200">
-                            {m.scoreA || 'Yet to bat'} {m.oversA ? `(${m.oversA} ov)` : ''}
+                  return (
+                    <div
+                      key={m.id}
+                      onClick={() => setSelectedMatchForModal(m)}
+                      className="p-5 rounded-2xl bg-slate-900 border border-slate-800 hover:border-amber-400/80 hover:shadow-xl hover:shadow-amber-500/10 transition-all flex flex-col justify-between cursor-pointer group active:scale-[0.99]"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-3">
+                          <span className="text-xs font-bold text-slate-400">
+                            Match #{m.matchNo} · {m.stage}
                           </span>
+                          <div className="flex items-center gap-2">
+                            {m.status === 'upcoming' && (
+                              <button
+                                type="button"
+                                onClick={(e) => handleToggleMatchReminder(m, e)}
+                                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all shadow-sm ${
+                                  isReminded
+                                    ? 'bg-amber-400 text-slate-950 shadow-amber-500/20 hover:bg-amber-300'
+                                    : 'bg-slate-800 text-slate-300 hover:text-amber-400 hover:bg-slate-700/80 border border-slate-700/80'
+                                }`}
+                                title={isReminded ? 'Push reminder scheduled! Click to cancel.' : 'Remind me when match starts'}
+                                aria-label={`Toggle reminder for Match #${m.matchNo}`}
+                              >
+                                {isReminded ? (
+                                  <>
+                                    <BellRing className="w-3.5 h-3.5 fill-current text-slate-950 animate-pulse" />
+                                    <span>Reminded</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Bell className="w-3.5 h-3.5 text-amber-400 group-hover:scale-110 transition-transform" />
+                                    <span>Remind Me</span>
+                                  </>
+                                )}
+                              </button>
+                            )}
+                            <span className="text-[11px] font-bold text-amber-400/90 group-hover:text-amber-300 transition-colors flex items-center gap-0.5">
+                              <span>Full Scorecard</span>
+                              <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                            </span>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                              m.status === 'live' ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-800 text-slate-300'
+                            }`}>
+                              {m.status}
+                            </span>
+                          </div>
                         </div>
 
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 rounded-full" style={{ backgroundColor: teamB?.color }} />
-                            <span className="font-bold text-sm text-white">{teamB?.name}</span>
+                        <div className="space-y-2 mb-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className="w-4 h-4 rounded-full" style={{ backgroundColor: teamA?.color }} />
+                              <span className="font-bold text-sm text-white">{teamA?.name}</span>
+                            </div>
+                            <span className="font-mono font-bold text-sm text-slate-200">
+                              {m.scoreA || 'Yet to bat'} {m.oversA ? `(${m.oversA} ov)` : ''}
+                            </span>
                           </div>
-                          <span className="font-mono font-bold text-sm text-slate-200">
-                            {m.scoreB || 'Yet to bat'} {m.oversB ? `(${m.oversB} ov)` : ''}
-                          </span>
+
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className="w-4 h-4 rounded-full" style={{ backgroundColor: teamB?.color }} />
+                              <span className="font-bold text-sm text-white">{teamB?.name}</span>
+                            </div>
+                            <span className="font-mono font-bold text-sm text-slate-200">
+                              {m.scoreB || 'Yet to bat'} {m.oversB ? `(${m.oversB} ov)` : ''}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-xs text-slate-400">
+                            <span className="flex items-center gap-1 truncate max-w-[60%]">
+                              <MapPin className="w-3 h-3 text-slate-500 shrink-0" />
+                              <span className="truncate">{m.venue}</span>
+                            </span>
+                            {m.startsAt && (
+                              <span className="flex items-center gap-1 text-[11px] font-semibold text-slate-300 shrink-0">
+                                <Clock className="w-3 h-3 text-amber-400" />
+                                {new Date(m.startsAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}, {new Date(m.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            )}
+                          </div>
+                          {m.toss && (
+                            <p className="text-[11px] text-slate-300 truncate flex items-center gap-1 font-medium">
+                              <span className="text-amber-400">🪙 Toss:</span> {m.toss}
+                            </p>
+                          )}
+                          {m.playerOfTheMatch && (
+                            <p className="text-[11px] text-amber-300 font-semibold truncate flex items-center gap-1">
+                              <span>🏆 POTM:</span> {m.playerOfTheMatch}
+                            </p>
+                          )}
                         </div>
                       </div>
 
-                      <p className="text-xs text-slate-400">
-                        Venue: {m.venue}
-                      </p>
+                      <div className="mt-4 pt-3 border-t border-slate-800 flex justify-between items-center text-xs">
+                        <span className="text-amber-400 font-bold truncate max-w-[55%]">
+                          {m.status === 'upcoming'
+                            ? (isReminded ? '🔔 Push notification scheduled' : (m.startsAt ? `Fixture starts at ${new Date(m.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Upcoming fixture'))
+                            : (m.result || 'Match in progress')}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          {m.status === 'upcoming' && (
+                            <button
+                              type="button"
+                              onClick={(e) => handleToggleMatchReminder(m, e)}
+                              className={`font-bold px-2.5 py-1 rounded-lg text-xs flex items-center gap-1.5 transition-all ${
+                                isReminded
+                                  ? 'bg-amber-400/20 text-amber-300 border border-amber-500/40 hover:bg-amber-400/30'
+                                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-amber-400 border border-slate-700/60'
+                              }`}
+                              title={isReminded ? 'Click to cancel reminder' : 'Schedule push notification'}
+                            >
+                              {isReminded ? (
+                                <>
+                                  <BellRing className="w-3 h-3 text-amber-400" />
+                                  <span>Scheduled</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Bell className="w-3 h-3 text-amber-400" />
+                                  <span>Remind Me</span>
+                                </>
+                              )}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveTab('contests');
+                            }}
+                            className="text-slate-300 hover:text-white font-bold px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors"
+                          >
+                            Predict →
+                          </button>
+                        </div>
+                      </div>
                     </div>
-
-                    <div className="mt-4 pt-3 border-t border-slate-800 flex justify-between items-center text-xs">
-                      <span className="text-amber-400 font-bold">
-                        {m.result || 'Match in progress'}
-                      </span>
-                      <button
-                        onClick={() => setActiveTab('contests')}
-                        className="text-slate-300 hover:text-white font-bold"
-                      >
-                        Predict →
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -763,6 +1057,7 @@ export default function App() {
             onSelectTeam={handleSelectTeam}
             selectedTeamId={selectedTeamRouteId}
             onNavigateTeam={(tId) => handleNavigate('teams', tId)}
+            matches={matches}
           />
         )}
 
@@ -876,7 +1171,6 @@ export default function App() {
             onUserPointsAwarded={(newPoints) => {
               setUser(prev => prev ? { ...prev, points: newPoints } : null);
             }}
-            onNavigateToProposal={() => setActiveTab('proposal')}
           />
         )}
 
@@ -920,6 +1214,8 @@ export default function App() {
             isAdmin={user?.role === 'admin'}
           />
         )}
+          </motion.div>
+        </AnimatePresence>
       </main>
 
       {/* Global Modals */}
@@ -965,6 +1261,17 @@ export default function App() {
         }}
       />
 
+      {/* Detailed Match Overview & Full Scorecard Modal */}
+      <MatchOverviewModal
+        isOpen={!!selectedMatchForModal}
+        match={selectedMatchForModal}
+        teams={teams}
+        onClose={() => setSelectedMatchForModal(null)}
+        onNavigateTab={handleNavigate}
+        isReminded={selectedMatchForModal ? remindedMatchIds.includes(selectedMatchForModal.id) : false}
+        onToggleReminder={handleToggleMatchReminder}
+      />
+
       {/* Foreground Real-Time Alert Toast (when new match result or contest deadline arrives) */}
       {foregroundToast && (
         <div className="fixed top-20 right-4 z-50 max-w-sm w-full bg-slate-900 border border-amber-400 rounded-2xl shadow-2xl p-4 text-xs flex items-start justify-between gap-3 shadow-amber-500/20 backdrop-blur-md animate-fade-in">
@@ -994,6 +1301,43 @@ export default function App() {
           <button
             onClick={() => setForegroundToast(null)}
             className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Local Push Notification Schedule Toast Feedback */}
+      {reminderToast && (
+        <div className="fixed bottom-24 right-4 sm:bottom-8 sm:right-8 z-50 max-w-md w-full bg-slate-900/95 border border-amber-400/90 rounded-2xl shadow-2xl p-4 text-xs flex items-start justify-between gap-3 shadow-amber-500/25 backdrop-blur-md animate-fade-in">
+          <div className="flex items-start gap-3 flex-1 min-w-0">
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+              reminderToast.active 
+                ? 'bg-amber-400/20 border border-amber-400/40 text-amber-400' 
+                : 'bg-slate-800 border border-slate-700 text-slate-400'
+            }`}>
+              {reminderToast.active ? <BellRing className="w-4 h-4 animate-pulse" /> : <Bell className="w-4 h-4" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="font-black text-amber-400 uppercase text-[10px] tracking-wider">
+                  {reminderToast.active ? '🔔 Push Schedule Active' : '🔕 Reminder Cancelled'}
+                </span>
+              </div>
+              <p className="font-bold text-white text-xs mt-0.5 leading-snug">
+                {reminderToast.message}
+              </p>
+              <p className="text-[10px] text-slate-400 mt-1">
+                {reminderToast.active 
+                  ? 'Your browser will push a local alert at match commencement.' 
+                  : 'Start-time alert removed from your schedule.'}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setReminderToast(null)}
+            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0"
+            aria-label="Dismiss toast"
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -1054,7 +1398,9 @@ export default function App() {
               <a href="/contests" onClick={(e) => { e.preventDefault(); handleNavigate('contests'); }} className="hover:text-amber-400 transition-colors">Fantasy 10 & Contests</a>
               <a href="/draws" onClick={(e) => { e.preventDefault(); handleNavigate('draws'); }} className="hover:text-amber-400 transition-colors">VIP Prize Draws</a>
               <a href="/leaderboard" onClick={(e) => { e.preventDefault(); handleNavigate('leaderboard'); }} className="hover:text-amber-400 transition-colors">Fan Wars</a>
-              <a href="/proposal" onClick={(e) => { e.preventDefault(); handleNavigate('proposal'); }} className="text-amber-400 font-bold hover:text-amber-300 transition-colors">ADT10 Proposal</a>
+              {user?.role === 'admin' && (
+                <a href="/proposal" onClick={(e) => { e.preventDefault(); handleNavigate('proposal'); }} className="text-amber-400 font-bold hover:text-amber-300 transition-colors">ADT10 Proposal</a>
+              )}
               <button
                 onClick={() => {
                   if (user?.role === 'admin') handleNavigate('admin');
@@ -1067,7 +1413,7 @@ export default function App() {
             </nav>
 
             <div className="text-[11px] text-slate-500">
-              <span>Copyright by <strong className="text-slate-300 font-semibold">Azlir Sport</strong>. Commissioned for Abu Dhabi T10 League.</span>
+              <span>Copyright by <strong className="text-slate-300 font-semibold">{config?.copyrightHolder || 'Azlir Sports'}</strong>. Commissioned for {config?.brandName || 'Abu Dhabi T10'}.</span>
             </div>
           </div>
         </div>

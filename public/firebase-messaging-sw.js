@@ -24,8 +24,8 @@ messaging.onBackgroundMessage((payload) => {
   
   const options = {
     body,
-    icon: payload.notification?.icon || '/assets/favicon.ico',
-    badge: '/assets/favicon.ico',
+    icon: payload.notification?.icon || '/icon.svg',
+    badge: '/icon.svg',
     tag: payload.data?.notificationId || `adt10-${category}-${Date.now()}`,
     data: {
       ...payload.data,

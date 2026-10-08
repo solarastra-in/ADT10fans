@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto';
-import { REAL_YOUTUBE_FEEDS, REAL_FACEBOOK_FEEDS, REAL_TEAM_HANDLE_POSTS } from './realFeedFetcher';
+import { generateInitialProposalSettings } from './proposalDefaults';
 
 export interface User {
   id: string;
@@ -9,22 +8,21 @@ export interface User {
   name: string;
   avatar: string;
   provider: 'google' | 'email';
-  teamId?: string | null;
+  teamId: string | null;
   teamChanges: number;
   points: number;
   streak: number;
   lastCheckin?: string;
   badges: string[];
-  role: 'admin' | 'fan';
-  stats?: any;
+  role: 'fan' | 'admin';
   createdAt: string;
+  stats?: any;
 }
 
 export interface OtpCode {
   id: string;
   email: string;
   codeHash: string;
-  plainCodeForDev?: string;
   expiresAt: string;
   attempts: number;
   used: boolean;
@@ -38,6 +36,7 @@ export interface Player {
   role: 'batter' | 'bowler' | 'allrounder' | 'wicketkeeper';
   credits: number;
   isIcon: boolean;
+  category?: string;
 }
 
 export interface Team {
@@ -51,19 +50,22 @@ export interface Team {
   headCoach?: string;
   website?: string;
   note?: string;
+  logo?: string;
   sort: number;
   squad: Player[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface SocialHandle {
   id: string;
-  teamId: string | null; // null for league-level
+  teamId: string | null;
   platform: 'X' | 'Instagram' | 'Threads' | 'Facebook' | 'TikTok' | 'LinkedIn' | 'YouTube' | 'RSS';
   handle: string;
   url: string;
   status: 'verified' | 'pending';
-  source: string;
-  meta: Record<string, any>;
+  source: 'official' | 'discovery' | 'admin' | 'ai-suggestion' | 'official-preset';
+  meta?: Record<string, any>;
   verifiedAt?: string;
   foundAt: string;
 }
@@ -86,6 +88,61 @@ export interface FeedItem {
   views?: string;
   verifiedReal?: boolean;
   channelVerified?: boolean;
+  sourceType?: 'youtube-rss' | 'news-rss' | 'admin' | 'ai';
+  handleId?: string | null;
+}
+
+export interface BattingScorecardEntry {
+  batsman: string;
+  dismissal: string;
+  runs: number;
+  balls: number;
+  fours: number;
+  sixes: number;
+  strikeRate: number;
+  isNotOut?: boolean;
+}
+
+export interface BowlingScorecardEntry {
+  bowler: string;
+  overs: string | number;
+  maidens: number;
+  runs: number;
+  wickets: number;
+  economy: number;
+  dots?: number;
+}
+
+export interface FallOfWicketEntry {
+  wicket: number;
+  score: number;
+  over: string;
+  player: string;
+}
+
+export interface InningsScorecard {
+  teamId: string;
+  teamName?: string;
+  totalRuns: number;
+  wickets: number;
+  overs: string;
+  runRate?: number;
+  extras?: {
+    total: number;
+    wides?: number;
+    noBalls?: number;
+    byes?: number;
+    legByes?: number;
+  };
+  batting: BattingScorecardEntry[];
+  bowling: BowlingScorecardEntry[];
+  didNotBat?: string[];
+  fallOfWickets?: FallOfWicketEntry[];
+}
+
+export interface MatchScorecard {
+  innings1?: InningsScorecard;
+  innings2?: InningsScorecard;
 }
 
 export interface Match {
@@ -98,19 +155,30 @@ export interface Match {
   venue: string;
   status: 'upcoming' | 'live' | 'completed';
   scoreA?: string;
-  scoreB?: string;
   oversA?: string;
+  scoreB?: string;
   oversB?: string;
+  firstInnings?: number;
   winner?: string;
   result?: string;
   totalSixes?: number;
-  firstInnings?: number;
   topScorer?: string;
   topWicketTaker?: string;
   currentOver?: string;
   lastCommentary?: string;
-  isDemo?: boolean;
   updatedAt: string;
+  toss?: string;
+  playerOfTheMatch?: string;
+  scorecard?: MatchScorecard;
+}
+
+export interface ContestQuestion {
+  id: string;
+  prompt: string;
+  options: string[];
+  points: number;
+  answer?: string;
+  explain?: string;
 }
 
 export interface Contest {
@@ -118,26 +186,19 @@ export interface Contest {
   type: 'predictor' | 'sixes' | 'captain' | 'season' | 'trivia';
   title: string;
   description: string;
-  matchId?: string;
+  matchId?: string | null;
   locksAt?: string;
   status: 'open' | 'locked' | 'settled';
   prize: string;
+  questions: ContestQuestion[];
   instant?: boolean;
-  questions: {
-    id: string;
-    prompt: string;
-    options: string[];
-    points: number;
-    answer?: string;
-    explain?: string;
-  }[];
   createdAt: string;
 }
 
 export interface ContestEntry {
   userId: string;
   contestId: string;
-  answers: Record<string, string>; // questionId -> chosen answer
+  answers: Record<string, string>;
   pointsAwarded?: number;
   createdAt: string;
 }
@@ -145,8 +206,8 @@ export interface ContestEntry {
 export interface FantasyTeam {
   userId: string;
   matchId: string;
-  playerIds: string[]; // 6 players
-  captainId: string; // 2x points
+  playerIds: string[];
+  captainId: string;
   points?: number;
   createdAt: string;
 }
@@ -160,11 +221,12 @@ export interface PrizeDraw {
   closesAt: string;
   status: 'open' | 'closed' | 'drawn';
   teamOnly?: string | null;
-  winnerUserId?: string | null;
-  winnerName?: string | null;
+  winnerUserId?: string;
+  winnerName?: string;
   seed?: string | null;
   entrantsHash?: string | null;
   drawnAt?: string | null;
+  createdAt?: string;
 }
 
 export interface DrawEntry {
@@ -177,10 +239,10 @@ export interface DrawEntry {
 
 export interface Approval {
   id: string;
-  kind: 'handle' | 'website' | 'post';
+  kind: 'handle' | 'post' | 'score' | 'website';
   title: string;
   detail: string;
-  payload: Record<string, any>;
+  payload: any;
   status: 'pending' | 'approved' | 'rejected';
   createdAt: string;
   decidedAt?: string;
@@ -198,14 +260,21 @@ export interface AgentRun {
 
 export interface SystemSettings {
   adminEmails: string[];
-  publicUserCountOverride: number; // e.g. 14850 fans
+  brandName: string;
+  tagline: string;
+  copyrightHolder: string;
+  seasonLabel: string;
+  seasonStart: string;
+  seasonEnd: string;
+  venue: string;
   tickerText: string;
   curatorFeedId: string;
   curatorContainerId: string;
   curatorFeedUuid: string;
   curatorApiKey: string;
   curatorHashtags: string;
-  maxSocialPerPlatform: number; // default 5 as requested
+  maxSocialPerPlatform: number;
+  newsQueries: string;
   smtp: {
     host: string;
     port: number;
@@ -226,7 +295,7 @@ export interface ForumComment {
   teamId?: string | null;
   content: string;
   upvotes: number;
-  upvotedBy?: string[];
+  upvotedBy: string[];
   createdAt: string;
 }
 
@@ -241,9 +310,9 @@ export interface ForumThread {
   userName: string;
   userAvatar: string;
   userBadge?: string;
-  pinned?: boolean;
+  pinned: boolean;
   upvotes: number;
-  upvotedBy?: string[];
+  upvotedBy: string[];
   views: number;
   commentsCount: number;
   lastActivityAt: string;
@@ -257,32 +326,24 @@ export interface NotificationItem {
   category: 'match_result' | 'contest_deadline' | 'announcement' | 'perk';
   targetAudience: 'all' | 'logged_in' | 'team';
   teamId?: string | null;
-  data?: {
-    matchId?: string;
-    contestId?: string;
-    url?: string;
-    scoreSummary?: string;
-    winnerName?: string;
-    locksAt?: string;
-    prize?: string;
-    [key: string]: any;
-  };
-  priority?: 'normal' | 'high';
+  data?: Record<string, any>;
+  priority: 'normal' | 'high';
   createdAt: string;
   createdBy: string;
   recipientCount?: number;
   fcmSuccessCount?: number;
   fcmFailureCount?: number;
+  delivery?: 'fcm' | 'in-app';
   readBy?: string[];
 }
 
 export interface FCMDeviceToken {
   id: string;
-  userId?: string | null;
   token: string;
+  userId?: string | null;
   userEmail?: string | null;
   deviceType: string;
-  userAgent: string;
+  userAgent?: string;
   enabled: boolean;
   createdAt: string;
   updatedAt: string;
@@ -308,6 +369,8 @@ export interface FanSpace {
   merchBoutique: string;
   menuHighlights: string;
   totalBookings: number;
+  mapUrl?: string;
+  bookingEnabled?: boolean;
 }
 
 export interface FanSpaceBooking {
@@ -318,7 +381,7 @@ export interface FanSpaceBooking {
   userName: string;
   userEmail: string;
   date: string;
-  ticketType: 'standard_entry' | 'vip_pass' | 'vr_cage_reservation';
+  ticketType: 'standard_entry' | 'vip_pass';
   ticketsCount: number;
   passCode: string;
   createdAt: string;
@@ -327,7 +390,7 @@ export interface FanSpaceBooking {
 export interface YouthCupSchool {
   id: string;
   name: string;
-  region: 'UAE' | 'UK';
+  region: string;
   city: string;
   studentsCount: number;
   tapeBallTeam: string;
@@ -341,12 +404,12 @@ export interface CreatorPartner {
   name: string;
   handle: string;
   platform: 'YouTube' | 'Twitch' | 'Kick' | 'TikTok';
-  followers: string;
+  followers?: string;
   streamUrl: string;
   specialty: string;
   status: 'live' | 'scheduled' | 'partnered';
-  totalWatchViews: string;
-  avatar: string;
+  totalWatchViews?: string;
+  avatar?: string;
 }
 
 export interface CommentaryAudioFeed {
@@ -354,9 +417,11 @@ export interface CommentaryAudioFeed {
   language: 'Arabic' | 'English' | 'Hindi' | 'Urdu' | 'Bengali';
   commentator: string;
   status: 'live' | 'standby';
-  sampleAudioText: string;
-  bitrate: string;
-  listenersCount: number;
+  streamUrl: string;
+  description?: string;
+  sampleAudioText?: string;
+  bitrate?: string;
+  listenersCount?: number;
 }
 
 export interface SuperfanPassportTier {
@@ -369,6 +434,8 @@ export interface SuperfanPassportTier {
   exclusiveBadge: string;
   doublePointsMultiplier: boolean;
   totalSubscribers: number;
+  description?: string;
+  signupUrl?: string;
 }
 
 export interface ProposalActivity {
@@ -379,10 +446,10 @@ export interface ProposalActivity {
   need: string;
   relevance: string;
   what: string;
-  capexUsd: number;
-  opexUsd: number;
   usdCost: number;
   aedCost: number;
+  capexUsd: number;
+  opexUsd: number;
   timeline: string;
   outcome: string;
   kpis: string[];
@@ -404,7 +471,25 @@ export interface ProposalSettings {
   updatedAt: string;
 }
 
+export interface Session {
+  id: string;          // sha256 of the bearer token
+  userId: string;
+  createdAt: string;
+  expiresAt: string;
+  lastSeenAt: string;
+}
+
+export interface PassportInterest {
+  tierId: string;
+  userId: string;
+  createdAt: string;
+}
+
 export interface AppStore {
+  schemaVersion: number;
+  sessions: Session[];
+  passportInterest: PassportInterest[];
+  claimedBadges: Record<string, boolean>;
   users: User[];
   otpCodes: OtpCode[];
   teams: Team[];
@@ -432,1597 +517,185 @@ export interface AppStore {
   proposalSettings: ProposalSettings;
 }
 
-const DATA_DIR = path.resolve(process.cwd(), 'data');
+export const SCHEMA_VERSION = 2;
+
+// Where the JSON store lives. On Cloud Run / containers mount a persistent volume
+// (e.g. a Cloud Storage FUSE volume) and point DATA_DIR at it, otherwise data is lost on restart.
+const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(process.cwd(), 'data'));
 const STORE_PATH = path.join(DATA_DIR, 't10_store.json');
 
-function generateInitialForumThreads(): ForumThread[] {
-  return [
-    {
-      id: 'thread-proposal-1',
-      title: '📢 OFFICIAL STRATEGY: ADT10 365-Day Global Fan Network & Physical Fan Spaces Proposal',
-      content: 'Presenting the comprehensive proposal to the Abu Dhabi T10 League Governing Council to build an interconnected global fan ecosystem: unified fan portal, interactive community forums, fantasy dream team, transparent VIP giveaways, unified match watch party centers, social walls, and flagship physical fan spaces across Abu Dhabi, Dubai, London, Mumbai, and Toronto. Check out the dedicated League Proposal tab for the complete dossier and budget!',
-      category: 'fanspaces',
-      tags: ['ADT10', 'Proposal', 'GlobalFanSpaces', 'Strategy', 'AbuDhabi'],
-      teamId: 'aces',
-      userId: 'user-admin',
-      userName: 'Franchise Owner (SolarAstra)',
-      userAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop',
-      userBadge: 'Founding Member',
-      pinned: true,
-      upvotes: 48,
-      upvotedBy: ['user-admin', 'fan-1'],
-      views: 1240,
-      commentsCount: 4,
-      lastActivityAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString()
-    },
-    {
-      id: 'thread-matchday-1',
-      title: '🔥 Match Day Live Chat: Arabian Aces vs Deccan Gladiators - Tactical Preview & Playing XI',
-      content: 'The 2026 Abu Dhabi T10 tournament opener is here! Moeen Ali leads the explosive Arabian Aces batting lineup featuring Alex Hales and Sherfane Rutherford against defending champions Deccan Gladiators (Nicholas Pooran & Andre Russell). Who is winning the toss, and what score is par on the Zayed Stadium strip?',
-      category: 'matchday',
-      tags: ['Match1', 'ArabianAces', 'DeccanGladiators', 'LiveChat'],
-      teamId: 'aces',
-      userId: 'user-fan-1',
-      userName: 'Tariq Al-Mansoor',
-      userAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=200&auto=format&fit=crop',
-      userBadge: 'Boundary Oracle',
-      pinned: true,
-      upvotes: 36,
-      upvotedBy: ['fan-1', 'fan-2'],
-      views: 890,
-      commentsCount: 3,
-      lastActivityAt: new Date(Date.now() - 1000 * 60 * 25).toISOString(),
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 8).toISOString()
-    },
-    {
-      id: 'thread-fantasy-1',
-      title: '⭐ Dream Team Strategy: The Best 6-Player Combo Under 55 Credits',
-      content: 'In our 6-player Fantasy 10 format with a 55 credit budget, is it better to take two 10.5 credit power hitters (Pooran + Moeen) and fill the rest with budget bowlers like Gleeson and Scrimshaw, or balance with four 9.0 allrounders? Drop your squads below!',
-      category: 'fantasy',
-      tags: ['Fantasy10', 'DreamTeam', 'Tactics', 'Picks'],
-      teamId: null,
-      userId: 'user-fan-2',
-      userName: 'Rohan Sharma',
-      userAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=200&auto=format&fit=crop',
-      userBadge: 'Fantasy Maestro',
-      pinned: false,
-      upvotes: 29,
-      upvotedBy: ['fan-3'],
-      views: 640,
-      commentsCount: 2,
-      lastActivityAt: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 12).toISOString()
-    },
-    {
-      id: 'thread-fanspaces-1',
-      title: '🌍 Global Fan Clubhouses: Which City Should Get the First Physical Experiential Space?',
-      content: 'As part of the global fan expansion, the league is evaluating dedicated fan spaces with 360-degree LED screenings, VR batting simulators, merchandise pop-ups, and live meetups. Should the first international hub outside the UAE open in London (Regent St), Mumbai (Bandra), Toronto (Brampton), or Melbourne? Vote and share your city!',
-      category: 'fanspaces',
-      tags: ['GlobalFanSpaces', 'London', 'Mumbai', 'Toronto', 'Dubai'],
-      teamId: null,
-      userId: 'user-fan-3',
-      userName: 'Zainab Qureshi',
-      userAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200&auto=format&fit=crop',
-      userBadge: 'Centurion Streak',
-      pinned: false,
-      upvotes: 42,
-      upvotedBy: ['fan-1', 'user-admin'],
-      views: 1105,
-      commentsCount: 3,
-      lastActivityAt: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 16).toISOString()
-    },
-    {
-      id: 'thread-giveaways-1',
-      title: '🎁 VIP Hospitality Draw: Who entered the President Box Pass with Dugout Access?',
-      content: 'The provably fair draw for 2x VIP President Box tickets + dugout access is closing in 3 days! The cryptographic SHA-256 seed verification makes this the most transparent cricket giveaway ever seen. Has everyone claimed their free entry?',
-      category: 'giveaways',
-      tags: ['Giveaways', 'VIPPass', 'ZayedStadium', 'SHA256'],
-      teamId: 'aces',
-      userId: 'user-admin',
-      userName: 'Franchise Owner (SolarAstra)',
-      userAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop',
-      userBadge: 'Franchise VIP',
-      pinned: false,
-      upvotes: 31,
-      upvotedBy: [],
-      views: 750,
-      commentsCount: 1,
-      lastActivityAt: new Date(Date.now() - 1000 * 60 * 50).toISOString(),
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 20).toISOString()
-    }
-  ];
-}
-
-function generateInitialForumComments(): ForumComment[] {
-  return [
-    {
-      id: 'comment-1',
-      threadId: 'thread-proposal-1',
-      userId: 'user-fan-1',
-      userName: 'Tariq Al-Mansoor',
-      userAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=200&auto=format&fit=crop',
-      userBadge: 'Boundary Oracle',
-      teamId: 'aces',
-      content: 'This proposal hits the nail on the head! 90-minute cricket is the most electrifying format in world sport, but having physical fan spaces in London and Mumbai alongside Abu Dhabi will create a real year-round global community.',
-      upvotes: 14,
-      upvotedBy: ['user-admin'],
-      createdAt: new Date(Date.now() - 1000 * 60 * 120).toISOString()
-    },
-    {
-      id: 'comment-2',
-      threadId: 'thread-proposal-1',
-      userId: 'user-fan-2',
-      userName: 'Rohan Sharma',
-      userAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=200&auto=format&fit=crop',
-      userBadge: 'Fantasy Maestro',
-      teamId: 'champions',
-      content: 'The financial budget breakdown in both USD and AED in the proposal makes total sense for the franchise board. The projected 108% ROI through sponsor activations and digital fan memberships is very realistic.',
-      upvotes: 9,
-      upvotedBy: [],
-      createdAt: new Date(Date.now() - 1000 * 60 * 80).toISOString()
-    },
-    {
-      id: 'comment-3',
-      threadId: 'thread-proposal-1',
-      userId: 'user-fan-3',
-      userName: 'Zainab Qureshi',
-      userAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200&auto=format&fit=crop',
-      userBadge: 'Centurion Streak',
-      teamId: 'tigers',
-      content: 'The Discussion Forum alone is a game changer. Now fans don’t just watch and leave, we have a continuous home to debate tactics, dream teams, and celebrate wins.',
-      upvotes: 11,
-      upvotedBy: ['user-fan-1'],
-      createdAt: new Date(Date.now() - 1000 * 60 * 40).toISOString()
-    },
-    {
-      id: 'comment-4',
-      threadId: 'thread-proposal-1',
-      userId: 'user-admin',
-      userName: 'Franchise Owner (SolarAstra)',
-      userAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop',
-      userBadge: 'Founding Member',
-      teamId: 'aces',
-      content: 'Thank you everyone! The League Board meets this week to review the full submission. The interactive simulator in the proposal tab lets the council test different rollout phases and budgets.',
-      upvotes: 18,
-      upvotedBy: ['user-fan-1', 'user-fan-2'],
-      createdAt: new Date(Date.now() - 1000 * 60 * 15).toISOString()
-    },
-    {
-      id: 'comment-5',
-      threadId: 'thread-matchday-1',
-      userId: 'user-admin',
-      userName: 'Franchise Owner (SolarAstra)',
-      userAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop',
-      userBadge: 'Franchise VIP',
-      teamId: 'aces',
-      content: 'Arabian Aces batting depth with Hales, Moeen, and Rutherford is unmatched this season. If we bat first, 135+ is well within reach in 10 overs!',
-      upvotes: 15,
-      upvotedBy: ['user-fan-1'],
-      createdAt: new Date(Date.now() - 1000 * 60 * 90).toISOString()
-    },
-    {
-      id: 'comment-6',
-      threadId: 'thread-matchday-1',
-      userId: 'user-fan-2',
-      userName: 'Rohan Sharma',
-      userAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=200&auto=format&fit=crop',
-      userBadge: 'Fantasy Maestro',
-      teamId: 'champions',
-      content: 'Don’t underestimate Desert Royal Champions bowling attack. Nicholas Pooran and their pace unit in the powerplay are lethal. It’s going to be a cliffhanger!',
-      upvotes: 8,
-      upvotedBy: [],
-      createdAt: new Date(Date.now() - 1000 * 60 * 60).toISOString()
-    },
-    {
-      id: 'comment-7',
-      threadId: 'thread-matchday-1',
-      userId: 'user-fan-1',
-      userName: 'Tariq Al-Mansoor',
-      userAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=200&auto=format&fit=crop',
-      userBadge: 'Boundary Oracle',
-      teamId: 'aces',
-      content: 'Locking in my match prediction right now for Arabian Aces with 14+ total sixes hit in the game!',
-      upvotes: 7,
-      upvotedBy: [],
-      createdAt: new Date(Date.now() - 1000 * 60 * 25).toISOString()
-    },
-    {
-      id: 'comment-8',
-      threadId: 'thread-fantasy-1',
-      userId: 'user-fan-1',
-      userName: 'Tariq Al-Mansoor',
-      userAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=200&auto=format&fit=crop',
-      userBadge: 'Boundary Oracle',
-      teamId: 'aces',
-      content: 'Alex Hales at 9.5 credits is the golden value pick. He strikes at 190+ in Abu Dhabi. Make Moeen Ali captain for double points.',
-      upvotes: 12,
-      upvotedBy: [],
-      createdAt: new Date(Date.now() - 1000 * 60 * 45).toISOString()
-    },
-    {
-      id: 'comment-9',
-      threadId: 'thread-fanspaces-1',
-      userId: 'user-fan-2',
-      userName: 'Rohan Sharma',
-      userAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=200&auto=format&fit=crop',
-      userBadge: 'Fantasy Maestro',
-      teamId: 'bulls',
-      content: 'Mumbai would be massive. A pop-up clubhouse in Bandra with live VR batting cages against 140km/h T10 bowling will see lines around the block.',
-      upvotes: 19,
-      upvotedBy: ['user-fan-1', 'user-admin'],
-      createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString()
-    },
-    {
-      id: 'comment-10',
-      threadId: 'thread-fanspaces-1',
-      userId: 'user-fan-3',
-      userName: 'Zainab Qureshi',
-      userAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200&auto=format&fit=crop',
-      userBadge: 'Centurion Streak',
-      teamId: 'eagles',
-      content: 'London Regent St during the UK winter would be magical! Diaspora fans would flock there to watch night matches in Abu Dhabi warmth and ambiance.',
-      upvotes: 15,
-      upvotedBy: [],
-      createdAt: new Date(Date.now() - 1000 * 60 * 10).toISOString()
-    }
-  ];
-}
-
-function generateInitialFanSpaces(): FanSpace[] {
-  return [
-    {
-      id: 'space-abu-dhabi',
-      name: 'Abu Dhabi Flagship Clubhouse & Arena',
-      city: 'Abu Dhabi',
-      country: 'United Arab Emirates',
-      tagline: 'The Heart of T10 Cricket, 360° LED Arena & Emirati Luxury Hospitality',
-      location: 'Yas Island / Zayed Cricket Stadium Precinct, Abu Dhabi, UAE',
-      capacity: 1500,
-      status: 'active',
-      image: 'https://images.unsplash.com/photo-1512958789358-4dacacbe09c3?q=80&w=1200&auto=format&fit=crop',
-      features: [
-        '360° Cylindrical LED Stadium Screen with Immersive Surround Audio',
-        'VR Batting Pods (Face 140km/h simulated deliveries from international stars)',
-        'Official 6-Franchise Pop-Up Jersey & Memorabilia Boutique',
-        'Emirati Specialty Coffee & Artisanal Karak Barista Bar',
-        'Live Player Dugout Cam, Press Conference & Studio Broadcast Links',
-        'Pitch-Side VIP Majlis Enclosure with Private Butler Hospitality'
-      ],
-      amenities: [
-        'Complimentary Valet Parking',
-        'Ultra-Fast 5G Wi-Fi',
-        'Dedicated Prayer Rooms',
-        'Youth Tape-Ball Cricket Cage',
-        'Live DJ & Stadium Emcee Sets',
-        'Halal Gourmet Dining'
-      ],
-      openHours: 'Daily 12:00 PM – 02:00 AM (Matchdays until 03:30 AM)',
-      liveMatchSchedule: 'Screening all 34 Abu Dhabi T10 fixtures live with stadium acoustic audio and pitch telemetry',
-      vipPassPriceAed: 350,
-      vipPassPriceUsd: 95,
-      vipPerks: [
-        'Reserved front-row majlis lounge seating with stadium audio feed',
-        'Unlimited artisanal Karak, Arabic gourmet bites & specialty sliders',
-        'Guaranteed VR Batting Pod fast-track pass',
-        'Official ADT10 Souvenir Cap, Team Scarf & Matchday Program'
-      ],
-      merchBoutique: 'Full official jerseys of Arabian Aces, Deccan Gladiators, Northern Warriors & limited edition tournament caps',
-      menuHighlights: 'Emirati Luqaimat with date drizzle, Wagyu shawarma sliders, Saffron Karak chai, Pistachio milk cake',
-      totalBookings: 420
-    },
-    {
-      id: 'space-dubai',
-      name: 'Dubai Marina Fan Arena & Promenade',
-      city: 'Dubai',
-      country: 'United Arab Emirates',
-      tagline: 'Open-Air Waterfront Mega Screens & Beachside Electric Match Energy',
-      location: 'The Beach opposite JBR / Dubai Marina Promenade, Dubai, UAE',
-      capacity: 800,
-      status: 'active',
-      image: 'https://images.unsplash.com/photo-1518684079-3c830dcef090?q=80&w=1200&auto=format&fit=crop',
-      features: [
-        'Open-Air Waterfront Mega LED Screen overlooking Arabian Gulf',
-        'Beachside Cabana Match Viewings with mist cooling systems',
-        'Official Franchise Merchandise Pop-Up Boutique',
-        'Sunset Cricket DJ Sessions & Live Commentary Soundstage',
-        'Speed Gun Bowling Challenge with instant radar readout'
-      ],
-      amenities: [
-        'Beach Promenade Direct Access',
-        'Outdoor Mist Cooling & Shaded Pergolas',
-        'Valet Parking',
-        'Street Food Terrace & Mocktail Bar',
-        'Photo-Op Dugout Replica'
-      ],
-      openHours: 'Daily 02:00 PM – 01:00 AM',
-      liveMatchSchedule: 'Live twilight & evening matches with sunset harbor views and waterfront breezes',
-      vipPassPriceAed: 250,
-      vipPassPriceUsd: 68,
-      vipPerks: [
-        'Beach Cabana VIP entry for 2 guests with premium view',
-        'Welcome mocktail pitcher & truffle fries platter',
-        '10% discount on official merchandise boutique purchases'
-      ],
-      merchBoutique: 'Franchise beachwear, official match caps, retro tournament tees',
-      menuHighlights: 'Smoked brisket tacos, Loaded truffle fries, Acai bowls, Cold brew passionfruit mocktails',
-      totalBookings: 285
-    },
-    {
-      id: 'space-london',
-      name: 'London Regent Street Cricket Clubhouse',
-      city: 'London',
-      country: 'United Kingdom',
-      tagline: 'Indoor Heated Cricket Sports Bar & West End Matchday Gathering',
-      location: 'Regent Street / St John’s Wood Lord’s Precinct, London W1, UK',
-      capacity: 600,
-      status: 'active',
-      image: 'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?q=80&w=1200&auto=format&fit=crop',
-      features: [
-        'Multi-Screen Heated Indoor Cricket Sports Clubhouse',
-        'English T10 Player & Legend Meetup Stage (Q&A sessions with Moeen Ali, Chris Jordan & Alex Hales)',
-        'Virtual Reality Batting Cage with T10 simulated powerplay overs',
-        'Craft Beverage Bar & Gastropub Matchday Dining',
-        'Historic Signed T10 Memorabilia Gallery'
-      ],
-      amenities: [
-        'Heated Indoor Venue',
-        'Coat Check & VIP Cloakroom',
-        'Private Corporate Booth Hire',
-        'HD Audio Streaming Headsets',
-        'Full Accessibility Ramp & Lifts'
-      ],
-      openHours: 'Tuesday – Sunday: 11:30 AM – 11:00 PM',
-      liveMatchSchedule: 'Live afternoon & evening broadcasts synchronized with Abu Dhabi twilight matches',
-      vipPassPriceAed: 185,
-      vipPassPriceUsd: 50,
-      vipPerks: [
-        'Reserved mezzanine booth with private audio channel',
-        'Gastropub dining voucher + British craft beverage or zero-proof brew',
-        'Player meet-and-greet photo pass'
-      ],
-      merchBoutique: 'Exclusive UK tour edition jerseys, winter cricket hoodies, collectible metal team badges',
-      menuHighlights: 'Pavilion beef & ale pies, Gourmet fish & chips bites, Spiced ginger mocktails, Sticky toffee pudding',
-      totalBookings: 190
-    },
-    {
-      id: 'space-mumbai',
-      name: 'Mumbai BKC Cricket Pavilion & Dhol Arena',
-      city: 'Mumbai',
-      country: 'India',
-      tagline: 'Stadium Acoustic Power, Live Dhol Drummers & Bollywood Fusion Nights',
-      location: 'Bandra Kurla Complex (BKC) Arena Promenade, Mumbai, India',
-      capacity: 1200,
-      status: 'active',
-      image: 'https://images.unsplash.com/photo-1570168007204-dfb528c6958f?q=80&w=1200&auto=format&fit=crop',
-      features: [
-        'Stadium-Grade Acoustic Sound System with Live Matchday Dhol Drummers',
-        'Dual 4K Laser Projection Walls with real-time wagon-wheel graphics',
-        'VR Batting Net facing explosive T10 bowling deliveries',
-        'Bollywood-Cricket Crossover Matchday Screenings & Celebrity Guests',
-        'Authentic Street Food Bazaar & Live Chaat Counters'
-      ],
-      amenities: [
-        'Full Air-Conditioned Grand Hall',
-        'Fast-Track Digital QR Turnstiles',
-        'Family Enclosure & Safe Kids Zone',
-        'Franchise Fan Club Stalls'
-      ],
-      openHours: 'Matchdays: 04:00 PM – 12:30 AM',
-      liveMatchSchedule: 'Prime-time Indian broadcast match viewings with stadium-style commentary and live crowd singing',
-      vipPassPriceAed: 110,
-      vipPassPriceUsd: 30,
-      vipPerks: [
-        'Priority Air-Conditioned Enclosure access',
-        'Free VR Batting Session token',
-        'Gourmet Bombay Frankie & Cutting Chai platter'
-      ],
-      merchBoutique: 'Official franchise jerseys, silicon wristbands, autographed mini cricket bats',
-      menuHighlights: 'Gourmet Frankie rolls, Vada Pav sliders with garlic chutney, Masala Fries, Alphonso Mango Lassi',
-      totalBookings: 510
-    },
-    {
-      id: 'space-toronto',
-      name: 'Toronto Brampton Fan Dome',
-      city: 'Toronto',
-      country: 'Canada',
-      tagline: 'Climate-Controlled Dome Screenings & Caribbean-South Asian Street Food',
-      location: 'Greater Toronto Area (Brampton Sports Complex), Ontario, Canada',
-      capacity: 500,
-      status: 'active',
-      image: 'https://images.unsplash.com/photo-1517048676732-d65bc937f952?q=80&w=1200&auto=format&fit=crop',
-      features: [
-        'Indoor Heated Inflatable Geo-Dome with 360-degree temperature control',
-        'Ultra-Wide Panoramic LED Screen with multi-camera match angles',
-        'Caribbean & South Asian Street Food Stalls & Spiced Winter Drinks',
-        'Youth Tape-Ball Indoor Coaching Clinics with international coaches',
-        'Digital Gaming & Esports Lounge with Cricket 24 tournaments'
-      ],
-      amenities: [
-        'Spacious Free Onsite Parking',
-        'Heated Indoor Tiered Bleachers',
-        'Indoor Practice Turf Cage',
-        'Merchandise & Winter Gear Desk'
-      ],
-      openHours: 'Weekends & Matchdays: 09:00 AM – 09:00 PM',
-      liveMatchSchedule: 'Morning and midday UAE match broadcasts with Canadian community breakfast screenings',
-      vipPassPriceAed: 150,
-      vipPassPriceUsd: 40,
-      vipPerks: [
-        'Priority front-tier Dome seating with warm fleece blanket',
-        'Jerk chicken roti or Canadian maple poutine combo with spiced cider',
-        'Official ADT10 Winter Knit Beanie'
-      ],
-      merchBoutique: 'Winter cricket beanies, fleece hoodies, official team banners and flags',
-      menuHighlights: 'Jerk chicken roti, Canadian poutine, Vegetable samosas, Hot spiced apple cider, Karak chai',
-      totalBookings: 145
-    }
-  ];
-}
-
-function generateInitialYouthSchools(): YouthCupSchool[] {
-  return [
-    {
-      id: 'school-1',
-      name: 'Brighton College Abu Dhabi',
-      region: 'UAE',
-      city: 'Abu Dhabi',
-      studentsCount: 380,
-      tapeBallTeam: 'Brighton Blasters',
-      status: 'bracket_qualified',
-      equipmentKitGranted: true,
-      matchdayTicketsAllocated: 50
-    },
-    {
-      id: 'school-2',
-      name: 'Dubai College Cricket Academy',
-      region: 'UAE',
-      city: 'Dubai',
-      studentsCount: 420,
-      tapeBallTeam: 'DC Strikers',
-      status: 'champion',
-      equipmentKitGranted: true,
-      matchdayTicketsAllocated: 75
-    },
-    {
-      id: 'school-3',
-      name: 'The British School Al Khubairat',
-      region: 'UAE',
-      city: 'Abu Dhabi',
-      studentsCount: 310,
-      tapeBallTeam: 'Khubairat Kings',
-      status: 'bracket_qualified',
-      equipmentKitGranted: true,
-      matchdayTicketsAllocated: 40
-    },
-    {
-      id: 'school-4',
-      name: 'GEMS Modern Academy',
-      region: 'UAE',
-      city: 'Dubai',
-      studentsCount: 550,
-      tapeBallTeam: 'GEMS Gladiators',
-      status: 'registered',
-      equipmentKitGranted: true,
-      matchdayTicketsAllocated: 60
-    },
-    {
-      id: 'school-5',
-      name: 'Whitgift School Cricket Club',
-      region: 'UK',
-      city: 'London',
-      studentsCount: 290,
-      tapeBallTeam: 'Whitgift Warriors',
-      status: 'bracket_qualified',
-      equipmentKitGranted: true,
-      matchdayTicketsAllocated: 30
-    },
-    {
-      id: 'school-6',
-      name: 'Harrow School Cricket XI',
-      region: 'UK',
-      city: 'London',
-      studentsCount: 260,
-      tapeBallTeam: 'Harrow Hurricanes',
-      status: 'registered',
-      equipmentKitGranted: true,
-      matchdayTicketsAllocated: 25
-    },
-    {
-      id: 'school-7',
-      name: 'Eton College Cricket Society',
-      region: 'UK',
-      city: 'Windsor',
-      studentsCount: 220,
-      tapeBallTeam: 'Eton Eagles',
-      status: 'registered',
-      equipmentKitGranted: false,
-      matchdayTicketsAllocated: 20
-    },
-    {
-      id: 'school-8',
-      name: 'Sharjah English School',
-      region: 'UAE',
-      city: 'Sharjah',
-      studentsCount: 280,
-      tapeBallTeam: 'Sharjah Scorpions',
-      status: 'registered',
-      equipmentKitGranted: true,
-      matchdayTicketsAllocated: 35
-    }
-  ];
-}
-
-function generateInitialCreatorPartners(): CreatorPartner[] {
-  return [
-    {
-      id: 'creator-1',
-      name: 'Tanmay Bhat Live',
-      handle: '@TanmayBhatCricket',
-      platform: 'YouTube',
-      followers: '4.8M',
-      streamUrl: 'https://youtube.com',
-      specialty: 'Comedy & Live Watch-Along Reactions',
-      status: 'live',
-      totalWatchViews: '8.4M',
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=200&auto=format&fit=crop'
-    },
-    {
-      id: 'creator-2',
-      name: 'CricCrazy Johns Stream',
-      handle: '@CricCrazyJohns',
-      platform: 'YouTube',
-      followers: '1.2M',
-      streamUrl: 'https://youtube.com',
-      specialty: 'In-Depth Ball-by-Ball Analysis & Tactics',
-      status: 'scheduled',
-      totalWatchViews: '5.2M',
-      avatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?q=80&w=200&auto=format&fit=crop'
-    },
-    {
-      id: 'creator-3',
-      name: 'Tubbo Cricket Gaming',
-      handle: '@TubboLive',
-      platform: 'Twitch',
-      followers: '5.1M',
-      streamUrl: 'https://twitch.tv',
-      specialty: 'Gaming, Cricket 24 & Second-Screen Streaming',
-      status: 'live',
-      totalWatchViews: '12.8M',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=200&auto=format&fit=crop'
-    },
-    {
-      id: 'creator-4',
-      name: 'Waqas Cricket Vlog',
-      handle: '@WaqasT10Exclusive',
-      platform: 'TikTok',
-      followers: '2.4M',
-      streamUrl: 'https://tiktok.com',
-      specialty: 'Behind-the-scenes Dugout Shorts & Player Interviews',
-      status: 'partnered',
-      totalWatchViews: '9.6M',
-      avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=200&auto=format&fit=crop'
-    },
-    {
-      id: 'creator-5',
-      name: 'BBC Stumped Audio Watch',
-      handle: '@BBCStumped',
-      platform: 'YouTube',
-      followers: '850K',
-      streamUrl: 'https://youtube.com',
-      specialty: 'UK & Global Diaspora Fan Debate',
-      status: 'scheduled',
-      totalWatchViews: '3.1M',
-      avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=200&auto=format&fit=crop'
-    }
-  ];
-}
-
-function generateInitialCommentaryFeeds(): CommentaryAudioFeed[] {
-  return [
-    {
-      id: 'audio-ar',
-      language: 'Arabic',
-      commentator: 'Tariq Al-Hammadi (Abu Dhabi Sports)',
-      status: 'live',
-      sampleAudioText: 'يا له من تسديدة رائعة! ست نقاط ساحقة في سماء ملعب زايد للكريكت من معين علي!',
-      bitrate: '128 kbps AAC',
-      listenersCount: 4210
-    },
-    {
-      id: 'audio-en',
-      language: 'English',
-      commentator: 'Danny Morrison & Nasser Hussain',
-      status: 'live',
-      sampleAudioText: 'BANG! Into the orbit! That has disappeared over deep mid-wicket into the Yas Marina twilight!',
-      bitrate: '192 kbps AAC',
-      listenersCount: 18450
-    },
-    {
-      id: 'audio-hi',
-      language: 'Hindi',
-      commentator: 'Aakash Chopra & Vivek Razdan',
-      status: 'live',
-      sampleAudioText: 'गेंद हवा में और दर्शक बने फील्डर! छह रनों के लिए गेंद बाउंड्री लाइन के उस पार!',
-      bitrate: '192 kbps AAC',
-      listenersCount: 26300
-    },
-    {
-      id: 'audio-ur',
-      language: 'Urdu',
-      commentator: 'Bazid Khan & Sikandar Bakht',
-      status: 'live',
-      sampleAudioText: 'خوبصورت شاٹ! مڈ وکٹ کے اوپر سے زبردست چھکا، گیند اسٹیڈیم کی چھت پر جا گری!',
-      bitrate: '128 kbps AAC',
-      listenersCount: 14800
-    },
-    {
-      id: 'audio-bn',
-      language: 'Bengali',
-      commentator: 'Athar Ali Khan',
-      status: 'live',
-      sampleAudioText: 'দারুণ শট! সীমানা ছাড়িয়ে বল গিয়ে পড়ল সরাসরি দর্শকদের মাঝে!',
-      bitrate: '128 kbps AAC',
-      listenersCount: 7920
-    }
-  ];
-}
-
-function generateInitialPassportTiers(): SuperfanPassportTier[] {
-  return [
-    {
-      id: 'passport-tier-official',
-      tierName: 'ADT10 Superfan Digital Passport',
-      annualFeeUsd: 10,
-      annualFeeAed: 37,
-      ticketDiscountPct: 15,
-      fanSpacePriorityEntry: true,
-      exclusiveBadge: 'Superfan Gold Passport',
-      doublePointsMultiplier: true,
-      totalSubscribers: 38000
-    }
-  ];
-}
-
-export function generateInitialProposalSettings(): ProposalSettings {
-  const USD_TO_AED = 3.6725;
-  const activities: ProposalActivity[] = [
-    {
-      id: 'activity-web',
-      number: 1,
-      title: 'Centralized League & Franchise Fan Web Platform & PWA',
-      tag: 'Digital Core',
-      need: 'Current league and franchise web presence is fragmented across temporary event micro-sites, leading to an 87% fan drop-off between annual 2-week tournament cycles. Fans have no single persistent home for live scores, squads, tickets, and team engagement.',
-      relevance: 'T10’s 90-minute format is the most fast-paced, digital-native spectacle in sports. Digital-first Gen-Z audiences expect instant load times, live ball-by-ball simulated telemetry, mobile responsiveness, and continuous 365-day access.',
-      what: 'Build and deploy a unified official Abu Dhabi T10 League & 6-Franchise web ecosystem as a Progressive Web App (PWA). Includes automated match schedules, real-time ball-by-ball live tickers, dynamic player & squad dossiers, unified ticketing portal, and automated multilingual content feeds.',
-      usdCost: 165000,
-      aedCost: Math.round(165000 * USD_TO_AED),
-      capexUsd: 110000,
-      opexUsd: 55000,
-      timeline: 'Months 1-3 (Launch before Season Opener)',
-      outcome: 'A world-class digital flagship delivering sub-second load times globally, capturing 750,000+ registered fan accounts in Year 1, and establishing a unified first-party fan data pipeline (CDP).',
-      kpis: ['750K+ Registered Users', '4.2M Monthly Page Views', '4.8m Avg Session Duration', 'Sub-800ms Global PWA Latency'],
-      franchiseBenefit: 'Direct branded digital home for Arabian Aces and all 5 partner franchises with dedicated sponsor inventory.',
-      leagueBenefit: 'Full ownership of first-party fan customer data, increasing media rights valuation by 25%.'
-    },
-    {
-      id: 'activity-forum',
-      number: 2,
-      title: 'Community Discussion Forum & Real-Time Discourse Engine',
-      tag: 'Fan Community',
-      need: 'Cricket fans express their passion through passionate tactical debate, match reviews, and player rivalries. In the absence of an official moderated league forum, discussions scatter across Reddit, generic social media, or vanish entirely.',
-      relevance: 'Fostering fan community discourse transforms passive broadcast viewers into emotionally invested league brand advocates. Fans build friendships, rivalries, and community identity around franchises.',
-      what: 'Deploy an integrated, high-performance community forum where fans can open new discussion threads, post comments, upvote analysis, debate tactical lineups, tag specific franchises, and earn fan points and badges for insightful contributions.',
-      usdCost: 45000,
-      aedCost: Math.round(45000 * USD_TO_AED),
-      capexUsd: 25000,
-      opexUsd: 20000,
-      timeline: 'Months 2-4 (Pre-Season Buzz & Tourney Active)',
-      outcome: 'An active 24/7 fan dialogue hub generating over 65,000 organic discussion threads and 250,000 fan comments per season, driving peer-to-peer viral engagement.',
-      kpis: ['65K+ Discussion Threads', '250K+ Community Comments', '38% Monthly Retention Uplift', 'Zero Toxicity via AI Auto-Moderation'],
-      franchiseBenefit: 'Exclusive franchise-only fan sub-forums enabling direct team-to-fan Q&As with coaches and players.',
-      leagueBenefit: 'Continuous real-time fan sentiment intelligence informing tournament rules and match timings.'
-    },
-    {
-      id: 'activity-competitions',
-      number: 3,
-      title: 'Gamification Suite: Match Predictors, Trivia & Daily Streaks',
-      tag: 'Engagement & Retention',
-      need: 'Broadcast sports face a critical battle against short attention spans. Without gamified incentives, fans multi-task on competing entertainment apps during overs and innings breaks.',
-      relevance: 'The T10 format generates boundaries on average every 3.2 deliveries, creating frequent high-intensity micro-events ideal for second-screen prediction challenges and boundary betting contests.',
-      what: 'A dynamic gamification engine featuring ball-by-ball & match prediction contests, boundary over/under challenges, historical T10 trivia battles, daily check-in streak multipliers (up to 5x), and seasonal fan leaderboards.',
-      usdCost: 55000,
-      aedCost: Math.round(55000 * USD_TO_AED),
-      capexUsd: 35000,
-      opexUsd: 20000,
-      timeline: 'Months 2-3 (Pre-Season Launch)',
-      outcome: 'Triple daily active usage (DAU) across match days, with 60%+ of active users making at least 3 predictions per match, generating 3.5M prediction interactions per tournament.',
-      kpis: ['62% Matchday Participation Rate', '3.5M Total Predictions Logged', '45% 7-Day Daily Streak Retention', 'Sponsored Predictor Partner Packages'],
-      franchiseBenefit: 'Franchise Fan Wars leaderboard where fan contest points directly elevate their supported team ranking.',
-      leagueBenefit: 'Premium commercial inventory: Title sponsorship of Predictor Challenge sold to fintech/telecom partners.'
-    },
-    {
-      id: 'activity-dreamteam',
-      number: 4,
-      title: '“Dream Team” (Fantasy 10) Squad Architect & Private Leagues',
-      tag: 'Fantasy Sports',
-      need: 'Fantasy cricket is the #1 driver of deep player familiarity and match viewership worldwide. Traditional fantasy formats take hours; T10 requires a fast, 90-minute optimized 6-player draft.',
-      relevance: 'Fans who play fantasy cricket watch 2.4x more overs on television and OTT platforms to monitor their fantasy captain and drafted bowlers in real time.',
-      what: 'Build a proprietary "Fantasy 10" squad builder: fans draft a 6-player squad under a strict 55-credit cap, assign a captain (2x multiplier), compete in private friends leagues, and win official franchise rewards.',
-      usdCost: 65000,
-      aedCost: Math.round(65000 * USD_TO_AED),
-      capexUsd: 45000,
-      opexUsd: 20000,
-      timeline: 'Months 2-4 (Integrated with Live Data Feed)',
-      outcome: '300,000+ created Fantasy 10 lineups per season, driving measurable 40%+ increases in linear and digital broadcast watch-time per registered fan.',
-      kpis: ['300K+ Fantasy Lineups Created', '12K+ Private Fan Leagues Formed', '2.4x Increase in Broadcast Watch Time', 'Monetized Co-Branded Fantasy Title Sponsor'],
-      franchiseBenefit: 'Heightened fan loyalty to individual franchise players (e.g. Moeen Ali, Alex Hales, Nicholas Pooran).',
-      leagueBenefit: 'Direct commercial partnership opportunity with global gaming, telecom, or payment partners.'
-    },
-    {
-      id: 'activity-giveaways',
-      number: 5,
-      title: 'Provably Fair VIP Giveaways & Enclosure Hospitality Passes',
-      tag: 'VIP Rewards',
-      need: 'Traditional sports sweepstakes are often perceived by fans as non-transparent, untrustworthy, or rigged for influencers, dampening contest participation.',
-      relevance: 'Abu Dhabi is globally renowned for luxury, hospitality, and cutting-edge tech. Demonstrating transparent, provably fair mechanics builds profound credibility and aspiration.',
-      what: 'A cryptographic SHA-256 verifiable prize draw system offering once-in-a-lifetime experiences: President Box VIP hospitality tickets at Zayed Cricket Stadium, player dugout walks, signed bats, and official team merchandise.',
-      usdCost: 120000,
-      aedCost: Math.round(120000 * USD_TO_AED),
-      capexUsd: 20000,
-      opexUsd: 100000,
-      timeline: 'Throughout Season & Pre-Tournament',
-      outcome: 'Unrivaled fan excitement and viral social sharing, capturing 150,000+ verified giveaway entries and cultivating deep emotional loyalty to Abu Dhabi as the destination of cricket.',
-      kpis: ['150K+ Verified Draw Entrants', '100% Cryptographic Audit Trail', '50+ VIP Hospitality Winners Hosted', 'Over 80K User Generated Social Shares'],
-      franchiseBenefit: 'Franchises receive allocated VIP dugout guest slots for their top community Superfans.',
-      leagueBenefit: 'Positions Abu Dhabi T10 as the most generous and transparent fan-centric league in international sports.'
-    },
-    {
-      id: 'activity-livecenter',
-      number: 6,
-      title: 'Unified Multi-Team Live Center, Telemetry & Watch Aggregator',
-      tag: 'Broadcast Hub',
-      need: 'Fans cannot always access linear television feeds across different international broadcast jurisdictions, leading to frustration and pirated illicit streams.',
-      relevance: 'Providing a verified centralized hub for ball-by-ball simulated telemetry, official YouTube live press conferences, and synchronized watch parties bridges the broadcast gap.',
-      what: 'A centralized multi-match live center embedding official YouTube live streams, pre-match press conferences, player dugout cams, real-time ball-by-ball radar charts, wagon wheels, and live match simulation triggers.',
-      usdCost: 60000,
-      aedCost: Math.round(60000 * USD_TO_AED),
-      capexUsd: 35000,
-      opexUsd: 25000,
-      timeline: 'Months 2-3 (Live for all 34 tournament fixtures)',
-      outcome: '12M+ live telemetry impressions, keeping international fans tethered to the match state even when on mobile or without a TV screen.',
-      kpis: ['12M+ Live Scorecard Interactions', '99.98% Telemetry Uptime', 'Over 1.8M YouTube Watch Party Embed Views', 'Real-time Sub-Second Latency'],
-      franchiseBenefit: 'Franchises can broadcast team training and behind-the-scenes warmups directly to their fans.',
-      leagueBenefit: 'Increases official digital video consumption metrics for OTT and broadcast pitch decks.'
-    },
-    {
-      id: 'activity-socialcurator',
-      number: 7,
-      title: 'Consolidated Team Social Wall & Cross-Franchise Curator',
-      tag: 'Media Aggregator',
-      need: 'Fans currently must follow 9 separate Twitter/X accounts, 9 Instagram pages, and 9 YouTube channels, causing fragmented information discovery.',
-      relevance: 'Aggregating verified official posts into a singular, high-octane social wall creates a unified "league energy" and lets fans compare teams side-by-side.',
-      what: 'Deploy a Curator.io-style multi-platform social aggregator crawling verified team handles across X, Instagram, TikTok, YouTube, Threads, and RSS feeds with auto-curation and admin verification safeguards.',
-      usdCost: 35000,
-      aedCost: Math.round(35000 * USD_TO_AED),
-      capexUsd: 15000,
-      opexUsd: 20000,
-      timeline: 'Month 1 (Immediate Deployment)',
-      outcome: 'One-stop social destination delivering 25,000+ curated multimedia impressions daily, boosting cross-pollination across franchise fanbases.',
-      kpis: ['Top 5 Verified Posts / Platform / Team', 'Real-Time Synchronized Feed Updates', '15K Daily Social Wall Views', 'Brand Safety Filter Enforced'],
-      franchiseBenefit: 'Smaller or newer franchises gain direct exposure to the collective league fanbase.',
-      leagueBenefit: 'Reinforces the ADT10 brand identity as a cohesive international powerhouse.'
-    },
-    {
-      id: 'activity-fanspaces',
-      number: 8,
-      title: 'Global Physical Fan Spaces & Experiential Clubhouses',
-      tag: 'Physical Experiential',
-      need: 'Over 80% of ADT10 fans live outside Abu Dhabi (in India, UK, Pakistan, Canada, and the GCC). A tournament restricted solely to the stadium pitch in Abu Dhabi misses the massive global diaspora craving communal match experiences.',
-      relevance: 'Sports entertainment brands like the NBA, Premier League, and Formula 1 thrive by building physical experiential lounges in premier metropolitan hubs, creating physical touchpoints that drive merchandise and lifelong fan loyalty.',
-      what: 'Design, launch, and operate 5 flagship & pop-up physical "ADT10 Global Fan Clubhouses" in key cricket capital cities: 1) Abu Dhabi (Yas Island / Zayed Stadium precinct), 2) Dubai (Marina / Downtown), 3) London (Regent St / Lord’s precinct pop-up), 4) Mumbai (Bandra Kurla Complex), and 5) Toronto (Brampton / Mississauga). Features include: 360-degree high-definition LED match watch arena, VR Batting Simulator cages against 140km/h T10 bowling, official franchise pop-up merchandise retail, Arabic hospitality barista lounge, and live meetups with team ambassadors & cricket legends.',
-      usdCost: 480000,
-      aedCost: Math.round(480000 * USD_TO_AED),
-      capexUsd: 320000,
-      opexUsd: 160000,
-      timeline: 'Phased: Abu Dhabi & Dubai (Season 1), London, Mumbai & Toronto (Season 1 Finals & Year 2)',
-      outcome: '45,000+ in-person visitors during the tournament cycle, generating $320,000 in official merchandise & F&B sales, and commanding massive local media coverage in the UK, India, UAE, and North America.',
-      kpis: ['45K+ In-Person Attendees Across 5 Cities', '15K+ VR Batting Cages Experiences', '$320K+ Direct Retail Merchandise Revenue', 'Over 120 Local Media News Features'],
-      franchiseBenefit: 'Direct physical merchandise sales booths for Arabian Aces and all franchise teams in London and Mumbai.',
-      leagueBenefit: 'Elevates ADT10 into a physical global lifestyle and sports brand competing directly with F1 and NBA global lounges.'
-    },
-    {
-      id: 'activity-nextgen',
-      number: 9,
-      title: 'Next-Gen Growth Catalysts: Grassroots Youth Cup & Creator Studio',
-      tag: 'Future Growth',
-      need: 'Building sustainable multi-generational fan bases requires reaching younger demographics (ages 12-24) through school participation and digital native influencers.',
-      relevance: 'Cricket fandom is passed down through youth play and creator culture. Twitch, YouTube, and TikTok content creators drive 60%+ of youth sports discovery.',
-      what: 'Launch two high-impact growth programs: 1) "ADT10 School & Grassroots Cup" in UAE and UK schools with 10-over tape-ball tournaments awarding youth cricket equipment and stadium tickets. 2) "ADT10 Global Creator Studio", partnering with 50 top cricket YouTubers & streamers for live watch-along broadcasts and viral trick-shot challenges.',
-      usdCost: 140000,
-      aedCost: Math.round(140000 * USD_TO_AED),
-      capexUsd: 40000,
-      opexUsd: 100000,
-      timeline: 'Months 3-6 (Rolling Campaign)',
-      outcome: 'Direct engagement of 120+ schools, 25,000+ student participants, and 45M+ cross-platform views via creator watch-alongs.',
-      kpis: ['120+ Participating Schools & Academies', '50+ Creator Studio Influencers', '45M+ Creator Watch-Along Views', '15K+ New Youth Fan Registrations'],
-      franchiseBenefit: 'Scouting pipeline of emerging local UAE and international youth talent for developmental squad slots.',
-      leagueBenefit: 'Establishes authentic goodwill, CSR community impact, and deep brand resonance with future generations.'
-    }
-  ];
-
+export function defaultSettings(): SystemSettings {
   return {
-    exchangeRateUsdToAed: USD_TO_AED,
-    revenueStreams: {
-      predictorSponsorshipUsd: 450000,
-      fantasySponsorshipUsd: 350000,
-      fanSpacesNamingRightsUsd: 650000,
-      merchAndFbUsd: 370000,
-      superfanPassportUsers: 38000,
-      superfanPassportFeeUsd: 10
-    },
-    activities,
-    updatedAt: new Date().toISOString()
+    adminEmails: [],
+    brandName: 'ADT10 Fans',
+    tagline: 'The Abu Dhabi T10 fan hub',
+    copyrightHolder: 'Azlir Sports',
+    seasonLabel: '',
+    seasonStart: '',
+    seasonEnd: '',
+    venue: '',
+    tickerText: '',
+    curatorFeedId: process.env.CURATOR_FEED_ID || '',
+    curatorContainerId: 'curator-feed-default-feed-layout',
+    curatorFeedUuid: '',
+    curatorApiKey: process.env.CURATOR_API_KEY || '',
+    curatorHashtags: '',
+    maxSocialPerPlatform: 5,
+    newsQueries: '',
+    smtp: { host: '', port: 587, user: '', pass: '', from: '', enabled: false },
   };
 }
 
-export function getAnnouncedTeams(): Team[] {
-  return [
-    {
-      id: 'bulls',
-      name: 'UAE Bulls',
-      short: 'UB',
-      color: '#38BDF8',
-      secondaryColor: '#0C4A6E',
-      home: 'Zayed Cricket Stadium, Abu Dhabi',
-      iconPlayer: 'Rovman Powell',
-      website: 'https://uaebullst10.com',
-      note: 'Defending Abu Dhabi T10 Champions with relentless boundary firepower.',
-      sort: 1,
-      squad: [
-        { id: 'bulls-powell', teamId: 'bulls', name: 'Rovman Powell', role: 'batter', credits: 10.5, isIcon: true },
-        { id: 'bulls-salt', teamId: 'bulls', name: 'Phil Salt', role: 'wicketkeeper', credits: 9.5, isIcon: false },
-        { id: 'bulls-pollard', teamId: 'bulls', name: 'Kieron Pollard', role: 'allrounder', credits: 9.0, isIcon: false },
-        { id: 'bulls-david', teamId: 'bulls', name: 'Tim David', role: 'batter', credits: 9.0, isIcon: false },
-        { id: 'bulls-narine', teamId: 'bulls', name: 'Sunil Narine', role: 'bowler', credits: 9.0, isIcon: false },
-        { id: 'bulls-farooqi', teamId: 'bulls', name: 'Fazalhaq Farooqi', role: 'bowler', credits: 8.5, isIcon: false },
-      ]
-    },
-    {
-      id: 'tigers',
-      name: 'United Tigers',
-      short: 'UT',
-      color: '#EA580C',
-      secondaryColor: '#431407',
-      home: 'Zayed Cricket Stadium, Abu Dhabi',
-      iconPlayer: 'Shakib Al Hasan',
-      website: 'https://unitedtigerst10.com',
-      note: 'Ferocious attacking unit with passionate diaspora fan backing and world-class spinners.',
-      sort: 2,
-      squad: [
-        { id: 'tigers-shakib', teamId: 'tigers', name: 'Shakib Al Hasan', role: 'allrounder', credits: 10.5, isIcon: true },
-        { id: 'tigers-fletcher', teamId: 'tigers', name: 'Andre Fletcher', role: 'batter', credits: 9.0, isIcon: false },
-        { id: 'tigers-amir', teamId: 'tigers', name: 'Mohammad Amir', role: 'bowler', credits: 9.0, isIcon: false },
-        { id: 'tigers-charles', teamId: 'tigers', name: 'Johnson Charles', role: 'wicketkeeper', credits: 8.5, isIcon: false },
-        { id: 'tigers-shamsi', teamId: 'tigers', name: 'Tabraiz Shamsi', role: 'bowler', credits: 8.5, isIcon: false },
-        { id: 'tigers-raza', teamId: 'tigers', name: 'Sikandar Raza', role: 'allrounder', credits: 8.5, isIcon: false },
-      ]
-    },
-    {
-      id: 'lions',
-      name: 'Yas Lions',
-      short: 'YL',
-      color: '#10B981',
-      secondaryColor: '#064E3B',
-      home: 'Yas Island / Zayed Stadium, Abu Dhabi',
-      iconPlayer: 'Faf du Plessis',
-      website: 'https://yaslionscricket.com',
-      note: 'Local Yas Island powerhouse combining veteran tactical brilliance with fiery pace bowling.',
-      sort: 3,
-      squad: [
-        { id: 'lions-faf', teamId: 'lions', name: 'Faf du Plessis', role: 'batter', credits: 10.5, isIcon: true },
-        { id: 'lions-hetmyer', teamId: 'lions', name: 'Shimron Hetmyer', role: 'batter', credits: 9.5, isIcon: false },
-        { id: 'lions-wade', teamId: 'lions', name: 'Matthew Wade', role: 'wicketkeeper', credits: 9.0, isIcon: false },
-        { id: 'lions-gleeson', teamId: 'lions', name: 'Richard Gleeson', role: 'bowler', credits: 8.5, isIcon: false },
-        { id: 'lions-pretorius', teamId: 'lions', name: 'Dwaine Pretorius', role: 'allrounder', credits: 8.5, isIcon: false },
-        { id: 'lions-billings', teamId: 'lions', name: 'Sam Billings', role: 'wicketkeeper', credits: 8.5, isIcon: false },
-      ]
-    },
-    {
-      id: 'aces',
-      name: 'Arabian Aces',
-      short: 'AAC',
-      color: '#E8B04A',
-      secondaryColor: '#1E293B',
-      home: 'Zayed Cricket Stadium, Abu Dhabi',
-      iconPlayer: 'Moeen Ali',
-      headCoach: 'Lance Klusener',
-      website: 'https://arabianaces.com',
-      note: 'Flagship 2026 Abu Dhabi T10 Franchise. Powerful explosive hitters & tactical mastery.',
-      sort: 4,
-      squad: [
-        { id: 'aces-moeen', teamId: 'aces', name: 'Moeen Ali', role: 'allrounder', credits: 10.5, isIcon: true },
-        { id: 'aces-alex-hales', teamId: 'aces', name: 'Alex Hales', role: 'batter', credits: 9.5, isIcon: false },
-        { id: 'aces-russell', teamId: 'aces', name: 'Andre Russell', role: 'allrounder', credits: 10.0, isIcon: false },
-        { id: 'aces-livingstone', teamId: 'aces', name: 'Liam Livingstone', role: 'allrounder', credits: 9.5, isIcon: false },
-        { id: 'aces-chris-jordan', teamId: 'aces', name: 'Chris Jordan', role: 'bowler', credits: 9.0, isIcon: false },
-        { id: 'aces-rahmanullah-gurbaz', teamId: 'aces', name: 'Rahmanullah Gurbaz', role: 'wicketkeeper', credits: 9.0, isIcon: false },
-        { id: 'aces-azmatullah-omarzai', teamId: 'aces', name: 'Azmatullah Omarzai', role: 'allrounder', credits: 8.5, isIcon: false },
-        { id: 'aces-ali-naseer', teamId: 'aces', name: 'Ali Naseer', role: 'allrounder', credits: 7.5, isIcon: false },
-      ]
-    },
-    {
-      id: 'eagles',
-      name: 'Emirates Eagles',
-      short: 'EE',
-      color: '#8B5CF6',
-      secondaryColor: '#2E1065',
-      home: 'Zayed Cricket Stadium, Abu Dhabi',
-      iconPlayer: 'Jason Roy',
-      website: 'https://emirateseaglescricket.com',
-      note: 'Sky-high run scorers with aggressive 360-degree top order hitters and death yorker specialists.',
-      sort: 5,
-      squad: [
-        { id: 'eagles-roy', teamId: 'eagles', name: 'Jason Roy', role: 'batter', credits: 10.5, isIcon: true },
-        { id: 'eagles-holder', teamId: 'eagles', name: 'Jason Holder', role: 'allrounder', credits: 9.5, isIcon: false },
-        { id: 'eagles-rossouw', teamId: 'eagles', name: 'Rilee Rossouw', role: 'batter', credits: 9.0, isIcon: false },
-        { id: 'eagles-mills', teamId: 'eagles', name: 'Tymal Mills', role: 'bowler', credits: 8.5, isIcon: false },
-        { id: 'eagles-sams', teamId: 'eagles', name: 'Daniel Sams', role: 'allrounder', credits: 8.5, isIcon: false },
-        { id: 'eagles-mathews', teamId: 'eagles', name: 'Angelo Mathews', role: 'allrounder', credits: 8.0, isIcon: false },
-      ]
-    },
-    {
-      id: 'champions',
-      name: 'Desert Royal Champions',
-      short: 'DRC',
-      color: '#F59E0B',
-      secondaryColor: '#78350F',
-      home: 'Zayed Cricket Stadium, Abu Dhabi',
-      iconPlayer: 'Nicholas Pooran',
-      headCoach: 'Robin Singh',
-      website: 'https://desertroyalchampions.com',
-      note: 'Formidable new 2026 Abu Dhabi T10 franchise led by West Indies captain Nicholas Pooran and director Robin Singh.',
-      sort: 6,
-      squad: [
-        { id: 'drc-pooran', teamId: 'champions', name: 'Nicholas Pooran', role: 'wicketkeeper', credits: 10.5, isIcon: true },
-        { id: 'drc-rutherford', teamId: 'champions', name: 'Sherfane Rutherford', role: 'batter', credits: 9.5, isIcon: false },
-        { id: 'drc-stoinis', teamId: 'champions', name: 'Marcus Stoinis', role: 'allrounder', credits: 9.5, isIcon: false },
-        { id: 'drc-hosein', teamId: 'champions', name: 'Akeal Hosein', role: 'bowler', credits: 9.0, isIcon: false },
-        { id: 'drc-boult', teamId: 'champions', name: 'Trent Boult', role: 'bowler', credits: 9.5, isIcon: false },
-        { id: 'drc-cadmore', teamId: 'champions', name: 'Tom Kohler-Cadmore', role: 'batter', credits: 8.5, isIcon: false },
-      ]
-    }
-  ];
-}
-
-function generateInitialStore(): AppStore {
-  const teamsData: Team[] = getAnnouncedTeams();
-
-  const handlesData: SocialHandle[] = [
-    // League Official Handles
-    {
-      id: 'h-league-yt',
-      teamId: null,
-      platform: 'YouTube',
-      handle: '@T10LeagueOfficial',
-      url: 'https://www.youtube.com/@T10LeagueOfficial',
-      status: 'verified',
-      source: 'official',
-      meta: { channelId: 'UCe_V2hJ7lQh8q-tH0Z0J0w' },
-      verifiedAt: new Date().toISOString(),
-      foundAt: new Date().toISOString()
-    },
-    {
-      id: 'h-league-x',
-      teamId: null,
-      platform: 'X',
-      handle: '@T10League',
-      url: 'https://x.com/T10League',
-      status: 'verified',
-      source: 'official',
-      meta: {},
-      verifiedAt: new Date().toISOString(),
-      foundAt: new Date().toISOString()
-    },
-    {
-      id: 'h-league-ig',
-      teamId: null,
-      platform: 'Instagram',
-      handle: '@t10league',
-      url: 'https://www.instagram.com/t10league/',
-      status: 'verified',
-      source: 'official',
-      meta: {},
-      verifiedAt: new Date().toISOString(),
-      foundAt: new Date().toISOString()
-    },
-    {
-      id: 'h-league-fb',
-      teamId: null,
-      platform: 'Facebook',
-      handle: 'T10league',
-      url: 'https://www.facebook.com/T10league',
-      status: 'verified',
-      source: 'official',
-      meta: {},
-      verifiedAt: new Date().toISOString(),
-      foundAt: new Date().toISOString()
-    },
-    {
-      id: 'h-league-tiktok',
-      teamId: null,
-      platform: 'TikTok',
-      handle: '@abudhabit10',
-      url: 'https://www.tiktok.com/@abudhabit10',
-      status: 'verified',
-      source: 'official',
-      meta: {},
-      verifiedAt: new Date().toISOString(),
-      foundAt: new Date().toISOString()
-    }
-  ];
-
-  const feedItemsData: FeedItem[] = [
-    ...REAL_YOUTUBE_FEEDS,
-    ...REAL_FACEBOOK_FEEDS,
-    ...REAL_TEAM_HANDLE_POSTS
-  ];
-
-  const matchesData: Match[] = [
-    {
-      id: 'm-1',
-      matchNo: 1,
-      stage: 'Inaugural Blockbuster',
-      teamA: 'aces',
-      teamB: 'bulls',
-      startsAt: new Date(Date.now() - 1000 * 60 * 45).toISOString(), // currently LIVE
-      venue: 'Zayed Cricket Stadium, Abu Dhabi',
-      status: 'live',
-      scoreA: '118/3',
-      oversA: '10.0',
-      scoreB: '84/2',
-      oversB: '6.4',
-      currentOver: '6.4 ov · UAE Bulls need 35 off 20 balls',
-      lastCommentary: 'SIX! Rovman Powell hammers a slower ball over mid-wicket into the second tier! What a contest!',
-      totalSixes: 14,
-      firstInnings: 118,
-      topScorer: 'Alex Hales (54 off 21)',
-      topWicketTaker: 'Chris Jordan (2/14)',
-      isDemo: true,
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: 'm-2',
-      matchNo: 2,
-      stage: 'Group Stage',
-      teamA: 'tigers',
-      teamB: 'lions',
-      startsAt: new Date(Date.now() + 1000 * 60 * 120).toISOString(), // upcoming today
-      venue: 'Zayed Cricket Stadium, Abu Dhabi',
-      status: 'upcoming',
-      isDemo: true,
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: 'm-3',
-      matchNo: 3,
-      stage: 'Group Stage',
-      teamA: 'eagles',
-      teamB: 'champions',
-      startsAt: new Date(Date.now() + 1000 * 60 * 360).toISOString(),
-      venue: 'Zayed Cricket Stadium, Abu Dhabi',
-      status: 'upcoming',
-      isDemo: true,
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: 'm-4',
-      matchNo: 4,
-      stage: 'Super Saturday',
-      teamA: 'aces',
-      teamB: 'tigers',
-      startsAt: new Date(Date.now() + 1000 * 60 * 1440).toISOString(),
-      venue: 'Zayed Cricket Stadium, Abu Dhabi',
-      status: 'upcoming',
-      isDemo: true,
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: 'm-5',
-      matchNo: 5,
-      stage: 'Super Saturday',
-      teamA: 'lions',
-      teamB: 'eagles',
-      startsAt: new Date(Date.now() + 1000 * 60 * 1620).toISOString(),
-      venue: 'Zayed Cricket Stadium, Abu Dhabi',
-      status: 'upcoming',
-      isDemo: true,
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: 'm-6',
-      matchNo: 6,
-      stage: 'Desert Rivalry',
-      teamA: 'bulls',
-      teamB: 'champions',
-      startsAt: new Date(Date.now() + 1000 * 60 * 2880).toISOString(),
-      venue: 'Zayed Cricket Stadium, Abu Dhabi',
-      status: 'upcoming',
-      isDemo: true,
-      updatedAt: new Date().toISOString()
-    }
-  ];
-
-  const contestsData: Contest[] = [
-    {
-      id: 'contest-m1-pred',
-      type: 'predictor',
-      title: 'Match 1 Predictor: Arabian Aces vs UAE Bulls',
-      description: 'Call the winner and key match parameters to earn 150 points for your team in Fan Wars!',
-      matchId: 'm-1',
-      locksAt: new Date(Date.now() + 1000 * 60 * 60).toISOString(),
-      status: 'open',
-      prize: 'VIP Match Tickets & 150 Fan Points',
-      questions: [
-        {
-          id: 'q1-winner',
-          prompt: 'Who will triumph in this clash?',
-          options: ['Arabian Aces', 'UAE Bulls'],
-          points: 50
-        },
-        {
-          id: 'q2-sixes',
-          prompt: 'How many sixes will be hit in total in this 20-over encounter?',
-          options: ['Under 12', '12 to 16', '17 to 20', '21+'],
-          points: 50
-        },
-        {
-          id: 'q3-topbat',
-          prompt: 'Who will record the highest strike rate (min. 10 balls)?',
-          options: ['Moeen Ali', 'Alex Hales', 'Nicholas Pooran', 'Marcus Stoinis'],
-          points: 50
-        }
-      ],
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: 'contest-six-machine',
-      type: 'sixes',
-      title: 'Six Machine Challenge: Arabian Aces Power-Hitter',
-      description: 'Which Arabian Aces batter will clear the boundary the most times today?',
-      matchId: 'm-1',
-      status: 'open',
-      prize: 'Signed Match Ball & 80 Fan Points',
-      questions: [
-        {
-          id: 'q-six-player',
-          prompt: 'Pick your designated Six Machine:',
-          options: ['Moeen Ali', 'Alex Hales', 'Sherfane Rutherford', 'Rahmanullah Gurbaz'],
-          points: 80
-        }
-      ],
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: 'contest-season-oracle',
-      type: 'season',
-      title: 'Season Oracle 2026: The Master Prediction',
-      description: 'Lock in your championship prophecy before the league table solidifies.',
-      status: 'open',
-      prize: 'All-Expenses Paid Hospitality Package for the Grand Final',
-      questions: [
-        {
-          id: 'q-season-champ',
-          prompt: 'Which franchise will lift the 2026 Abu Dhabi T10 trophy?',
-          options: ['Arabian Aces', 'Deccan Gladiators', 'UAE Bulls', 'Northern Warriors', 'Quetta Qavalry', 'Royal Champs', 'Vista Riders'],
-          points: 200
-        },
-        {
-          id: 'q-season-150',
-          prompt: 'Will any team score 160+ in 10 overs this season?',
-          options: ['Yes - Fireworks guaranteed', 'No - Bowlers will hold firm'],
-          points: 100
-        }
-      ],
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: 'contest-history-trivia',
-      type: 'trivia',
-      title: 'Abu Dhabi T10 History Masters Quiz',
-      description: 'Instant verification! Test your knowledge on the fastest format in world cricket.',
-      status: 'open',
-      instant: true,
-      prize: '10 Points per correct answer + Fan Legend Badge',
-      questions: [
-        {
-          id: 'q-triv-1',
-          prompt: 'Who won the very first T10 League title in 2017?',
-          options: ['Kerala Kings', 'Northern Warriors', 'Maratha Arabians', 'Pakhtoons'],
-          points: 10,
-          answer: 'Kerala Kings',
-          explain: 'Kerala Kings won the inaugural 2017 edition in Sharjah.'
-        },
-        {
-          id: 'q-triv-2',
-          prompt: 'Which franchise has won the most Abu Dhabi T10 titles?',
-          options: ['Deccan Gladiators', 'Northern Warriors', 'Delhi Bulls', 'Team Abu Dhabi'],
-          points: 10,
-          answer: 'Deccan Gladiators',
-          explain: 'Deccan Gladiators won three championships (2021-22, 2022, and 2024).'
-        },
-        {
-          id: 'q-triv-3',
-          prompt: 'How many overs does each side bat in a T10 encounter?',
-          options: ['8 overs', '10 overs', '12 overs', '15 overs'],
-          points: 10,
-          answer: '10 overs',
-          explain: 'Ten overs a side, lasting approximately 90 minutes of sheer action.'
-        },
-        {
-          id: 'q-triv-4',
-          prompt: 'Who is the head coach of the new Arabian Aces franchise?',
-          options: ['Lance Klusener', 'Andy Flower', 'Stephen Fleming', 'Brian Lara'],
-          points: 10,
-          answer: 'Lance Klusener',
-          explain: 'Legendary South African all-rounder Lance Klusener leads Arabian Aces.'
-        }
-      ],
-      createdAt: new Date().toISOString()
-    }
-  ];
-
-  const drawsData: PrizeDraw[] = [
-    {
-      id: 'draw-vip-final',
-      title: 'Grand Final VIP Hospitality Passes',
-      prize: '2x VIP President Box Passes at Zayed Cricket Stadium + Dugout Access',
-      description: 'Enter with one click. Winner is drawn autonomously using verifiable SHA-256 seed at match closure.',
-      color: '#E8B04A',
-      closesAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString(),
-      status: 'open',
-      seed: 'seed-adt10-2026-vip-final'
-    },
-    {
-      id: 'draw-signed-jersey',
-      title: 'Official Signed Arabian Aces Match Jersey',
-      prize: 'Framed official team jersey autographed by Moeen Ali and Lance Klusener',
-      description: 'Exclusive draw for fans who back Arabian Aces in Fan Wars.',
-      color: '#F59E0B',
-      closesAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 3).toISOString(),
-      status: 'open',
-      teamOnly: 'aces',
-      seed: 'seed-aces-signed-jersey-v1'
-    },
-    {
-      id: 'draw-toss-coin',
-      title: 'Honorary Toss Coin Presenter',
-      prize: 'Walk out onto the Zayed Stadium pitch alongside the captains for the official toss ceremony!',
-      description: 'A once in a lifetime live broadcast moment.',
-      color: '#10B981',
-      closesAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 5).toISOString(),
-      status: 'open',
-      seed: 'seed-toss-presenter-2026'
-    }
-  ];
-
-  const approvalsData: Approval[] = [
-    {
-      id: 'ap-1',
-      kind: 'handle',
-      title: 'YouTube channel discovered for Yas Lions',
-      detail: 'Discovery Agent matched @YasLionsOfficial via official league press release.',
-      payload: { teamId: 'lions', platform: 'YouTube', handle: '@YasLionsOfficial', url: 'https://youtube.com/@YasLionsOfficial' },
-      status: 'pending',
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: 'ap-2',
-      kind: 'website',
-      title: 'Team website discovered for Desert Royal Champions',
-      detail: 'Verified domain https://desertroyalchampions.ae submitted by AI Discovery crawler.',
-      payload: { teamId: 'champions', website: 'https://desertroyalchampions.ae' },
-      status: 'pending',
-      createdAt: new Date().toISOString()
-    }
-  ];
-
-  const agentRunsData: AgentRun[] = [
-    {
-      id: 'run-init-discovery',
-      agent: 'Discovery',
-      startedAt: new Date(Date.now() - 1000 * 60 * 40).toISOString(),
-      finishedAt: new Date(Date.now() - 1000 * 60 * 38).toISOString(),
-      status: 'success',
-      summary: 'Crawled abudhabit10.com and 9 team handles. 14 verified links validated.',
-      items: 14
-    },
-    {
-      id: 'run-init-social',
-      agent: 'Social',
-      startedAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-      finishedAt: new Date(Date.now() - 1000 * 60 * 13).toISOString(),
-      status: 'success',
-      summary: 'Polled YouTube RSS, X, Instagram, Threads, TikTok, LinkedIn. Curated 12 active posts.',
-      items: 12
-    },
-    {
-      id: 'run-init-scores',
-      agent: 'Scores',
-      startedAt: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
-      finishedAt: new Date(Date.now() - 1000 * 60 * 4).toISOString(),
-      status: 'success',
-      summary: 'Sync match 1 live state. Current score: 84/2 in 6.4 overs.',
-      items: 1
-    }
-  ];
-
-  const initialUsers: User[] = [
-    {
-      id: 'user-admin',
-      email: 'solarastra.in@gmail.com',
-      name: 'Franchise Owner (SolarAstra)',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop',
-      provider: 'google',
-      teamId: 'aces',
-      teamChanges: 0,
-      points: 1500,
-      streak: 12,
-      lastCheckin: new Date().toISOString(),
-      badges: ['Franchise VIP', 'Founding Member', 'Predictor Master', 'Six Hunter'],
-      role: 'admin',
-      createdAt: new Date().toISOString()
-    }
-  ];
-
+/** A brand-new, empty store. Everything fans see is created by an admin in the Admin Console. */
+export function emptyStore(): AppStore {
   return {
-    users: initialUsers,
+    schemaVersion: SCHEMA_VERSION,
+    sessions: [],
+    passportInterest: [],
+    claimedBadges: {},
+    users: [],
     otpCodes: [],
-    teams: teamsData,
-    handles: handlesData,
-    feedItems: feedItemsData,
-    matches: matchesData,
-    contests: contestsData,
+    teams: [],
+    handles: [],
+    feedItems: [],
+    matches: [],
+    contests: [],
     contestEntries: [],
     fantasyTeams: [],
-    draws: drawsData,
+    draws: [],
     drawEntries: [],
-    forumThreads: generateInitialForumThreads(),
-    forumComments: generateInitialForumComments(),
-    notifications: [
-      {
-        id: 'notif-match-101',
-        title: '🏆 MATCH RESULT: Arabian Aces defeated Deccan Gladiators by 18 runs!',
-        body: 'Arabian Aces posted a mammoth 138/2 in 10 overs. Chris Gayle blasted 64*(22) with 7 massive sixes at Zayed Cricket Stadium!',
-        category: 'match_result',
-        targetAudience: 'all',
-        teamId: 'aces',
-        data: {
-          matchId: 'm-01',
-          url: '/matches',
-          scoreSummary: 'Aces 138/2 (10.0) beat Gladiators 120/5 (10.0)',
-          winnerName: 'Arabian Aces',
-          topScorer: 'Chris Gayle (64* off 22 balls, 7 sixes)'
-        },
-        priority: 'high',
-        createdAt: new Date(Date.now() - 3600 * 1000 * 3).toISOString(),
-        createdBy: 'Scores Automator',
-        recipientCount: 1420,
-        fcmSuccessCount: 1398,
-        fcmFailureCount: 22,
-        readBy: []
-      },
-      {
-        id: 'notif-contest-201',
-        title: '⏳ DEADLINE ALERT: Arabian Aces Sixes Frenzy locks in 30 minutes!',
-        body: 'Predictions close before the 1st ball at Zayed Cricket Stadium. Submit your sixes & top scorer picks now to win VIP Hospitality Box passes!',
-        category: 'contest_deadline',
-        targetAudience: 'logged_in',
-        teamId: 'aces',
-        data: {
-          contestId: 'c-01',
-          url: '/contests',
-          prize: 'VIP Hospitality Box Pass + Signed Jersey',
-          locksAt: new Date(Date.now() + 1800 * 1000).toISOString()
-        },
-        priority: 'high',
-        createdAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-        createdBy: 'Contest Scheduler',
-        recipientCount: 1105,
-        fcmSuccessCount: 1092,
-        fcmFailureCount: 13,
-        readBy: []
-      }
-    ],
+    forumThreads: [],
+    forumComments: [],
+    notifications: [],
     fcmTokens: [],
-    approvals: approvalsData,
-    agentRuns: agentRunsData,
-    fanSpaces: generateInitialFanSpaces(),
+    approvals: [],
+    agentRuns: [],
+    settings: defaultSettings(),
+    fanSpaces: [],
     fanSpaceBookings: [],
-    youthSchools: generateInitialYouthSchools(),
-    creatorPartners: generateInitialCreatorPartners(),
-    commentaryFeeds: generateInitialCommentaryFeeds(),
-    passportTiers: generateInitialPassportTiers(),
+    youthSchools: [],
+    creatorPartners: [],
+    commentaryFeeds: [],
+    passportTiers: [],
     proposalSettings: generateInitialProposalSettings(),
-    settings: {
-      adminEmails: ['solarastra.in@gmail.com'],
-      publicUserCountOverride: 18450,
-      tickerText: '⚡ ABU DHABI T10 2026 LIVE · ARABIAN ACES VS DECCAN GLADIATORS · PREDICT & WIN VIP PASSES ⚡',
-      curatorFeedId: process.env.CURATOR_FEED_ID || '',
-      curatorContainerId: 'curator-feed-default-feed-layout',
-      curatorFeedUuid: '',
-      curatorApiKey: process.env.CURATOR_API_KEY || '',
-      curatorHashtags: 'AbuDhabiT10,ArabianAces,T10League',
-      maxSocialPerPlatform: 5,
-      smtp: {
-        host: 'smtp.gmail.com',
-        port: 587,
-        user: '',
-        pass: '',
-        from: 'noreply@t10fanhub.com',
-        enabled: false
-      }
-    }
   };
+}
+
+// IDs of the demo content that older versions of this app generated automatically.
+const LEGACY_SEED_IDS = new Set([
+  'thread-proposal-1', 'thread-matchday-1', 'thread-fantasy-1', 'thread-fanspaces-1', 'thread-giveaways-1',
+  ...Array.from({ length: 10 }, (_, i) => `comment-${i + 1}`),
+  'user-admin',
+]);
+
+/**
+ * Upgrade a store written by an older version. v1 stores were pre-filled with invented
+ * teams, squads, posts, scores, notifications, fan spaces, creators etc. We keep what real
+ * people created (accounts, their forum posts, their team choice) and drop the demo content,
+ * so the admin can seed the official data from the Admin Console.
+ */
+function migrate(raw: any): AppStore {
+  const fresh = emptyStore();
+  if (raw && raw.schemaVersion >= SCHEMA_VERSION) {
+    // Fill any collections added since the store was written.
+    const merged: any = { ...fresh, ...raw };
+    merged.settings = { ...fresh.settings, ...(raw.settings || {}), smtp: { ...fresh.settings.smtp, ...(raw.settings?.smtp || {}) } };
+    return merged as AppStore;
+  }
+
+  console.log('[DB] Migrating legacy store to schema v2 (removing generated demo content).');
+  const out = fresh;
+  const legacySettings = raw?.settings || {};
+  out.settings = {
+    ...fresh.settings,
+    adminEmails: Array.isArray(legacySettings.adminEmails) ? legacySettings.adminEmails : [],
+    curatorFeedId: legacySettings.curatorFeedId || fresh.settings.curatorFeedId,
+    curatorContainerId: legacySettings.curatorContainerId || fresh.settings.curatorContainerId,
+    curatorFeedUuid: legacySettings.curatorFeedUuid || '',
+    curatorApiKey: legacySettings.curatorApiKey || fresh.settings.curatorApiKey,
+    maxSocialPerPlatform: Number(legacySettings.maxSocialPerPlatform) || 5,
+    smtp: { ...fresh.settings.smtp, ...(legacySettings.smtp || {}) },
+  };
+  if (out.settings.smtp.from === 'noreply@t10fanhub.com') out.settings.smtp.from = '';
+  if (out.settings.smtp.host === 'smtp.gmail.com' && !out.settings.smtp.user) out.settings.smtp.host = '';
+
+  const users: User[] = (raw?.users || []).filter((u: User) => !LEGACY_SEED_IDS.has(u.id));
+  const avatarIsStock = (a?: string) => !a || /unsplash\.com|dicebear\.com/.test(a);
+  out.users = users.map(u => ({ ...u, avatar: avatarIsStock(u.avatar) ? '' : u.avatar }));
+  const userIds = new Set(out.users.map(u => u.id));
+
+  out.forumThreads = (raw?.forumThreads || []).filter((t: ForumThread) => !LEGACY_SEED_IDS.has(t.id) && userIds.has(t.userId));
+  const threadIds = new Set(out.forumThreads.map(t => t.id));
+  out.forumComments = (raw?.forumComments || []).filter((c: ForumComment) => !LEGACY_SEED_IDS.has(c.id) && threadIds.has(c.threadId) && userIds.has(c.userId));
+  for (const t of out.forumThreads) {
+    t.commentsCount = out.forumComments.filter(c => c.threadId === t.id).length;
+    t.upvotedBy = (t.upvotedBy || []).filter(id => userIds.has(id));
+    t.upvotes = t.upvotedBy.length;
+    t.views = Math.max(0, Number(t.views) || 0);
+    t.userAvatar = avatarIsStock(t.userAvatar) ? '' : t.userAvatar;
+  }
+  for (const c of out.forumComments) {
+    c.upvotedBy = (c.upvotedBy || []).filter(id => userIds.has(id));
+    c.upvotes = c.upvotedBy.length;
+    c.userAvatar = avatarIsStock(c.userAvatar) ? '' : c.userAvatar;
+  }
+  out.fcmTokens = (raw?.fcmTokens || []).filter((t: FCMDeviceToken) => !String(t.token).startsWith('fcm_web_'));
+  if (raw?.proposalSettings) out.proposalSettings = raw.proposalSettings;
+  return out;
 }
 
 class DatabaseManager {
   private store: AppStore;
+  private saveTimer: NodeJS.Timeout | null = null;
 
   constructor() {
     this.store = this.load();
   }
 
   private load(): AppStore {
-    try {
-      if (!fs.existsSync(DATA_DIR)) {
-        fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    if (fs.existsSync(STORE_PATH)) {
+      const raw = JSON.parse(fs.readFileSync(STORE_PATH, 'utf-8'));
+      const migrated = migrate(raw);
+      if (!raw.schemaVersion || raw.schemaVersion < SCHEMA_VERSION) {
+        // Keep a backup of the legacy file before we overwrite it.
+        fs.copyFileSync(STORE_PATH, STORE_PATH + `.v${raw.schemaVersion || 1}.bak`);
+        this.writeNow(migrated);
       }
-      if (fs.existsSync(STORE_PATH)) {
-        const raw = fs.readFileSync(STORE_PATH, 'utf-8');
-        const parsed = JSON.parse(raw);
-        // Ensure admin user exists
-        if (!parsed.users.some((u: User) => u.email === 'solarastra.in@gmail.com')) {
-          parsed.users.push({
-            id: 'user-admin',
-            email: 'solarastra.in@gmail.com',
-            name: 'Franchise Owner (SolarAstra)',
-            avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop',
-            provider: 'google',
-            teamId: 'aces',
-            teamChanges: 0,
-            points: 1500,
-            streak: 12,
-            lastCheckin: new Date().toISOString(),
-            badges: ['Franchise VIP', 'Founding Member', 'Predictor Master', 'Six Hunter'],
-            role: 'admin',
-            createdAt: new Date().toISOString()
-          });
-        }
-        // Ensure forum threads exist
-        if (!parsed.forumThreads || parsed.forumThreads.length === 0) {
-          parsed.forumThreads = generateInitialForumThreads();
-        }
-        if (!parsed.forumComments || parsed.forumComments.length === 0) {
-          parsed.forumComments = generateInitialForumComments();
-        }
-        if (!parsed.notifications || parsed.notifications.length === 0) {
-          parsed.notifications = [
-            {
-              id: 'notif-match-101',
-              title: '🏆 MATCH RESULT: Arabian Aces defeated Deccan Gladiators by 18 runs!',
-              body: 'Arabian Aces posted a mammoth 138/2 in 10 overs. Chris Gayle blasted 64*(22) with 7 massive sixes at Zayed Cricket Stadium!',
-              category: 'match_result',
-              targetAudience: 'all',
-              teamId: 'aces',
-              data: {
-                matchId: 'm-01',
-                url: '/matches',
-                scoreSummary: 'Aces 138/2 (10.0) beat Gladiators 120/5 (10.0)',
-                winnerName: 'Arabian Aces',
-                topScorer: 'Chris Gayle (64* off 22 balls, 7 sixes)'
-              },
-              priority: 'high',
-              createdAt: new Date(Date.now() - 3600 * 1000 * 3).toISOString(),
-              createdBy: 'Scores Automator',
-              recipientCount: 1420,
-              fcmSuccessCount: 1398,
-              fcmFailureCount: 22,
-              readBy: []
-            },
-            {
-              id: 'notif-contest-201',
-              title: '⏳ DEADLINE ALERT: Arabian Aces Sixes Frenzy locks in 30 minutes!',
-              body: 'Predictions close before the 1st ball at Zayed Cricket Stadium. Submit your sixes & top scorer picks now to win VIP Hospitality Box passes!',
-              category: 'contest_deadline',
-              targetAudience: 'logged_in',
-              teamId: 'aces',
-              data: {
-                contestId: 'c-01',
-                url: '/contests',
-                prize: 'VIP Hospitality Box Pass + Signed Jersey',
-                locksAt: new Date(Date.now() + 1800 * 1000).toISOString()
-              },
-              priority: 'high',
-              createdAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-              createdBy: 'Contest Scheduler',
-              recipientCount: 1105,
-              fcmSuccessCount: 1092,
-              fcmFailureCount: 13,
-              readBy: []
-            }
-          ];
-        }
-        if (!parsed.fcmTokens) {
-          parsed.fcmTokens = [];
-        }
-        if (!parsed.fanSpaces || parsed.fanSpaces.length === 0) {
-          parsed.fanSpaces = generateInitialFanSpaces();
-        }
-        if (!parsed.fanSpaceBookings) {
-          parsed.fanSpaceBookings = [];
-        }
-        if (!parsed.youthSchools || parsed.youthSchools.length === 0) {
-          parsed.youthSchools = generateInitialYouthSchools();
-        }
-        if (!parsed.creatorPartners || parsed.creatorPartners.length === 0) {
-          parsed.creatorPartners = generateInitialCreatorPartners();
-        }
-        if (!parsed.commentaryFeeds || parsed.commentaryFeeds.length === 0) {
-          parsed.commentaryFeeds = generateInitialCommentaryFeeds();
-        }
-        if (!parsed.passportTiers || parsed.passportTiers.length === 0) {
-          parsed.passportTiers = generateInitialPassportTiers();
-        }
-        if (!parsed.proposalSettings) {
-          parsed.proposalSettings = generateInitialProposalSettings();
-        }
-
-        // Ensure store has the 6 officially announced teams:
-        // UAE Bulls, United Tigers, Yas Lions, Arabian Aces, Emirates Eagles, Desert Royal Champions
-        const announced = getAnnouncedTeams();
-        const hasAllAnnounced = announced.every(at => 
-          parsed.teams && parsed.teams.some((t: any) => t.name.toLowerCase() === at.name.toLowerCase())
-        );
-        if (!hasAllAnnounced || !parsed.teams || parsed.teams.length !== 6) {
-          parsed.teams = announced;
-          this.saveDirect(parsed);
-        }
-
-        return parsed;
-      }
-    } catch (e) {
-      console.error('Failed to load store, initializing default:', e);
+      return migrated;
     }
-    const fresh = generateInitialStore();
-    this.saveDirect(fresh);
+    const fresh = emptyStore();
+    this.writeNow(fresh);
     return fresh;
   }
 
-  private saveDirect(store: AppStore) {
-    try {
-      if (!fs.existsSync(DATA_DIR)) {
-        fs.mkdirSync(DATA_DIR, { recursive: true });
-      }
-      fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), 'utf-8');
-    } catch (e) {
-      console.error('Failed to save store:', e);
-    }
+  private writeNow(store: AppStore) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    const tmp = STORE_PATH + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(store), 'utf-8');
+    fs.renameSync(tmp, STORE_PATH); // atomic replace
   }
 
   public get(): AppStore {
     return this.store;
   }
 
+  /** Persist soon (coalesces bursts of writes). */
   public save() {
-    this.saveDirect(this.store);
+    if (this.saveTimer) return;
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
+      this.flush();
+    }, 150);
   }
 
-  public resetDemo() {
-    this.store = generateInitialStore();
-    this.save();
-    return this.store;
+  public flush() {
+    if (this.saveTimer) { clearTimeout(this.saveTimer); this.saveTimer = null; }
+    try {
+      this.writeNow(this.store);
+    } catch (e) {
+      console.error('[DB] Failed to save store:', e);
+    }
   }
 
   public resetProposal(): ProposalSettings {
@@ -2033,3 +706,6 @@ class DatabaseManager {
 }
 
 export const db = new DatabaseManager();
+for (const sig of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(sig, () => { db.flush(); process.exit(0); });
+}

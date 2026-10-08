@@ -5,26 +5,34 @@ export interface RouteState {
 }
 
 export function parsePath(pathname: string): RouteState {
-  // Normalize path
-  const cleanPath = pathname.split('?')[0].split('#')[0].replace(/\/+$/, '') || '/';
+  // Normalize: remove trailing slash except root
+  let clean = pathname.trim();
+  if (clean.length > 1 && clean.endsWith('/')) {
+    clean = clean.slice(0, -1);
+  }
 
-  if (cleanPath === '/' || cleanPath === '/home') {
+  const parts = clean.split('/').filter(Boolean);
+  if (parts.length === 0) {
     return { tab: 'home', param: null, path: '/' };
   }
 
-  const parts = cleanPath.split('/').filter(Boolean);
-  const first = parts[0];
+  const first = parts[0].toLowerCase();
 
   if (first === 'matches') {
     return { tab: 'matches', param: null, path: '/matches' };
   }
 
   if (first === 'teams') {
-    const teamId = parts[1] || null;
+    let teamId: string | null = parts[1] || null;
+    try {
+      teamId = teamId ? decodeURIComponent(teamId) : null;
+    } catch {
+      teamId = null;
+    }
     return { 
       tab: 'teams', 
       param: teamId, 
-      path: teamId ? `/teams/${teamId}` : '/teams' 
+      path: teamId ? `/teams/${encodeURIComponent(teamId)}` : '/teams' 
     };
   }
 
@@ -32,43 +40,43 @@ export function parsePath(pathname: string): RouteState {
     return { tab: 'social', param: null, path: '/social' };
   }
 
-  if (first === 'contests' || first === 'fantasy') {
+  if (first === 'contests') {
     return { tab: 'contests', param: null, path: '/contests' };
   }
 
-  if (first === 'draws' || first === 'rewards' || first === 'prizes') {
+  if (first === 'draws') {
     return { tab: 'draws', param: null, path: '/draws' };
   }
 
-  if (first === 'leaderboard' || first === 'fanwars') {
+  if (first === 'leaderboard') {
     return { tab: 'leaderboard', param: null, path: '/leaderboard' };
   }
 
-  if (first === 'forum' || first === 'discussions') {
+  if (first === 'profile' || first === 'trophies') {
+    return { tab: 'profile', param: null, path: '/profile' };
+  }
+
+  if (first === 'forum' || first === 'commons') {
     return { tab: 'forum', param: null, path: '/forum' };
   }
 
-  if (first === 'fanspaces' || first === 'fan-spaces') {
+  if (first === 'fanspaces' || first === 'spaces') {
     return { tab: 'fanspaces', param: null, path: '/fanspaces' };
   }
 
-  if (first === 'growth' || first === 'youth' || first === 'catalysts') {
+  if (first === 'growth' || first === 'youth') {
     return { tab: 'growth', param: null, path: '/growth' };
   }
 
+  // Routable, but App.tsx only renders it for admins.
   if (first === 'proposal' || first === 'deck') {
     return { tab: 'proposal', param: null, path: '/proposal' };
   }
 
-  if (first === 'profile' || first === 'badges') {
-    return { tab: 'profile', param: null, path: '/profile' };
-  }
-
-  if (first === 'admin') {
+  if (first === 'admin' || first === 'portal') {
     return { tab: 'admin', param: null, path: '/admin' };
   }
 
-  // Default fallback
   return { tab: 'home', param: null, path: '/' };
 }
 
@@ -79,7 +87,7 @@ export function getPathForTab(tab: string, param?: string | null): string {
     case 'matches':
       return '/matches';
     case 'teams':
-      return param ? `/teams/${param}` : '/teams';
+      return param ? `/teams/${encodeURIComponent(param)}` : '/teams';
     case 'social':
       return '/social';
     case 'contests':
@@ -88,6 +96,8 @@ export function getPathForTab(tab: string, param?: string | null): string {
       return '/draws';
     case 'leaderboard':
       return '/leaderboard';
+    case 'profile':
+      return '/profile';
     case 'forum':
       return '/forum';
     case 'fanspaces':
@@ -96,8 +106,6 @@ export function getPathForTab(tab: string, param?: string | null): string {
       return '/growth';
     case 'proposal':
       return '/proposal';
-    case 'profile':
-      return '/profile';
     case 'admin':
       return '/admin';
     default:

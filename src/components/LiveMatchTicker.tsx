@@ -5,7 +5,7 @@ import { Play, Sparkles, RefreshCw, Trophy, Clock, CheckCircle2 } from 'lucide-r
 interface LiveMatchTickerProps {
   matches: Match[];
   teams: Team[];
-  onSimulateBall: (matchId: string) => Promise<void>;
+  onSimulateBall?: (matchId: string) => Promise<void>;
   onSelectMatch?: (match: Match) => void;
 }
 
@@ -21,7 +21,7 @@ export const LiveMatchTicker: React.FC<LiveMatchTickerProps> = ({
   const getTeam = (teamId: string) => teams.find(t => t.id === teamId);
 
   const handleSimulate = async () => {
-    if (!liveMatch) return;
+    if (!liveMatch || !onSimulateBall) return;
     setSimulating(true);
     try {
       await onSimulateBall(liveMatch.id);
@@ -64,7 +64,15 @@ export const LiveMatchTicker: React.FC<LiveMatchTickerProps> = ({
           <span className="hidden sm:inline-block text-xs font-medium text-slate-400">
             {liveMatch.venue}
           </span>
-          {liveMatch.status === 'live' && (
+          {onSelectMatch && (
+            <button
+              onClick={() => onSelectMatch(liveMatch)}
+              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs border border-slate-700/80 transition-colors flex items-center gap-1"
+            >
+              <span>Scorecard & Toss →</span>
+            </button>
+          )}
+          {liveMatch.status === 'live' && onSimulateBall && (
             <button
               onClick={handleSimulate}
               disabled={simulating}
@@ -163,7 +171,15 @@ export const LiveMatchTicker: React.FC<LiveMatchTickerProps> = ({
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {onSelectMatch && (
+            <button
+              onClick={() => onSelectMatch(liveMatch)}
+              className="text-[11px] text-amber-400 hover:text-amber-300 font-bold hover:underline transition-colors flex items-center gap-1"
+            >
+              View Full Scorecard & Toss →
+            </button>
+          )}
           <span className="text-[11px] text-amber-400 font-semibold flex items-center gap-1">
             <Sparkles className="w-3 h-3" /> Predictive contest open
           </span>

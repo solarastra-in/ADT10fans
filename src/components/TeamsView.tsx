@@ -1,7 +1,8 @@
 import React from 'react';
-import { Team, SocialHandle, FeedItem, User } from '../types';
-import { X, ExternalLink, Shield, Trophy, Users, Flame, CheckCircle, Sparkles } from 'lucide-react';
+import { Team, SocialHandle, FeedItem, User, Match } from '../types';
+import { X, ExternalLink, Shield, Trophy, Users, Flame, CheckCircle, Sparkles, TrendingUp } from 'lucide-react';
 import { SocialCuratorWall } from './SocialCuratorWall';
+import { TeamWinLossGraph } from './TeamWinLossGraph';
 
 interface TeamDetailModalProps {
   team: Team | null;
@@ -11,6 +12,7 @@ interface TeamDetailModalProps {
   user: User | null;
   onSelectTeam: (teamId: string) => void;
   teams: Team[];
+  matches?: Match[];
 }
 
 export const TeamDetailModal: React.FC<TeamDetailModalProps> = ({
@@ -20,7 +22,8 @@ export const TeamDetailModal: React.FC<TeamDetailModalProps> = ({
   feedItems,
   user,
   onSelectTeam,
-  teams
+  teams,
+  matches = []
 }) => {
   if (!team) return null;
 
@@ -152,6 +155,15 @@ export const TeamDetailModal: React.FC<TeamDetailModalProps> = ({
           </div>
         </div>
 
+        {/* Recharts-Based Win/Loss Trend Graph */}
+        <div className="mb-8">
+          <TeamWinLossGraph
+            team={team}
+            matches={matches}
+            teams={teams}
+          />
+        </div>
+
         {/* Squad Roster */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-3">
@@ -214,6 +226,7 @@ interface TeamsViewProps {
   onSelectTeam: (teamId: string) => void;
   selectedTeamId?: string | null;
   onNavigateTeam?: (teamId: string | null) => void;
+  matches?: Match[];
 }
 
 export const TeamsView: React.FC<TeamsViewProps> = ({
@@ -223,7 +236,8 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
   user,
   onSelectTeam,
   selectedTeamId,
-  onNavigateTeam
+  onNavigateTeam,
+  matches = []
 }) => {
   const [selectedTeamModal, setSelectedTeamModal] = React.useState<Team | null>(null);
 
@@ -375,6 +389,13 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
           </div>
         </div>
 
+        {/* Franchise Win/Loss Trend Graph */}
+        <TeamWinLossGraph
+          team={dedicatedTeam}
+          matches={matches}
+          teams={teams}
+        />
+
         {/* Squad Roster */}
         <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800">
           <div className="flex items-center justify-between mb-4">
@@ -432,16 +453,30 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-3">
         <div>
-          <span className="text-xs font-black uppercase tracking-wider text-amber-400">
-            Abu Dhabi T10 League Franchises
-          </span>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-xs font-black uppercase tracking-wider text-amber-400">
+              Abu Dhabi T10 League 2026 Franchises
+            </span>
+            <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+              <CheckCircle className="w-3 h-3" /> Cricbuzz Series 13307 Verified
+            </span>
+          </div>
           <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-            Teams & Official Social Handles
+            Teams & Official Squad Rosters
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Browse all 6 officially announced franchises ({teams.length} teams), explore player rosters, and inspect consolidated official handles.
+            Browse all 6 official Abu Dhabi T10 League franchises with confirmed icon stars, direct platinum signings, draft acquisitions, and verified social media channels.
           </p>
         </div>
+        <a
+          href="https://www.cricbuzz.com/cricket-series/13307/abu-dhabi-t10-league-2026/squads"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-amber-400/50 text-slate-300 hover:text-amber-300 text-xs font-semibold rounded-xl transition-colors self-start md:self-end"
+        >
+          <span>View on Cricbuzz</span>
+          <ExternalLink className="w-3.5 h-3.5" />
+        </a>
       </div>
 
       {/* Grid of Teams */}
@@ -524,7 +559,10 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
 
               {/* Action link */}
               <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs">
-                <span className="text-slate-400">View Squad & Feeds</span>
+                <span className="text-slate-400 flex items-center gap-1.5">
+                  <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Win/Loss Trend & Squad</span>
+                </span>
                 <span className="text-amber-400 font-bold group-hover:translate-x-1 transition-transform inline-flex items-center gap-1">
                   Explore →
                 </span>
@@ -543,6 +581,7 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
         user={user}
         onSelectTeam={onSelectTeam}
         teams={teams}
+        matches={matches}
       />
     </div>
   );

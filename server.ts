@@ -1,359 +1,335 @@
-import express, { Request, Response } from 'express';
+import 'dotenv/config';
+import express, { NextFunction, Request, Response } from 'express';
 import path from 'path';
+import fs from 'fs';
 import crypto from 'crypto';
-import dotenv from 'dotenv';
-import { db, User, OtpCode, SocialHandle, FeedItem, Match, Contest, PrizeDraw, NotificationItem, FCMDeviceToken } from './server/db';
-import { 
-  runDiscoveryAgent, 
-  runSocialAgent, 
-  runNewsAgent, 
-  runScoresAgent, 
-  runContentAgent, 
-  runOpsAgent,
-  seedAnnouncedTeamsAndSearch
-} from './server/agents';
-import { syncRealSocialFeeds } from './server/realFeedFetcher';
+import { db, Contest, Match, NotificationItem, PrizeDraw, Team, Player, FeedItem, SocialHandle, User, defaultSettings } from './server/db';
+import {
+  IS_PROD, FIREBASE_PROJECT_ID, getAuthUser, requireAdmin, requireUser, upsertUser, createSession, revokeSession,
+  verifyFirebaseIdToken, rateLimit, emailOtpAvailable, sendOtpEmail, hashOtp, timingSafeEqualHex, publicUser, adminEmails,
+} from './server/auth';
+import { seedOfficialTeams } from './server/seedOfficial';
+import { syncAllFeeds } from './server/feeds';
+import { pushServerConfigured, sendFcm } from './server/push';
+import { runDiscoveryAgent, runSocialAgent, runNewsAgent, runScoresAgent, runContentAgent, runOpsAgent } from './server/agents';
 import { computeUserBadges } from './server/badges';
-import { 
-  generateMarketingContent, 
-  chatWithGemini, 
-  searchGroundingCricket, 
-  transcribeAudioVoice, 
-  generateStadiumMusic, 
-  generateVeoVideo 
-} from './server/gemini';
-
-dotenv.config();
+import { geminiConfigured, chatWithGemini, searchGroundingCricket, generateMarketingContent, transcribeAudioVoice } from './server/gemini';
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
-app.use(express.json());
-
-// Session helper (simple auth token)
-function getAuthUser(req: Request): User | null {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) return null;
-  const token = authHeader.replace(/^Bearer\s+/, '').trim();
-  const store = db.get();
-  return store.users.find(u => u.id === token) || null;
-}
-
-function requireAdmin(req: Request, res: Response, next: () => void) {
-  const user = getAuthUser(req);
-  if (!user || user.role !== 'admin') {
-    return res.status(403).json({ error: 'Unauthorized: Admin access required (solarastra.in@gmail.com)' });
-  }
+app.set('trust proxy', true);
+app.disable('x-powered-by');
+app.use(express.json({ limit: '8mb' }));
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), geolocation=(), microphone=(self)');
+  if (req.path.startsWith('/api/')) res.setHeader('Cache-Control', 'no-store');
   next();
-}
-
-// ----------------- AUTH & PROFILE ENDPOINTS -----------------
-app.get('/api/me', (req, res) => {
-  const user = getAuthUser(req);
-  res.json({ user });
 });
 
-// Full profile with computed achievement badges, fantasy metrics, and streak status
-app.get('/api/me/profile', (req, res) => {
-  const user = getAuthUser(req);
-  if (!user) return res.status(401).json({ error: 'Please sign in to view your fan profile' });
+// ---------- helpers ----------
+type Handler = (req: Request, res: Response, next: NextFunction) => any;
+const wrap = (fn: Handler): Handler => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
+const str = (v: unknown, max = 500) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+const num = (v: unknown, fallback = 0) => (Number.isFinite(Number(v)) ? Number(v) : fallback);
+const isHttpsUrl = (v: unknown) => {
+  if (typeof v !== 'string' || !v) return false;
+  try {
+    return new URL(v).protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+/** '' stays '' (field cleared); otherwise must be https, else null (= invalid) */
+const optionalUrl = (v: unknown): string | null => {
+  const s = str(v, 2000);
+  if (!s) return '';
+  return isHttpsUrl(s) ? s : null;
+};
+const isoOrEmpty = (v: unknown) => {
+  const s = str(v, 40);
+  if (!s) return '';
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? '' : d.toISOString();
+};
+const newId = (prefix: string) => `${prefix}-${crypto.randomUUID().replace(/-/g, '').slice(0, 10)}`;
+const bad = (res: Response, error: string, code = 400) => res.status(code).json({ error });
+const userOf = (req: Request) => (req as any).user as User;
+
+function brand() {
+  return db.get().settings.brandName || 'ADT10 Fans';
+}
+
+// ---------- public config ----------
+app.get('/api/health', (_req, res) => res.json({ ok: true }));
+
+app.get('/api/config', (_req, res) => {
+  const s = db.get();
+  const st = s.settings;
+  res.json({
+    config: {
+      brandName: st.brandName || 'ADT10 Fans',
+      tagline: st.tagline || '',
+      copyrightHolder: st.copyrightHolder || 'Azlir Sports',
+      seasonLabel: st.seasonLabel,
+      seasonStart: st.seasonStart,
+      seasonEnd: st.seasonEnd,
+      venue: st.venue,
+      tickerText: st.tickerText,
+      curatorFeedId: st.curatorFeedId,
+      curatorContainerId: st.curatorContainerId,
+      maxSocialPerPlatform: st.maxSocialPerPlatform || 5,
+      features: {
+        googleSignIn: Boolean(FIREBASE_PROJECT_ID),
+        emailOtp: emailOtpAvailable(),
+        gemini: geminiConfigured(),
+        pushNotifications: Boolean(process.env.FCM_VAPID_KEY),
+      },
+      fcmVapidKey: process.env.FCM_VAPID_KEY || '',
+      stats: {
+        teams: s.teams.length,
+        fans: s.users.length,
+        handles: s.handles.filter(h => h.status === 'verified').length,
+        matches: s.matches.length,
+        openContests: s.contests.filter(c => c.status === 'open').length,
+        openDraws: s.draws.filter(d => drawStatus(d) === 'open').length,
+      },
+    },
+  });
+});
+
+// ---------- auth & profile ----------
+app.get('/api/me', (req, res) => res.json({ user: getAuthUser(req) }));
+
+app.get('/api/me/profile', requireUser, (req, res) => {
+  const user = userOf(req);
   const store = db.get();
   const { badges, stats } = computeUserBadges(user, store);
-
-  // Sync unlocked badge names into user.badges
-  const unlockedNames = badges.filter(b => b.unlocked).map(b => b.name);
-  for (const name of unlockedNames) {
-    if (!user.badges.includes(name)) {
-      user.badges.push(name);
-    }
-  }
+  for (const b of badges) if (b.unlocked && !user.badges.includes(b.name)) user.badges.push(b.name);
   user.stats = stats;
   db.save();
-
   res.json({ user, badges, stats });
 });
 
-app.post('/api/me/claim-badge', (req, res) => {
-  const user = getAuthUser(req);
-  if (!user) return res.status(401).json({ error: 'Please sign in' });
-  const { badgeId } = req.body;
+app.post('/api/me/claim-badge', requireUser, (req, res) => {
+  const user = userOf(req);
   const store = db.get();
   const { badges } = computeUserBadges(user, store);
-  const target = badges.find(b => b.id === badgeId);
-
-  if (!target || !target.unlocked) {
-    return res.status(400).json({ error: 'Badge not unlocked yet' });
-  }
-
-  const claimKey = `claimed:${user.id}:${badgeId}`;
-  const anyStore = store as any;
-  if (!anyStore.claimedBadges) anyStore.claimedBadges = {};
-  if (anyStore.claimedBadges[claimKey]) {
-    return res.status(400).json({ error: 'Reward already claimed for this badge' });
-  }
-
-  anyStore.claimedBadges[claimKey] = true;
+  const target = badges.find(b => b.id === str(req.body?.badgeId, 80));
+  if (!target || !target.unlocked) return bad(res, 'Badge not unlocked yet');
+  const key = `claimed:${user.id}:${target.id}`;
+  if (store.claimedBadges[key]) return bad(res, 'Reward already claimed for this badge');
+  store.claimedBadges[key] = true;
   user.points += target.rewardPoints;
   db.save();
-
   res.json({ success: true, pointsAdded: target.rewardPoints, user });
 });
 
-// Update user profile info (name, avatar)
-app.post('/api/me/profile/update', (req, res) => {
-  const user = getAuthUser(req);
-  if (!user) return res.status(401).json({ error: 'Please sign in' });
-  const { name, avatar } = req.body;
-  if (name && typeof name === 'string' && name.trim()) {
-    user.name = name.trim().slice(0, 40);
+app.post('/api/me/profile/update', requireUser, (req, res) => {
+  const user = userOf(req);
+  const name = str(req.body?.name, 40);
+  if (name) user.name = name;
+  if (req.body?.avatar !== undefined) {
+    const avatar = optionalUrl(req.body.avatar);
+    if (avatar === null) return bad(res, 'Profile picture must be an https:// image link');
+    user.avatar = avatar;
   }
-  if (avatar && typeof avatar === 'string' && avatar.trim()) {
-    user.avatar = avatar.trim();
-  }
+  // Keep forum author details in sync.
+  const store = db.get();
+  for (const t of store.forumThreads) if (t.userId === user.id) { t.userName = user.name; t.userAvatar = user.avatar; }
+  for (const c of store.forumComments) if (c.userId === user.id) { c.userName = user.name; c.userAvatar = user.avatar; }
   db.save();
   res.json({ success: true, user });
 });
 
-// Google Login Simulation & Verification
-app.post('/api/auth/google', (req, res) => {
-  const { email, name, avatar } = req.body;
-  if (!email) {
-    return res.status(400).json({ error: 'Email required' });
+app.post('/api/auth/google', rateLimit('google', 20, 60_000), wrap(async (req, res) => {
+  const idToken = str(req.body?.idToken, 5000);
+  if (!idToken) return bad(res, 'Missing Google ID token');
+  let profile;
+  try {
+    profile = await verifyFirebaseIdToken(idToken);
+  } catch (e: any) {
+    return bad(res, e?.message?.includes('not configured') ? e.message : 'Google sign-in could not be verified. Please try again.', 401);
   }
+  const user = upsertUser(profile.email, 'google', { name: profile.name, avatar: profile.picture });
+  res.json({ token: createSession(user.id), user });
+}));
 
-  const cleanEmail = String(email).trim().toLowerCase();
+app.post('/api/auth/otp/request', rateLimit('otp-req', 5, 10 * 60_000), wrap(async (req, res) => {
+  const email = str(req.body?.email, 200).toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return bad(res, 'Please enter a valid email address');
+  if (!emailOtpAvailable()) return bad(res, 'Email sign-in is not available right now. Please use Google sign-in.', 503);
   const store = db.get();
-  let user = store.users.find(u => u.email.toLowerCase() === cleanEmail);
-
-  const isAdmin = cleanEmail === 'solarastra.in@gmail.com' || store.settings.adminEmails.includes(cleanEmail);
-
-  if (!user) {
-    user = {
-      id: 'usr_' + crypto.randomUUID().slice(0, 10),
-      email: cleanEmail,
-      name: name || cleanEmail.split('@')[0],
-      avatar: avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${cleanEmail}`,
-      provider: 'google',
-      teamId: null,
-      teamChanges: 0,
-      points: isAdmin ? 1500 : 100, // 100 welcome bonus
-      streak: 1,
-      badges: isAdmin ? ['Franchise VIP', 'Founding Member'] : ['Rookie Fan'],
-      role: isAdmin ? 'admin' : 'fan',
-      createdAt: new Date().toISOString()
-    };
-    store.users.push(user);
-  } else if (isAdmin && user.role !== 'admin') {
-    user.role = 'admin';
-  }
-
-  db.save();
-  res.json({ token: user.id, user });
-});
-
-// Request Email OTP
-app.post('/api/auth/otp/request', (req, res) => {
-  const { email } = req.body;
-  if (!email || !email.includes('@')) {
-    return res.status(400).json({ error: 'Valid email required' });
-  }
-
-  const cleanEmail = String(email).trim().toLowerCase();
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
-  const codeHash = crypto.createHash('sha256').update(code).digest('hex');
-
-  const store = db.get();
-  const otpRecord: OtpCode = {
-    id: 'otp_' + crypto.randomUUID().slice(0, 8),
-    email: cleanEmail,
-    codeHash,
-    plainCodeForDev: code, // visible in on-screen notification / response in dev
-    expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+  const recent = store.otpCodes.filter(o => o.email === email && Date.now() - +new Date(o.createdAt) < 60_000);
+  if (recent.length) return bad(res, 'A code was just sent. Please wait a minute before requesting another.', 429);
+  const code = crypto.randomInt(100000, 1000000).toString();
+  store.otpCodes = store.otpCodes.filter(o => +new Date(o.expiresAt) > Date.now() && !o.used).slice(0, 500);
+  store.otpCodes.unshift({
+    id: newId('otp'),
+    email,
+    codeHash: hashOtp(email, code),
+    expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
     attempts: 0,
     used: false,
-    createdAt: new Date().toISOString()
-  };
-
-  store.otpCodes.unshift(otpRecord);
-  db.save();
-
-  console.log(`[AUTH OTP] 6-digit verification code for ${cleanEmail}: ${code}`);
-
-  res.json({
-    success: true,
-    message: `OTP sent to ${cleanEmail}. Enter code to verify.`,
-    devCode: code // Exposed for seamless testing & instant UX
+    createdAt: new Date().toISOString(),
   });
-});
-
-// Verify Email OTP
-app.post('/api/auth/otp/verify', (req, res) => {
-  const { email, code } = req.body;
-  if (!email || !code) {
-    return res.status(400).json({ error: 'Email and code are required' });
-  }
-
-  const cleanEmail = String(email).trim().toLowerCase();
-  const store = db.get();
-  const codeHash = crypto.createHash('sha256').update(String(code).trim()).digest('hex');
-
-  const validOtp = store.otpCodes.find(o => 
-    o.email === cleanEmail && 
-    o.codeHash === codeHash && 
-    !o.used && 
-    new Date(o.expiresAt) > new Date()
-  );
-
-  if (!validOtp) {
-    return res.status(400).json({ error: 'Invalid or expired 6-digit OTP code' });
-  }
-
-  validOtp.used = true;
-
-  const isAdmin = cleanEmail === 'solarastra.in@gmail.com' || store.settings.adminEmails.includes(cleanEmail);
-  let user = store.users.find(u => u.email.toLowerCase() === cleanEmail);
-
-  if (!user) {
-    user = {
-      id: 'usr_' + crypto.randomUUID().slice(0, 10),
-      email: cleanEmail,
-      name: cleanEmail.split('@')[0],
-      avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${cleanEmail}`,
-      provider: 'email',
-      teamId: null,
-      teamChanges: 0,
-      points: isAdmin ? 1500 : 100,
-      streak: 1,
-      badges: isAdmin ? ['Franchise VIP', 'Founding Member'] : ['Rookie Fan'],
-      role: isAdmin ? 'admin' : 'fan',
-      createdAt: new Date().toISOString()
-    };
-    store.users.push(user);
-  } else if (isAdmin && user.role !== 'admin') {
-    user.role = 'admin';
-  }
-
   db.save();
-  res.json({ token: user.id, user });
-});
+  let mode: 'sent' | 'dev';
+  try {
+    mode = await sendOtpEmail(email, code, brand());
+  } catch (e: any) {
+    console.error('[OTP] email send failed:', e?.message);
+    return bad(res, 'We could not send the email. Please try again or use Google sign-in.', 502);
+  }
+  if (mode === 'dev') console.log(`[OTP][dev] code for ${email}: ${code}`);
+  res.json({ success: true, message: `We sent a 6-digit code to ${email}.`, ...(mode === 'dev' ? { devCode: code } : {}) });
+}));
 
-// ----------------- TEAMS & SQUADS -----------------
-app.get('/api/teams', (req, res) => {
+app.post('/api/auth/otp/verify', rateLimit('otp-verify', 20, 10 * 60_000), (req, res) => {
+  const email = str(req.body?.email, 200).toLowerCase();
+  const code = str(req.body?.code, 10).replace(/\D/g, '');
+  if (!email || code.length !== 6) return bad(res, 'Enter the 6-digit code from your email');
   const store = db.get();
-  res.json({ teams: store.teams });
-});
-
-// Seed the 6 announced teams (UAE Bulls, United Tigers, Yas Lions, Arabian Aces, Emirates Eagles, Desert Royal Champions), search their handles dynamically via AI and pull them into the portal
-app.post('/api/teams/seed-announced', async (req, res) => {
-  try {
-    const result = await seedAnnouncedTeamsAndSearch();
-    res.json({
-      success: true,
-      teams: result.teams,
-      handles: result.handles,
-      feedItems: result.feedItems,
-      discoveredCount: result.discoveredCount,
-      summary: result.summary
-    });
-  } catch (err: any) {
-    res.status(500).json({ error: err?.message || 'Failed to seed announced teams and search handles' });
+  const otp = store.otpCodes.find(o => o.email === email && !o.used && +new Date(o.expiresAt) > Date.now());
+  if (!otp) return bad(res, 'That code has expired. Please request a new one.');
+  otp.attempts++;
+  if (otp.attempts > 5) {
+    otp.used = true;
+    db.save();
+    return bad(res, 'Too many attempts. Please request a new code.', 429);
   }
-});
-
-app.post('/api/admin/teams/seed-and-search', requireAdmin, async (req, res) => {
-  try {
-    const result = await seedAnnouncedTeamsAndSearch();
-    res.json({
-      success: true,
-      teams: result.teams,
-      handles: result.handles,
-      feedItems: result.feedItems,
-      discoveredCount: result.discoveredCount,
-      summary: result.summary
-    });
-  } catch (err: any) {
-    res.status(500).json({ error: err?.message || 'Failed to seed announced teams and search handles' });
+  if (!timingSafeEqualHex(otp.codeHash, hashOtp(email, code))) {
+    db.save();
+    return bad(res, 'That code is not correct');
   }
+  otp.used = true;
+  const user = upsertUser(email, 'email');
+  res.json({ token: createSession(user.id), user });
 });
 
+app.post('/api/auth/logout', (req, res) => {
+  revokeSession(req);
+  res.json({ success: true });
+});
+
+// ---------- teams ----------
+app.get('/api/teams', (_req, res) => res.json({ teams: [...db.get().teams].sort((a, b) => a.sort - b.sort) }));
+
+app.post('/api/admin/teams/seed-official', requireAdmin, (req, res) => {
+  res.json({ success: true, ...seedOfficialTeams(Boolean(req.body?.overwrite)) });
+});
+
+const ROLES: Player['role'][] = ['batter', 'bowler', 'allrounder', 'wicketkeeper'];
 app.post('/api/teams', requireAdmin, (req, res) => {
-  const teamData = req.body;
+  const b = req.body || {};
   const store = db.get();
-  const existingIdx = store.teams.findIndex(t => t.id === teamData.id);
-
-  if (existingIdx >= 0) {
-    store.teams[existingIdx] = { ...store.teams[existingIdx], ...teamData };
-  } else {
-    store.teams.push({
-      id: teamData.id || 'team-' + crypto.randomUUID().slice(0, 6),
-      name: teamData.name || 'New Franchise',
-      short: teamData.short || 'NEW',
-      color: teamData.color || '#E8B04A',
-      secondaryColor: teamData.secondaryColor || '#1E293B',
-      home: teamData.home || 'Zayed Cricket Stadium, Abu Dhabi',
-      iconPlayer: teamData.iconPlayer || 'TBD',
-      website: teamData.website,
-      sort: store.teams.length + 1,
-      squad: teamData.squad || []
-    });
-  }
+  const name = str(b.name, 80);
+  if (!name) return bad(res, 'Team name is required');
+  const id = str(b.id, 60) || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  const website = optionalUrl(b.website);
+  const logo = optionalUrl(b.logo);
+  if (website === null) return bad(res, 'Website must be an https:// link');
+  if (logo === null) return bad(res, 'Logo must be an https:// image link');
+  const color = /^#[0-9a-f]{6}$/i.test(str(b.color, 7)) ? str(b.color, 7) : '#D9A92E';
+  const secondaryColor = /^#[0-9a-f]{6}$/i.test(str(b.secondaryColor, 7)) ? str(b.secondaryColor, 7) : '#0F172A';
+  const squad: Player[] = (Array.isArray(b.squad) ? b.squad : [])
+    .map((p: any) => ({
+      id: str(p.id, 80) || `${id}-${str(p.name, 60).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+      teamId: id,
+      name: str(p.name, 60),
+      role: ROLES.includes(p.role) ? p.role : 'batter',
+      category: str(p.category, 30) || undefined,
+      credits: Math.min(15, Math.max(0, num(p.credits, 8))),
+      isIcon: Boolean(p.isIcon) || str(p.category, 30).toLowerCase() === 'icon',
+    }))
+    .filter((p: Player) => p.name);
+  const existingIdx = store.teams.findIndex(t => t.id === id);
+  const now = new Date().toISOString();
+  const team: Team = {
+    ...(existingIdx >= 0 ? store.teams[existingIdx] : {}),
+    id,
+    name,
+    short: str(b.short, 5).toUpperCase() || name.split(/\s+/).map(w => w[0]).join('').slice(0, 4).toUpperCase(),
+    color,
+    secondaryColor,
+    home: str(b.home, 120) || store.settings.venue || '',
+    iconPlayer: str(b.iconPlayer, 60) || squad.find(p => p.isIcon)?.name || '',
+    headCoach: str(b.headCoach, 60) || undefined,
+    website: website || undefined,
+    logo: logo || undefined,
+    note: str(b.note, 400) || undefined,
+    sort: existingIdx >= 0 ? store.teams[existingIdx].sort : store.teams.length + 1,
+    squad,
+    createdAt: existingIdx >= 0 ? store.teams[existingIdx].createdAt || now : now,
+    updatedAt: now,
+  };
+  if (b.sort !== undefined) team.sort = num(b.sort, team.sort);
+  if (existingIdx >= 0) store.teams[existingIdx] = team;
+  else store.teams.push(team);
   db.save();
   res.json({ success: true, teams: store.teams });
 });
 
 app.delete('/api/teams/:id', requireAdmin, (req, res) => {
-  const { id } = req.params;
   const store = db.get();
+  const id = req.params.id;
+  if (store.matches.some(m => m.teamA === id || m.teamB === id)) return bad(res, 'This team has fixtures. Delete or edit those matches first.', 409);
   store.teams = store.teams.filter(t => t.id !== id);
+  for (const u of store.users) if (u.teamId === id) u.teamId = null;
+  store.handles = store.handles.filter(h => h.teamId !== id);
   db.save();
   res.json({ success: true, teams: store.teams });
 });
 
-// ----------------- HANDLES & SOCIAL FEEDS (CURATOR.IO STYLE) -----------------
+// ---------- handles ----------
+const PLATFORMS: SocialHandle['platform'][] = ['X', 'Instagram', 'Threads', 'Facebook', 'TikTok', 'LinkedIn', 'YouTube', 'RSS'];
 app.get('/api/handles', (req, res) => {
-  const { teamId, platform, status } = req.query;
-  const store = db.get();
-  let result = store.handles;
-
-  if (teamId) {
-    result = result.filter(h => h.teamId === teamId);
-  }
-  if (platform) {
-    result = result.filter(h => h.platform.toLowerCase() === String(platform).toLowerCase());
-  }
-  if (status) {
-    result = result.filter(h => h.status === status);
-  }
-
+  const viewer = getAuthUser(req);
+  let result = db.get().handles;
+  if (viewer?.role !== 'admin') result = result.filter(h => h.status === 'verified');
+  const { teamId, platform } = req.query;
+  if (teamId) result = result.filter(h => h.teamId === teamId);
+  if (platform) result = result.filter(h => h.platform.toLowerCase() === String(platform).toLowerCase());
   res.json({ handles: result });
 });
 
 app.post('/api/handles', requireAdmin, (req, res) => {
-  const { teamId, platform, handle, url, status } = req.body;
-  if (!url || !platform) {
-    return res.status(400).json({ error: 'Platform and URL required' });
-  }
-
+  const b = req.body || {};
   const store = db.get();
-  const existing = store.handles.find(h => h.url.toLowerCase() === String(url).toLowerCase());
-
+  if (!PLATFORMS.includes(b.platform)) return bad(res, 'Choose a platform');
+  if (!isHttpsUrl(b.url)) return bad(res, 'Profile URL must start with https://');
+  const teamId = b.teamId ? str(b.teamId, 60) : null;
+  if (teamId && !store.teams.some(t => t.id === teamId)) return bad(res, 'Unknown team');
+  const url = str(b.url, 500);
+  const now = new Date().toISOString();
+  const existing = (b.id && store.handles.find(h => h.id === b.id)) || store.handles.find(h => h.url.toLowerCase() === url.toLowerCase());
+  const status: SocialHandle['status'] = b.status === 'pending' ? 'pending' : 'verified';
   if (existing) {
-    existing.platform = platform;
-    existing.handle = handle || existing.handle;
-    existing.teamId = teamId !== undefined ? teamId : existing.teamId;
-    existing.status = status || existing.status;
+    const urlChanged = existing.url !== url;
+    Object.assign(existing, {
+      platform: b.platform,
+      url,
+      teamId,
+      handle: str(b.handle, 80) || existing.handle,
+      status,
+      verifiedAt: status === 'verified' ? existing.verifiedAt || now : undefined,
+      meta: urlChanged ? {} : existing.meta,
+    });
   } else {
     store.handles.push({
-      id: 'h-' + crypto.randomUUID().slice(0, 8),
-      teamId: teamId || null,
-      platform,
-      handle: handle || (url.split('/').pop() || '@handle'),
+      id: newId('h'),
+      teamId,
+      platform: b.platform,
+      handle: str(b.handle, 80) || url.replace(/\/$/, '').split('/').pop() || url,
       url,
-      status: status || 'verified',
-      source: 'admin-manual',
+      status,
+      source: 'admin',
       meta: {},
-      verifiedAt: new Date().toISOString(),
-      foundAt: new Date().toISOString()
+      verifiedAt: status === 'verified' ? now : undefined,
+      foundAt: now,
     });
   }
   db.save();
@@ -361,1563 +337,1312 @@ app.post('/api/handles', requireAdmin, (req, res) => {
 });
 
 app.delete('/api/handles/:id', requireAdmin, (req, res) => {
-  const { id } = req.params;
   const store = db.get();
-  store.handles = store.handles.filter(h => h.id !== id);
+  store.handles = store.handles.filter(h => h.id !== req.params.id);
+  for (const a of store.approvals) if (a.payload?.handleId === req.params.id && a.status === 'pending') a.status = 'rejected';
   db.save();
   res.json({ success: true, handles: store.handles });
 });
 
-// Curated Feeds: Enforces max 5 per platform as requested, with admin controls!
+// ---------- feeds ----------
+const FEED_PLATFORMS = ['YouTube', 'X', 'Instagram', 'Threads', 'TikTok', 'Facebook', 'LinkedIn', 'Web'] as const;
 app.get('/api/feeds', (req, res) => {
-  const { teamId, platform, category, status } = req.query;
+  const viewer = getAuthUser(req);
   const store = db.get();
-  const limitPerPlatform = store.settings.maxSocialPerPlatform || 5;
-
-  let allItems = store.feedItems;
-
-  if (teamId) {
-    allItems = allItems.filter(f => f.teamId === teamId);
-  }
-  if (category) {
-    allItems = allItems.filter(f => f.category === category);
-  }
-  if (status) {
-    allItems = allItems.filter(f => f.status === status);
-  } else {
-    // default public view: live & pinned only
-    allItems = allItems.filter(f => f.status !== 'hidden');
-  }
-
+  const limit = store.settings.maxSocialPerPlatform || 5;
+  const { teamId, platform, category, status } = req.query;
+  let items = store.feedItems;
+  if (teamId) items = items.filter(f => f.teamId === teamId);
+  if (category) items = items.filter(f => f.category === category);
+  if (status && viewer?.role === 'admin') items = items.filter(f => f.status === status);
+  else items = items.filter(f => f.status !== 'hidden');
+  const order = (a: FeedItem, b: FeedItem) =>
+    (a.status === 'pinned' ? -1 : 0) - (b.status === 'pinned' ? -1 : 0) || +new Date(b.publishedAt) - +new Date(a.publishedAt);
   if (platform) {
-    const filtered = allItems.filter(f => f.platform.toLowerCase() === String(platform).toLowerCase());
-    return res.json({
-      items: filtered.slice(0, limitPerPlatform),
-      total: filtered.length,
-      limitPerPlatform
-    });
+    const filtered = items.filter(f => f.platform.toLowerCase() === String(platform).toLowerCase()).sort(order);
+    return res.json({ items: filtered.slice(0, limit * 4), total: filtered.length, limitPerPlatform: limit });
   }
-
-  // Consolidated view: group by platform and take top 5 from each platform
-  const platforms = ['YouTube', 'X', 'Instagram', 'Threads', 'TikTok', 'Facebook', 'LinkedIn', 'Web'] as const;
-  const curatedSelection: FeedItem[] = [];
   const countsByPlatform: Record<string, number> = {};
-
-  for (const p of platforms) {
-    const platformItems = allItems
-      .filter(f => f.platform === p)
-      .sort((a, b) => {
-        if (a.status === 'pinned' && b.status !== 'pinned') return -1;
-        if (b.status === 'pinned' && a.status !== 'pinned') return 1;
-        return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
-      });
-
-    countsByPlatform[p] = platformItems.length;
-    curatedSelection.push(...platformItems.slice(0, limitPerPlatform));
+  const curated: FeedItem[] = [];
+  for (const p of FEED_PLATFORMS) {
+    const list = items.filter(f => f.platform === p).sort(order);
+    countsByPlatform[p] = list.length;
+    curated.push(...list.slice(0, teamId ? limit * 2 : limit));
   }
-
-  // Sort consolidated selection chronologically (pinned first)
-  curatedSelection.sort((a, b) => {
-    if (a.status === 'pinned' && b.status !== 'pinned') return -1;
-    if (b.status === 'pinned' && a.status !== 'pinned') return 1;
-    return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
-  });
-
-  res.json({
-    items: curatedSelection,
-    allItemsRaw: allItems,
-    countsByPlatform,
-    limitPerPlatform,
-    totalCurated: curatedSelection.length,
-    totalAvailable: allItems.length
-  });
+  curated.sort(order);
+  res.json({ items: curated, countsByPlatform, limitPerPlatform: limit, totalCurated: curated.length, totalAvailable: items.length });
 });
 
-// Sync Real Social Media Posts & Official Channel Videos (100% Real from verified handles & live RSS)
-app.post('/api/social/sync-real', async (req, res) => {
-  try {
-    const store = db.get();
-    const result = await syncRealSocialFeeds(store);
-    db.save();
-    res.json({
-      success: true,
-      syncedCount: result.syncedCount,
-      feedItems: result.feedItems,
-      summary: result.summary
-    });
-  } catch (err: any) {
-    console.error('Error syncing real social feeds:', err);
-    res.status(500).json({ error: err.message || 'Failed to sync real social feeds' });
-  }
+const syncFeeds = wrap(async (_req, res) => {
+  const r = await syncAllFeeds();
+  res.json({ success: true, ...r, feedItems: db.get().feedItems });
 });
+app.post('/api/admin/feeds/sync', requireAdmin, syncFeeds);
+app.post('/api/social/sync-real', requireAdmin, syncFeeds);
 
 app.post('/api/feeds', requireAdmin, (req, res) => {
+  const b = req.body || {};
   const store = db.get();
-  const { id, teamId, platform, kind, category, title, url, image, summary, status } = req.body;
-
-  if (id) {
-    const existing = store.feedItems.find(f => f.id === id);
-    if (existing) {
-      if (teamId !== undefined) existing.teamId = teamId;
-      if (platform) existing.platform = platform;
-      if (kind) existing.kind = kind;
-      if (category) existing.category = category;
-      if (title) existing.title = title;
-      if (url) existing.url = url;
-      if (image !== undefined) existing.image = image;
-      if (summary !== undefined) existing.summary = summary;
-      if (status) existing.status = status;
-      db.save();
-      return res.json({ success: true, item: existing });
+  const existing = b.id ? store.feedItems.find(f => f.id === b.id) : undefined;
+  if (existing) {
+    if (b.status && ['live', 'hidden', 'pinned'].includes(b.status)) existing.status = b.status;
+    if (b.title !== undefined) existing.title = str(b.title, 300) || existing.title;
+    if (b.summary !== undefined) existing.summary = str(b.summary, 1000);
+    if (b.teamId !== undefined) existing.teamId = b.teamId || null;
+    if (b.url !== undefined) {
+      if (!isHttpsUrl(b.url)) return bad(res, 'Link must start with https://');
+      existing.url = str(b.url, 1000);
     }
+    if (b.image !== undefined) {
+      const img = optionalUrl(b.image);
+      if (img === null) return bad(res, 'Image must be an https:// link');
+      existing.image = img || null;
+    }
+    db.save();
+    return res.json({ success: true, item: existing });
   }
-
-  const newItem: FeedItem = {
-    id: 'feed-' + crypto.randomUUID().slice(0, 8),
-    teamId: teamId || null,
-    platform: platform || 'X',
-    kind: kind || 'post',
-    category: category || 'social',
-    title: title || 'New update',
-    url: url || 'https://arabianaces.com',
+  if (!isHttpsUrl(b.url)) return bad(res, 'Post link must start with https://');
+  const title = str(b.title, 300);
+  if (!title) return bad(res, 'Title is required');
+  const image = optionalUrl(b.image);
+  if (image === null) return bad(res, 'Image must be an https:// link');
+  const platform = FEED_PLATFORMS.includes(b.platform) ? b.platform : 'Web';
+  const item: FeedItem = {
+    id: newId('feed'),
+    teamId: b.teamId || null,
+    platform,
+    kind: ['post', 'video', 'live', 'article'].includes(b.kind) ? b.kind : platform === 'YouTube' ? 'video' : 'post',
+    category: ['social', 'news', 'marketing'].includes(b.category) ? b.category : 'social',
+    title,
+    url: str(b.url, 1000),
     image: image || null,
-    source: 'Admin Curator',
-    summary: summary || '',
-    status: status || 'live',
-    publishedAt: new Date().toISOString(),
+    source: str(b.source, 80) || 'Admin',
+    summary: str(b.summary, 1000),
+    status: ['live', 'hidden', 'pinned'].includes(b.status) ? b.status : 'live',
+    publishedAt: isoOrEmpty(b.publishedAt) || new Date().toISOString(),
     createdAt: new Date().toISOString(),
-    likes: 0
+    sourceType: 'admin',
   };
-  store.feedItems.unshift(newItem);
+  store.feedItems.unshift(item);
   db.save();
-  res.json({ success: true, item: newItem });
+  res.json({ success: true, item });
 });
 
 app.delete('/api/feeds/:id', requireAdmin, (req, res) => {
-  const { id } = req.params;
   const store = db.get();
-  store.feedItems = store.feedItems.filter(f => f.id !== id);
+  store.feedItems = store.feedItems.filter(f => f.id !== req.params.id);
   db.save();
   res.json({ success: true });
 });
 
-// ----------------- FCM & REAL-TIME NOTIFICATIONS ENGINE -----------------
-function dispatchNotification(notifData: {
+// ---------- notifications ----------
+async function dispatchNotification(n: {
   title: string;
   body: string;
-  category: 'match_result' | 'contest_deadline' | 'announcement' | 'perk';
-  targetAudience?: 'all' | 'logged_in' | 'team';
+  category: NotificationItem['category'];
+  targetAudience?: NotificationItem['targetAudience'];
   teamId?: string | null;
   data?: Record<string, any>;
   priority?: 'normal' | 'high';
-  createdBy?: string;
-}): NotificationItem {
+  createdBy: string;
+}): Promise<NotificationItem> {
   const store = db.get();
-  if (!store.notifications) store.notifications = [];
-  if (!store.fcmTokens) store.fcmTokens = [];
-
-  const newNotif: NotificationItem = {
-    id: 'notif_' + crypto.randomUUID().slice(0, 8),
-    title: notifData.title,
-    body: notifData.body,
-    category: notifData.category,
-    targetAudience: notifData.targetAudience || 'all',
-    teamId: notifData.teamId || null,
-    data: notifData.data || {},
-    priority: notifData.priority || 'high',
+  const audience = n.targetAudience || 'all';
+  const usersById = new Map(store.users.map(u => [u.id, u]));
+  const tokens = store.fcmTokens.filter(t => {
+    if (!t.enabled) return false;
+    if (audience === 'all') return true;
+    const u = t.userId ? usersById.get(t.userId) : undefined;
+    if (audience === 'logged_in') return Boolean(u);
+    return Boolean(u && (!n.teamId || u.teamId === n.teamId));
+  });
+  const item: NotificationItem = {
+    id: newId('notif'),
+    title: n.title.slice(0, 160),
+    body: n.body.slice(0, 1000),
+    category: n.category,
+    targetAudience: audience,
+    teamId: n.teamId || null,
+    data: n.data || {},
+    priority: n.priority || 'normal',
     createdAt: new Date().toISOString(),
-    createdBy: notifData.createdBy || 'Abu Dhabi T10 Hub',
-    recipientCount: (store.users.length || 1) + (store.fcmTokens.length || 0),
-    fcmSuccessCount: store.fcmTokens.filter(t => t.enabled).length || store.users.length || 1,
+    createdBy: n.createdBy,
+    recipientCount: tokens.length,
+    fcmSuccessCount: 0,
     fcmFailureCount: 0,
-    readBy: []
+    delivery: 'in-app',
+    readBy: [],
   };
-
-  store.notifications.unshift(newNotif);
-  if (store.notifications.length > 80) {
-    store.notifications = store.notifications.slice(0, 80);
-  }
+  store.notifications.unshift(item);
+  store.notifications = store.notifications.slice(0, 200);
   db.save();
 
-  console.log(`[FCM ALERT] ${newNotif.category.toUpperCase()}: "${newNotif.title}" -> ${newNotif.fcmSuccessCount} subscribers notified`);
-  return newNotif;
+  if (pushServerConfigured() && tokens.length) {
+    try {
+      const r = await sendFcm(tokens.map(t => t.token), { title: item.title, body: item.body, url: n.data?.url, data: { notificationId: item.id, category: item.category } });
+      item.delivery = 'fcm';
+      item.fcmSuccessCount = r.success;
+      item.fcmFailureCount = r.failure;
+      if (r.invalidTokens.length) {
+        const dead = new Set(r.invalidTokens);
+        for (const t of store.fcmTokens) if (dead.has(t.token)) t.enabled = false;
+      }
+      db.save();
+    } catch (e: any) {
+      console.error('[PUSH] send failed:', e?.message);
+    }
+  }
+  return item;
 }
 
-// ----------------- MATCHES & SCORES -----------------
-app.get('/api/matches', (req, res) => {
-  const store = db.get();
-  res.json({ matches: store.matches });
-});
-
-app.post('/api/matches', requireAdmin, (req, res) => {
-  const matchData = req.body;
-  const store = db.get();
-  const existingIdx = store.matches.findIndex(m => m.id === matchData.id);
-  const wasCompleted = existingIdx >= 0 && store.matches[existingIdx].status === 'completed';
-
-  let targetMatch: Match;
-  if (existingIdx >= 0) {
-    store.matches[existingIdx] = { ...store.matches[existingIdx], ...matchData, updatedAt: new Date().toISOString() };
-    targetMatch = store.matches[existingIdx];
-  } else {
-    targetMatch = {
-      id: 'm-' + crypto.randomUUID().slice(0, 6),
-      matchNo: store.matches.length + 1,
-      stage: matchData.stage || 'Group Stage',
-      teamA: matchData.teamA || 'aces',
-      teamB: matchData.teamB || 'deccan',
-      startsAt: matchData.startsAt || new Date().toISOString(),
-      venue: matchData.venue || 'Zayed Cricket Stadium, Abu Dhabi',
-      status: matchData.status || 'upcoming',
-      scoreA: matchData.scoreA,
-      scoreB: matchData.scoreB,
-      oversA: matchData.oversA,
-      oversB: matchData.oversB,
-      winner: matchData.winner,
-      result: matchData.result,
-      updatedAt: new Date().toISOString()
-    };
-    store.matches.push(targetMatch);
-  }
-
-  // Real-time FCM Alert trigger when match result is posted or match completed
-  if ((targetMatch.status === 'completed' || targetMatch.result || targetMatch.winner) && !wasCompleted) {
-    const teamA = store.teams.find(t => t.id === targetMatch.teamA);
-    const teamB = store.teams.find(t => t.id === targetMatch.teamB);
-    const winnerTeam = store.teams.find(t => t.id === targetMatch.winner);
-    
-    dispatchNotification({
-      title: `🏆 MATCH RESULT: ${winnerTeam ? winnerTeam.name : 'Match Finished'} (${teamA?.short || 'A'} vs ${teamB?.short || 'B'})`,
-      body: `${targetMatch.result || (winnerTeam ? `${winnerTeam.name} victorious!` : 'Match concluded')}. Final: ${teamA?.short} ${targetMatch.scoreA || ''} vs ${teamB?.short} ${targetMatch.scoreB || ''}`,
-      category: 'match_result',
-      targetAudience: 'all',
-      teamId: targetMatch.winner || null,
-      data: {
-        matchId: targetMatch.id,
-        url: '/matches',
-        scoreSummary: `${teamA?.name} ${targetMatch.scoreA || ''} vs ${teamB?.name} ${targetMatch.scoreB || ''}`,
-        winnerName: winnerTeam?.name || targetMatch.winner || 'TBD',
-        result: targetMatch.result,
-        topScorer: targetMatch.topScorer || 'Full scorecard in live center'
-      },
-      priority: 'high',
-      createdBy: 'Match Control Center'
-    });
-  }
-
-  db.save();
-  res.json({ success: true, matches: store.matches, targetMatch });
-});
-
-// Simulate ball-by-ball action
-app.post('/api/matches/:id/simulate-ball', async (req, res) => {
-  const result = await runScoresAgent(true);
-  const store = db.get();
-  const match = store.matches.find(m => m.id === req.params.id) || store.matches[0];
-  
-  if (match.status === 'completed' && match.winner) {
-    const winnerTeam = store.teams.find(t => t.id === match.winner);
-    dispatchNotification({
-      title: `🏆 FINAL OVER THRILLER: ${winnerTeam?.name || 'Winner decided!'}`,
-      body: `${match.result || 'Match ended!'}. Scores: ${match.scoreA} vs ${match.scoreB}`,
-      category: 'match_result',
-      targetAudience: 'all',
-      teamId: match.winner,
-      data: {
-        matchId: match.id,
-        url: '/matches',
-        scoreSummary: `${match.scoreA} vs ${match.scoreB}`,
-        winnerName: winnerTeam?.name || match.winner,
-        result: match.result
-      },
-      priority: 'high',
-      createdBy: 'Autonomous Scores Agent'
-    });
-  }
-
-  res.json({ success: true, match, summary: result.summary });
-});
-
-// ----------------- CONTESTS, FANTASY & DRAWS -----------------
-app.get('/api/contests', (req, res) => {
-  const store = db.get();
-  res.json({ contests: store.contests, entries: store.contestEntries });
-});
-
-app.post('/api/contests/:id/enter', (req, res) => {
-  const user = getAuthUser(req);
-  if (!user) return res.status(401).json({ error: 'Please sign in to enter contests' });
-
-  const { answers } = req.body;
-  const contestId = req.params.id;
-  const store = db.get();
-  const contest = store.contests.find(c => c.id === contestId);
-
-  if (!contest) return res.status(404).json({ error: 'Contest not found' });
-  if (contest.status !== 'open') return res.status(400).json({ error: 'Contest is locked or closed' });
-
-  // Check if instant trivia
-  let instantPoints = 0;
-  if (contest.instant) {
-    for (const q of contest.questions) {
-      if (answers[q.id] === q.answer) {
-        instantPoints += q.points;
-      }
-    }
-    user.points += instantPoints;
-    if (!user.badges.includes('Trivia Ace') && instantPoints >= 30) {
-      user.badges.push('Trivia Ace');
-    }
-  }
-
-  // Upsert entry
-  const existingEntryIdx = store.contestEntries.findIndex(e => e.userId === user.id && e.contestId === contestId);
-  const entry: any = {
-    userId: user.id,
-    contestId,
-    answers,
-    pointsAwarded: contest.instant ? instantPoints : undefined,
-    createdAt: new Date().toISOString()
-  };
-
-  if (existingEntryIdx >= 0) {
-    store.contestEntries[existingEntryIdx] = entry;
-  } else {
-    store.contestEntries.push(entry);
-  }
-
-  db.save();
-  res.json({ success: true, pointsAwarded: instantPoints, user });
-});
-
-// Fantasy 10
-app.get('/api/fantasy/:matchId', (req, res) => {
-  const user = getAuthUser(req);
-  const store = db.get();
-  const fantasy = user ? store.fantasyTeams.find(f => f.userId === user.id && f.matchId === req.params.matchId) : null;
-  res.json({ fantasyTeam: fantasy });
-});
-
-app.post('/api/fantasy/:matchId', (req, res) => {
-  const user = getAuthUser(req);
-  if (!user) return res.status(401).json({ error: 'Sign in to create your Fantasy 10 squad' });
-
-  const { playerIds, captainId } = req.body;
-  if (!playerIds || playerIds.length !== 6 || !captainId) {
-    return res.status(400).json({ error: 'Please select exactly 6 players and 1 captain' });
-  }
-
-  const store = db.get();
-  const existingIdx = store.fantasyTeams.findIndex(f => f.userId === user.id && f.matchId === req.params.matchId);
-
-  const team = {
-    userId: user.id,
-    matchId: req.params.matchId,
-    playerIds,
-    captainId,
-    createdAt: new Date().toISOString()
-  };
-
-  if (existingIdx >= 0) {
-    store.fantasyTeams[existingIdx] = team;
-  } else {
-    store.fantasyTeams.push(team);
-    user.points += 50; // Entry bonus
-  }
-
-  db.save();
-  res.json({ success: true, fantasyTeam: team, user });
-});
-
-// Draws
-app.get('/api/draws', (req, res) => {
-  const store = db.get();
-  res.json({ draws: store.draws, entries: store.drawEntries });
-});
-
-app.post('/api/draws/:id/enter', (req, res) => {
-  const user = getAuthUser(req);
-  if (!user) return res.status(401).json({ error: 'Sign in to enter prize draws' });
-
-  const store = db.get();
-  const draw = store.draws.find(d => d.id === req.params.id);
-  if (!draw) return res.status(404).json({ error: 'Draw not found' });
-  if (draw.status !== 'open') return res.status(400).json({ error: 'Draw is closed' });
-
-  if (draw.teamOnly && user.teamId !== draw.teamOnly) {
-    return res.status(403).json({ error: `Exclusive draw for fans backing ${draw.teamOnly === 'aces' ? 'Arabian Aces' : draw.teamOnly}` });
-  }
-
-  const already = store.drawEntries.some(e => e.drawId === draw.id && e.userId === user.id);
-  if (already) {
-    return res.status(400).json({ error: 'You are already entered into this draw!' });
-  }
-
-  store.drawEntries.push({
-    drawId: draw.id,
-    userId: user.id,
-    userEmail: user.email,
-    userName: user.name,
-    createdAt: new Date().toISOString()
-  });
-
-  db.save();
-  res.json({ success: true, message: 'You have entered the draw!' });
-});
-
-// Provably Fair Draw Execution (Admin only)
-app.post('/api/draws/:id/execute', requireAdmin, (req, res) => {
-  const store = db.get();
-  const draw = store.draws.find(d => d.id === req.params.id);
-  if (!draw) return res.status(404).json({ error: 'Draw not found' });
-
-  const entries = store.drawEntries.filter(e => e.drawId === draw.id);
-  if (entries.length === 0) {
-    return res.status(400).json({ error: 'Cannot execute draw with zero entrants' });
-  }
-
-  // Cryptographic provably fair winner selection
-  const seed = crypto.randomBytes(16).toString('hex');
-  const entrantsDigest = crypto.createHash('sha256').update(entries.map(e => e.userId).sort().join(':')).digest('hex');
-  const combinedHash = crypto.createHash('sha256').update(`${seed}:${entrantsDigest}`).digest('hex');
-  const winnerIndex = parseInt(combinedHash.slice(0, 8), 16) % entries.length;
-
-  const winner = entries[winnerIndex];
-  draw.status = 'drawn';
-  draw.winnerUserId = winner.userId;
-  draw.winnerName = winner.userName;
-  draw.seed = seed;
-  draw.entrantsHash = entrantsDigest;
-  draw.drawnAt = new Date().toISOString();
-
-  db.save();
-  res.json({ success: true, draw, winner });
-});
-
-// ----------------- FAN ACTIONS -----------------
-app.post('/api/checkin', (req, res) => {
-  const user = getAuthUser(req);
-  if (!user) return res.status(401).json({ error: 'Sign in to claim daily streak bonus' });
-
-  const now = new Date();
-  const last = user.lastCheckin ? new Date(user.lastCheckin) : null;
-
-  if (last && now.getTime() - last.getTime() < 1000 * 60 * 60 * 20) {
-    return res.status(400).json({ error: 'Already checked in today! Come back tomorrow.' });
-  }
-
-  user.streak += 1;
-  user.points += 25 * Math.min(user.streak, 5);
-  user.lastCheckin = now.toISOString();
-
-  if (user.streak >= 7 && !user.badges.includes('7-Day Streak Master')) {
-    user.badges.push('7-Day Streak Master');
-  }
-
-  db.save();
-  res.json({ success: true, user, pointsAdded: 25 * Math.min(user.streak, 5) });
-});
-
-app.post('/api/me/team', (req, res) => {
-  const user = getAuthUser(req);
-  if (!user) return res.status(401).json({ error: 'Sign in to back a team' });
-
-  const { teamId } = req.body;
-  const store = db.get();
-  const team = store.teams.find(t => t.id === teamId);
-  if (!team) return res.status(404).json({ error: 'Team not found' });
-
-  user.teamId = team.id;
-  user.teamChanges += 1;
-
-  if (team.id === 'aces' && !user.badges.includes('Aces Loyalist')) {
-    user.badges.push('Aces Loyalist');
-  }
-
-  db.save();
-  res.json({ success: true, user });
-});
-
-app.get('/api/leaderboard', (req, res) => {
-  const store = db.get();
-
-  // Aggregate Fan Wars points by team
-  const teamTotals: Record<string, { team: any; points: number; fansCount: number }> = {};
-  for (const t of store.teams) {
-    teamTotals[t.id] = { team: t, points: 0, fansCount: 0 };
-  }
-
-  // Pre-seed realistic fan war numbers for excitement
-  if (teamTotals['aces']) { teamTotals['aces'].points += 8420; teamTotals['aces'].fansCount += 2450; }
-  if (teamTotals['deccan']) { teamTotals['deccan'].points += 7890; teamTotals['deccan'].fansCount += 2100; }
-  if (teamTotals['bulls']) { teamTotals['bulls'].points += 6940; teamTotals['bulls'].fansCount += 1840; }
-  if (teamTotals['warriors']) { teamTotals['warriors'].points += 5400; teamTotals['warriors'].fansCount += 1400; }
-  if (teamTotals['qavalry']) { teamTotals['qavalry'].points += 4900; teamTotals['qavalry'].fansCount += 1250; }
-
-  for (const u of store.users) {
-    if (u.teamId && teamTotals[u.teamId]) {
-      teamTotals[u.teamId].points += u.points;
-      teamTotals[u.teamId].fansCount += 1;
-    }
-  }
-
-  const fanWars = Object.values(teamTotals).sort((a, b) => b.points - a.points);
-  const topFans = [...store.users].sort((a, b) => b.points - a.points).slice(0, 10);
-
-  res.json({ fanWars, topFans });
-});
-
-// ----------------- DISCUSSION FORUM ENDPOINTS -----------------
-// Get all threads
-app.get('/api/forum/threads', (req, res) => {
-  const store = db.get();
-  const { category, teamId, search } = req.query;
-  let threads = [...(store.forumThreads || [])];
-
-  if (category && category !== 'all') {
-    threads = threads.filter(t => t.category === category);
-  }
-  if (teamId && teamId !== 'all') {
-    threads = threads.filter(t => t.teamId === teamId);
-  }
-  if (search && typeof search === 'string' && search.trim()) {
-    const q = search.trim().toLowerCase();
-    threads = threads.filter(t => 
-      t.title.toLowerCase().includes(q) || 
-      t.content.toLowerCase().includes(q) ||
-      (t.tags && t.tags.some(tag => tag.toLowerCase().includes(q)))
-    );
-  }
-
-  threads.sort((a, b) => {
-    if (a.pinned && !b.pinned) return -1;
-    if (!a.pinned && b.pinned) return 1;
-    return new Date(b.lastActivityAt || b.createdAt).getTime() - new Date(a.lastActivityAt || a.createdAt).getTime();
-  });
-
-  res.json({ threads });
-});
-
-// Create a new thread
-app.post('/api/forum/threads', (req, res) => {
-  const user = getAuthUser(req);
-  if (!user) return res.status(401).json({ error: 'Please sign in to start a new discussion thread' });
-
-  const { title, content, category, teamId, tags } = req.body;
-  if (!title || typeof title !== 'string' || title.trim().length < 5) {
-    return res.status(400).json({ error: 'Thread title must be at least 5 characters' });
-  }
-  if (!content || typeof content !== 'string' || content.trim().length < 10) {
-    return res.status(400).json({ error: 'Thread content must be at least 10 characters' });
-  }
-
-  const store = db.get();
-  if (!store.forumThreads) store.forumThreads = [];
-
-  const parsedTags = Array.isArray(tags) ? tags.map(t => String(t).trim()).filter(Boolean) : ['ADT10'];
-  const newThread: any = {
-    id: 'thread-' + crypto.randomUUID().slice(0, 8),
-    title: title.trim().slice(0, 150),
-    content: content.trim(),
-    category: category || 'general',
-    tags: parsedTags.length > 0 ? parsedTags : ['ADT10'],
-    teamId: teamId || user.teamId || null,
-    userId: user.id,
-    userName: user.name,
-    userAvatar: user.avatar,
-    userBadge: user.badges?.[0] || 'Superfan',
-    pinned: false,
-    upvotes: 1,
-    upvotedBy: [user.id],
-    views: 1,
-    commentsCount: 0,
-    lastActivityAt: new Date().toISOString(),
-    createdAt: new Date().toISOString()
-  };
-
-  store.forumThreads.unshift(newThread);
-  user.points += 15; // Bonus points for starting a discussion
-  db.save();
-
-  res.json({ success: true, thread: newThread, pointsAdded: 15, user });
-});
-
-// Get thread detail with comments
-app.get('/api/forum/threads/:id', (req, res) => {
-  const store = db.get();
-  const thread = (store.forumThreads || []).find(t => t.id === req.params.id);
-  if (!thread) return res.status(404).json({ error: 'Thread not found' });
-
-  thread.views = (thread.views || 0) + 1;
-  db.save();
-
-  const comments = (store.forumComments || [])
-    .filter(c => c.threadId === thread.id)
-    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-
-  res.json({ thread, comments });
-});
-
-// Add comment to thread
-app.post('/api/forum/threads/:id/comments', (req, res) => {
-  const user = getAuthUser(req);
-  if (!user) return res.status(401).json({ error: 'Please sign in to post a reply' });
-
-  const { content } = req.body;
-  if (!content || typeof content !== 'string' || content.trim().length < 2) {
-    return res.status(400).json({ error: 'Comment content cannot be empty' });
-  }
-
-  const store = db.get();
-  const thread = (store.forumThreads || []).find(t => t.id === req.params.id);
-  if (!thread) return res.status(404).json({ error: 'Thread not found' });
-
-  if (!store.forumComments) store.forumComments = [];
-
-  const newComment: any = {
-    id: 'comment-' + crypto.randomUUID().slice(0, 8),
-    threadId: thread.id,
-    userId: user.id,
-    userName: user.name,
-    userAvatar: user.avatar,
-    userBadge: user.badges?.[0] || 'Superfan',
-    teamId: user.teamId || null,
-    content: content.trim(),
-    upvotes: 0,
-    upvotedBy: [],
-    createdAt: new Date().toISOString()
-  };
-
-  store.forumComments.push(newComment);
-  thread.commentsCount = (thread.commentsCount || 0) + 1;
-  thread.lastActivityAt = new Date().toISOString();
-
-  user.points += 5; // Bonus points for commenting
-  db.save();
-
-  res.json({ success: true, comment: newComment, thread, pointsAdded: 5, user });
-});
-
-// Upvote thread
-app.post('/api/forum/threads/:id/upvote', (req, res) => {
-  const user = getAuthUser(req);
-  if (!user) return res.status(401).json({ error: 'Please sign in to upvote' });
-
-  const store = db.get();
-  const thread = (store.forumThreads || []).find(t => t.id === req.params.id);
-  if (!thread) return res.status(404).json({ error: 'Thread not found' });
-
-  if (!thread.upvotedBy) thread.upvotedBy = [];
-  const alreadyUpvoted = thread.upvotedBy.includes(user.id);
-
-  if (alreadyUpvoted) {
-    thread.upvotedBy = thread.upvotedBy.filter(uid => uid !== user.id);
-    thread.upvotes = Math.max(0, (thread.upvotes || 1) - 1);
-  } else {
-    thread.upvotedBy.push(user.id);
-    thread.upvotes = (thread.upvotes || 0) + 1;
-  }
-
-  db.save();
-  res.json({ success: true, upvotes: thread.upvotes, upvoted: !alreadyUpvoted });
-});
-
-// Upvote comment
-app.post('/api/forum/comments/:id/upvote', (req, res) => {
-  const user = getAuthUser(req);
-  if (!user) return res.status(401).json({ error: 'Please sign in to upvote' });
-
-  const store = db.get();
-  const comment = (store.forumComments || []).find(c => c.id === req.params.id);
-  if (!comment) return res.status(404).json({ error: 'Comment not found' });
-
-  if (!comment.upvotedBy) comment.upvotedBy = [];
-  const alreadyUpvoted = comment.upvotedBy.includes(user.id);
-
-  if (alreadyUpvoted) {
-    comment.upvotedBy = comment.upvotedBy.filter(uid => uid !== user.id);
-    comment.upvotes = Math.max(0, (comment.upvotes || 1) - 1);
-  } else {
-    comment.upvotedBy.push(user.id);
-    comment.upvotes = (comment.upvotes || 0) + 1;
-  }
-
-  db.save();
-  res.json({ success: true, upvotes: comment.upvotes, upvoted: !alreadyUpvoted });
-});
-
-// ----------------- NOTIFICATION & FCM APIS -----------------
-
-// Get notifications for current user (or public broadcast)
 app.get('/api/notifications', (req, res) => {
   const user = getAuthUser(req);
   const store = db.get();
-  const allNotifs = store.notifications || [];
-  const { category } = req.query;
-
-  let filtered = allNotifs.filter(n => {
+  let list = store.notifications.filter(n => {
     if (n.targetAudience === 'all') return true;
-    if (n.targetAudience === 'logged_in') return !!user;
-    if (n.targetAudience === 'team') return !n.teamId || (user && user.teamId === n.teamId);
-    return true;
+    if (!user) return false;
+    if (n.targetAudience === 'logged_in') return true;
+    return !n.teamId || user.teamId === n.teamId;
   });
-
-  if (category && typeof category === 'string' && category !== 'all') {
-    filtered = filtered.filter(n => n.category === category);
-  }
-
-  const enriched = filtered.map(n => ({
-    ...n,
-    read: user && n.readBy ? n.readBy.includes(user.id) : false
-  }));
-
-  const unreadCount = user 
-    ? enriched.filter(n => !n.read).length
-    : enriched.length;
-
+  if (req.query.category && req.query.category !== 'all') list = list.filter(n => n.category === req.query.category);
+  const out = list.slice(0, 50).map(({ readBy, ...n }) => ({ ...n, read: user ? (readBy || []).includes(user.id) : false }));
   res.json({
-    notifications: enriched,
-    unreadCount,
-    total: enriched.length,
-    fcmSubscribed: user ? (store.fcmTokens || []).some(t => t.userId === user.id && t.enabled) : false
+    notifications: out,
+    unreadCount: user ? out.filter(n => !n.read).length : 0,
+    total: out.length,
+    fcmSubscribed: user ? store.fcmTokens.some(t => t.userId === user.id && t.enabled) : false,
   });
 });
 
-// How to get notification details
 app.get('/api/notifications/:id', (req, res) => {
-  const { id } = req.params;
   const store = db.get();
-  const notif = (store.notifications || []).find(n => n.id === id);
-  if (!notif) return res.status(404).json({ error: 'Notification not found' });
-
+  const n = store.notifications.find(x => x.id === req.params.id);
+  if (!n) return bad(res, 'Notification not found', 404);
   const user = getAuthUser(req);
-  const isRead = user && notif.readBy ? notif.readBy.includes(user.id) : false;
-
+  const { readBy, ...rest } = n;
   let relatedEntity: any = null;
-  if (notif.data?.matchId) {
-    relatedEntity = store.matches.find(m => m.id === notif.data?.matchId) || null;
-  } else if (notif.data?.contestId) {
-    relatedEntity = store.contests.find(c => c.id === notif.data?.contestId) || null;
+  if (n.data?.matchId) relatedEntity = store.matches.find(m => m.id === n.data?.matchId) || null;
+  else if (n.data?.contestId) {
+    const c = store.contests.find(x => x.id === n.data?.contestId);
+    relatedEntity = c ? stripAnswers(c, user?.role === 'admin') : null;
   }
-
-  res.json({
-    notification: {
-      ...notif,
-      read: isRead
-    },
-    relatedEntity,
-    documentation: {
-      endpoint: `/api/notifications/${id}`,
-      usage: 'Fetch detailed event data, scorecard summary, contest lock timer, and direct actions',
-      fcmDeliveryType: 'RFC 8591 WebPush Protocol / FCM HTTP v1 JSON',
-      sdkListener: 'firebase.messaging().onMessage(payload => ...)',
-      directRoute: notif.data?.url || '/'
-    }
-  });
+  res.json({ notification: { ...rest, read: user ? (readBy || []).includes(user.id) : false }, relatedEntity });
 });
 
-// Mark single notification as read
-app.post('/api/notifications/:id/read', (req, res) => {
-  const user = getAuthUser(req);
-  if (!user) return res.status(401).json({ error: 'Sign in to sync notification read state' });
-
-  const store = db.get();
-  const notif = (store.notifications || []).find(n => n.id === req.params.id);
-  if (!notif) return res.status(404).json({ error: 'Notification not found' });
-
-  if (!notif.readBy) notif.readBy = [];
-  if (!notif.readBy.includes(user.id)) {
-    notif.readBy.push(user.id);
-    db.save();
-  }
-
-  res.json({ success: true, notificationId: notif.id, read: true });
+app.post('/api/notifications/:id/read', requireUser, (req, res) => {
+  const user = userOf(req);
+  const n = db.get().notifications.find(x => x.id === req.params.id);
+  if (!n) return bad(res, 'Notification not found', 404);
+  n.readBy = n.readBy || [];
+  if (!n.readBy.includes(user.id)) n.readBy.push(user.id);
+  db.save();
+  res.json({ success: true, notificationId: n.id, read: true });
 });
 
-// Mark all notifications as read
-app.post('/api/notifications/mark-all-read', (req, res) => {
-  const user = getAuthUser(req);
-  if (!user) return res.status(401).json({ error: 'Sign in required' });
-
-  const store = db.get();
-  for (const n of store.notifications || []) {
-    if (!n.readBy) n.readBy = [];
-    if (!n.readBy.includes(user.id)) {
-      n.readBy.push(user.id);
-    }
+app.post('/api/notifications/mark-all-read', requireUser, (req, res) => {
+  const user = userOf(req);
+  for (const n of db.get().notifications) {
+    n.readBy = n.readBy || [];
+    if (!n.readBy.includes(user.id)) n.readBy.push(user.id);
   }
   db.save();
-
   res.json({ success: true, message: 'All notifications marked as read' });
 });
 
-// Register or refresh FCM Device Token for logged-in or guest user
-app.post('/api/fcm/register-token', (req, res) => {
-  const { token, deviceType, userAgent } = req.body;
-  if (!token || typeof token !== 'string') {
-    return res.status(400).json({ error: 'Valid FCM token string is required' });
-  }
-
+app.post('/api/fcm/register-token', rateLimit('fcm', 20, 60_000), (req, res) => {
+  const token = str(req.body?.token, 4096);
+  if (token.length < 100 || !/^[\w:\-]+$/.test(token)) return bad(res, 'Invalid push token');
   const user = getAuthUser(req);
   const store = db.get();
-  if (!store.fcmTokens) store.fcmTokens = [];
-
-  const existingIdx = store.fcmTokens.findIndex(t => t.token === token);
   const now = new Date().toISOString();
-
-  if (existingIdx >= 0) {
-    store.fcmTokens[existingIdx] = {
-      ...store.fcmTokens[existingIdx],
-      userId: user?.id || store.fcmTokens[existingIdx].userId,
-      userEmail: user?.email || store.fcmTokens[existingIdx].userEmail,
-      deviceType: deviceType || store.fcmTokens[existingIdx].deviceType,
-      userAgent: userAgent || store.fcmTokens[existingIdx].userAgent,
-      enabled: true,
-      updatedAt: now
-    };
+  const existing = store.fcmTokens.find(t => t.token === token);
+  if (existing) {
+    Object.assign(existing, { userId: user?.id || existing.userId, userEmail: user?.email || existing.userEmail, enabled: true, updatedAt: now });
   } else {
     store.fcmTokens.push({
-      id: 'fcm_tok_' + crypto.randomUUID().slice(0, 8),
+      id: newId('fcm'),
       token,
       userId: user?.id || null,
       userEmail: user?.email || null,
-      deviceType: deviceType || 'web_browser',
-      userAgent: userAgent || 'Browser Web Client',
+      deviceType: str(req.body?.deviceType, 40) || 'web',
+      userAgent: str(req.body?.userAgent, 300),
       enabled: true,
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
     });
   }
-
   db.save();
-  console.log(`[FCM REGISTER] Registered device token for ${user?.email || 'guest'}`);
-  res.json({ 
-    success: true, 
-    message: 'FCM push device token registered successfully', 
-    activeSubscribers: store.fcmTokens.filter(t => t.enabled).length 
-  });
+  res.json({ success: true, message: 'Push notifications enabled on this device', activeSubscribers: store.fcmTokens.filter(t => t.enabled).length });
 });
 
-// Admin: List all FCM device tokens & subscriber stats
-app.get('/api/fcm/tokens', requireAdmin, (req, res) => {
-  const store = db.get();
-  const tokens = store.fcmTokens || [];
+app.get('/api/fcm/tokens', requireAdmin, (_req, res) => {
+  const tokens = db.get().fcmTokens;
   res.json({
     totalTokens: tokens.length,
     activeSubscribers: tokens.filter(t => t.enabled).length,
-    tokens: tokens.slice(0, 50)
+    pushServerConfigured: pushServerConfigured(),
+    tokens: tokens.slice(-50).map(t => ({ ...t, token: t.token.slice(0, 12) + '…' })),
   });
 });
 
-// Admin: Push Custom FCM Notification
-app.post('/api/fcm/send', requireAdmin, (req, res) => {
-  const { title, body, category, targetAudience, teamId, url, priority, customData } = req.body;
-  if (!title || !body) {
-    return res.status(400).json({ error: 'Title and body are required to push notification' });
-  }
-
-  const notif = dispatchNotification({
-    title: String(title).trim(),
-    body: String(body).trim(),
-    category: category || 'announcement',
-    targetAudience: targetAudience || 'all',
-    teamId: teamId || null,
-    data: {
-      url: url || '/',
-      ...(customData || {})
-    },
-    priority: priority || 'high',
-    createdBy: 'Admin Push Dispatcher'
+app.post('/api/fcm/send', requireAdmin, wrap(async (req, res) => {
+  const b = req.body || {};
+  const title = str(b.title, 160);
+  const body = str(b.body, 1000);
+  if (!title || !body) return bad(res, 'Title and message are required');
+  const url = str(b.url, 500);
+  const notif = await dispatchNotification({
+    title,
+    body,
+    category: ['match_result', 'contest_deadline', 'announcement', 'perk'].includes(b.category) ? b.category : 'announcement',
+    targetAudience: ['all', 'logged_in', 'team'].includes(b.targetAudience) ? b.targetAudience : 'all',
+    teamId: b.teamId || null,
+    data: { url: url.startsWith('/') || isHttpsUrl(url) ? url : '/' },
+    priority: b.priority === 'high' ? 'high' : 'normal',
+    createdBy: userOf(req).name || 'Admin',
   });
-
   res.json({
     success: true,
     notification: notif,
-    message: `Push notification sent to ${notif.fcmSuccessCount} subscribers`
+    message: notif.delivery === 'fcm'
+      ? `Pushed to ${notif.fcmSuccessCount} device(s)${notif.fcmFailureCount ? `, ${notif.fcmFailureCount} failed` : ''}.`
+      : 'Saved as an in-app notification (push server not configured).',
   });
-});
+}));
 
-// Admin: Trigger Contest Deadline Notification
-app.post('/api/admin/notifications/trigger-contest-deadline', requireAdmin, (req, res) => {
-  const { contestId, customMinutes } = req.body;
+app.post('/api/admin/notifications/trigger-contest-deadline', requireAdmin, wrap(async (req, res) => {
   const store = db.get();
-  const contest = store.contests.find(c => c.id === contestId) || store.contests[0];
-  if (!contest) return res.status(404).json({ error: 'Contest not found' });
-
-  const timeLabel = customMinutes ? `${customMinutes} minutes` : '15 minutes';
-  const notif = dispatchNotification({
-    title: `⏳ CONTEST DEADLINE: "${contest.title}" locks in ${timeLabel}!`,
-    body: `Time is running out to enter your predictions for: ${contest.prize}. Enter before the first ball!`,
+  const contest = store.contests.find(c => c.id === req.body?.contestId);
+  if (!contest) return bad(res, 'Choose a contest', 404);
+  const mins = Math.max(1, Math.round(num(req.body?.customMinutes, 0)) || (contest.locksAt ? Math.round((+new Date(contest.locksAt) - Date.now()) / 60000) : 15));
+  const notif = await dispatchNotification({
+    title: `⏳ "${contest.title}" closes in ${mins} min`,
+    body: contest.prize ? `Get your picks in for a chance at: ${contest.prize}` : 'Get your picks in before it locks.',
     category: 'contest_deadline',
     targetAudience: 'logged_in',
-    data: {
-      contestId: contest.id,
-      url: '/contests',
-      prize: contest.prize,
-      locksAt: contest.locksAt || new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-      questionsCount: contest.questions?.length || 3
-    },
+    data: { contestId: contest.id, url: '/contests', locksAt: contest.locksAt },
     priority: 'high',
-    createdBy: 'Contest Deadline Controller'
+    createdBy: 'Contests',
   });
-
   res.json({ success: true, notification: notif });
-});
+}));
 
-// Admin: Trigger Match Result Notification for any selected match
-app.post('/api/admin/notifications/trigger-match-result', requireAdmin, (req, res) => {
-  const { matchId } = req.body;
+function resultNotificationFor(match: Match) {
   const store = db.get();
-  const match = store.matches.find(m => m.id === matchId) || store.matches[0];
-  if (!match) return res.status(404).json({ error: 'Match not found' });
-
-  const teamA = store.teams.find(t => t.id === match.teamA);
-  const teamB = store.teams.find(t => t.id === match.teamB);
-  const winnerTeam = store.teams.find(t => t.id === match.winner);
-
-  const notif = dispatchNotification({
-    title: `🏆 MATCH RESULT: ${winnerTeam ? winnerTeam.name : 'Match Result Confirmed'} (${teamA?.short || 'A'} vs ${teamB?.short || 'B'})`,
-    body: `${match.result || (winnerTeam ? `${winnerTeam.name} victorious!` : 'Match concluded')}. Final: ${teamA?.short} ${match.scoreA || ''} vs ${teamB?.short} ${match.scoreB || ''}`,
-    category: 'match_result',
-    targetAudience: 'all',
-    teamId: match.winner || null,
-    data: {
-      matchId: match.id,
-      url: '/matches',
-      scoreSummary: `${teamA?.name} ${match.scoreA || ''} vs ${teamB?.name} ${match.scoreB || ''}`,
-      winnerName: winnerTeam?.name || match.winner || 'TBD',
-      result: match.result,
-      topScorer: match.topScorer || 'Top performers highlighted in match center'
-    },
-    priority: 'high',
-    createdBy: 'Admin Match Result Dispatcher'
-  });
-
-  res.json({ success: true, notification: notif });
-});
-
-// ----------------- ADMIN PORTAL APIS -----------------
-app.get('/api/admin/dashboard', requireAdmin, (req, res) => {
-  const store = db.get();
-  res.json({
-    usersCount: store.users.length,
-    publicDisplayUserCount: store.settings.publicUserCountOverride,
-    handlesCount: store.handles.length,
-    feedItemsCount: store.feedItems.length,
-    matchesCount: store.matches.length,
-    contestsCount: store.contests.length,
-    drawsCount: store.draws.length,
-    notificationsCount: (store.notifications || []).length,
-    fcmSubscribersCount: (store.fcmTokens || []).filter(t => t.enabled).length,
-    pendingApprovals: store.approvals.filter(a => a.status === 'pending'),
-    agentRuns: store.agentRuns.slice(0, 15),
-    settings: store.settings
-  });
-});
-
-app.post('/api/admin/agents/:name/run', requireAdmin, async (req, res) => {
-  const { name } = req.params;
-  try {
-    let result;
-    if (name === 'discovery') result = await runDiscoveryAgent();
-    else if (name === 'social') result = await runSocialAgent();
-    else if (name === 'news') result = await runNewsAgent();
-    else if (name === 'scores') result = await runScoresAgent(true);
-    else if (name === 'content') result = await runContentAgent();
-    else if (name === 'ops') result = await runOpsAgent();
-    else return res.status(400).json({ error: 'Unknown agent name' });
-
-    res.json({ success: true, agent: name, result });
-  } catch (error: any) {
-    res.status(500).json({ error: error?.message || 'Agent run failed' });
-  }
-});
-
-app.post('/api/admin/approvals/:id/decide', requireAdmin, (req, res) => {
-  const { decision } = req.body; // 'approve' | 'reject'
-  const store = db.get();
-  const approval = store.approvals.find(a => a.id === req.params.id);
-  if (!approval) return res.status(404).json({ error: 'Approval request not found' });
-
-  approval.status = decision === 'approve' ? 'approved' : 'rejected';
-  approval.decidedAt = new Date().toISOString();
-
-  if (decision === 'approve' && approval.kind === 'handle') {
-    const handle = store.handles.find(h => h.id === approval.payload.handleId);
-    if (handle) {
-      handle.status = 'verified';
-      handle.verifiedAt = new Date().toISOString();
-    }
-  }
-
-  db.save();
-  res.json({ success: true, approval });
-});
-
-app.get('/api/admin/settings', requireAdmin, (req, res) => {
-  const store = db.get();
-  res.json({ settings: store.settings });
-});
-
-app.post('/api/admin/settings', requireAdmin, (req, res) => {
-  const store = db.get();
-  store.settings = { ...store.settings, ...req.body };
-  db.save();
-  res.json({ success: true, settings: store.settings });
-});
-
-app.post('/api/admin/demo-reset', requireAdmin, (req, res) => {
-  const fresh = db.resetDemo();
-  res.json({ success: true, store: fresh });
-});
-
-// ----------------- ACTIVITY 8: GLOBAL PHYSICAL FAN SPACES -----------------
-app.get('/api/fanspaces', (req, res) => {
-  const user = getAuthUser(req);
-  const store = db.get();
-  const spaces = store.fanSpaces || [];
-  const userBookings = user 
-    ? (store.fanSpaceBookings || []).filter(b => b.userId === user.id)
-    : [];
-
-  res.json({
-    spaces,
-    bookings: userBookings,
-    totalHubs: spaces.length,
-    activeCities: spaces.map(s => s.city)
-  });
-});
-
-app.post('/api/fanspaces/:id/book', (req, res) => {
-  const user = getAuthUser(req);
-  if (!user) return res.status(401).json({ error: 'Please sign in to reserve your Fan Space entry' });
-
-  const { id } = req.params;
-  const { date, ticketType = 'vip_pass', ticketsCount = 1 } = req.body;
-  const store = db.get();
-  const space = (store.fanSpaces || []).find(s => s.id === id);
-
-  if (!space) return res.status(404).json({ error: 'Fan Space not found' });
-  if (space.status === 'sold_out') return res.status(400).json({ error: 'This Fan Space is currently sold out for upcoming sessions' });
-
-  const cityCode = space.city.slice(0, 3).toUpperCase();
-  const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-  const passCode = `ADT10-${cityCode}-${ticketType === 'vip_pass' ? 'VIP' : 'FAN'}-${randomSuffix}`;
-
-  const booking = {
-    id: 'bk_' + crypto.randomUUID().slice(0, 8),
-    spaceId: space.id,
-    spaceName: space.name,
-    userId: user.id,
-    userName: user.name,
-    userEmail: user.email,
-    date: date || new Date().toISOString().split('T')[0],
-    ticketType: ticketType as any,
-    ticketsCount: Math.max(1, parseInt(ticketsCount, 10) || 1),
-    passCode,
-    createdAt: new Date().toISOString()
+  const a = store.teams.find(t => t.id === match.teamA);
+  const b = store.teams.find(t => t.id === match.teamB);
+  const w = store.teams.find(t => t.id === match.winner);
+  return {
+    title: `🏆 Result: ${a?.name || match.teamA} vs ${b?.name || match.teamB}`,
+    body: [match.result || (w ? `${w.name} won` : 'Match completed'), [match.scoreA && `${a?.short} ${match.scoreA}`, match.scoreB && `${b?.short} ${match.scoreB}`].filter(Boolean).join(' · ')].filter(Boolean).join('. '),
+    category: 'match_result' as const,
+    targetAudience: 'all' as const,
+    teamId: null,
+    data: { matchId: match.id, url: '/matches' },
+    priority: 'high' as const,
+    createdBy: 'Match Centre',
   };
+}
 
-  if (!store.fanSpaceBookings) store.fanSpaceBookings = [];
-  store.fanSpaceBookings.unshift(booking);
-  space.totalBookings = (space.totalBookings || 0) + booking.ticketsCount;
+app.post('/api/admin/notifications/trigger-match-result', requireAdmin, wrap(async (req, res) => {
+  const match = db.get().matches.find(m => m.id === req.body?.matchId);
+  if (!match) return bad(res, 'Choose a match', 404);
+  if (match.status !== 'completed') return bad(res, 'Mark the match as completed first');
+  res.json({ success: true, notification: await dispatchNotification(resultNotificationFor(match)) });
+}));
 
-  // Award fan loyalty points for reserving fan space entry
-  user.points += 50;
-  if (!user.badges.includes('Fan Space Ambassador')) {
-    user.badges.push('Fan Space Ambassador');
-  }
-
-  db.save();
-
-  dispatchNotification({
-    title: `🎟️ FAN SPACE VIP PASS CONFIRMED: ${space.city}`,
-    body: `Your official pass for ${space.name} is ready! Pass code: ${passCode}. Show this at the clubhouse reception.`,
-    category: 'perk',
-    targetAudience: 'logged_in',
-    data: {
-      url: '/fanspaces',
-      passCode,
-      spaceId: space.id
-    },
-    priority: 'normal',
-    createdBy: 'Fan Spaces Ticketing Engine'
-  });
-
-  res.json({ success: true, booking, passCode, user });
+// ---------- matches ----------
+app.get('/api/matches', (_req, res) => {
+  res.json({ matches: [...db.get().matches].sort((a, b) => +new Date(a.startsAt) - +new Date(b.startsAt)) });
 });
 
-app.get('/api/admin/fanspaces/bookings', requireAdmin, (req, res) => {
+app.post('/api/matches', requireAdmin, wrap(async (req, res) => {
+  const b = req.body || {};
   const store = db.get();
-  res.json({ bookings: store.fanSpaceBookings || [] });
-});
-
-app.post('/api/admin/fanspaces', requireAdmin, (req, res) => {
-  const store = db.get();
-  if (!store.fanSpaces) store.fanSpaces = [];
-
-  const spaceData = req.body;
-  const existingIdx = store.fanSpaces.findIndex(s => s.id === spaceData.id);
-
-  if (existingIdx >= 0) {
-    store.fanSpaces[existingIdx] = {
-      ...store.fanSpaces[existingIdx],
-      ...spaceData
-    };
-  } else {
-    const newSpace = {
-      id: spaceData.id || 'space-' + crypto.randomUUID().slice(0, 6),
-      name: spaceData.name || 'ADT10 Clubhouse',
-      city: spaceData.city || 'Global Hub',
-      country: spaceData.country || 'International',
-      tagline: spaceData.tagline || 'Official ADT10 Experiential Match Clubhouse',
-      location: spaceData.location || 'Metropolitan City Center',
-      capacity: parseInt(spaceData.capacity, 10) || 500,
-      status: spaceData.status || 'active',
-      image: spaceData.image || 'https://images.unsplash.com/photo-1512958789358-4dacacbe09c3?q=80&w=1200&auto=format&fit=crop',
-      features: spaceData.features || ['360° LED Match Screens', 'VR Batting Simulator', 'Merch Boutique'],
-      amenities: spaceData.amenities || ['Valet Parking', 'Fast Wi-Fi', 'Artisanal Bar'],
-      openHours: spaceData.openHours || 'Daily 12:00 PM – 02:00 AM',
-      liveMatchSchedule: spaceData.liveMatchSchedule || 'Screening all live Abu Dhabi T10 fixtures',
-      vipPassPriceAed: parseInt(spaceData.vipPassPriceAed, 10) || 200,
-      vipPassPriceUsd: parseInt(spaceData.vipPassPriceUsd, 10) || 55,
-      vipPerks: spaceData.vipPerks || ['Front row lounge seating', 'Complimentary beverages'],
-      merchBoutique: spaceData.merchBoutique || 'Official franchise kits & caps',
-      menuHighlights: spaceData.menuHighlights || 'Gourmet sliders & Karak chai',
-      totalBookings: 0
-    };
-    store.fanSpaces.push(newSpace);
-  }
-
-  db.save();
-  res.json({ success: true, spaces: store.fanSpaces });
-});
-
-app.delete('/api/admin/fanspaces/:id', requireAdmin, (req, res) => {
-  const store = db.get();
-  store.fanSpaces = (store.fanSpaces || []).filter(s => s.id !== req.params.id);
-  db.save();
-  res.json({ success: true, spaces: store.fanSpaces });
-});
-
-// ----------------- ACTIVITY 9: NEXT-GEN GROWTH CATALYSTS -----------------
-app.get('/api/growth-catalysts', (req, res) => {
-  const store = db.get();
-  res.json({
-    youthSchools: store.youthSchools || [],
-    creatorPartners: store.creatorPartners || [],
-    commentaryFeeds: store.commentaryFeeds || [],
-    passportTiers: store.passportTiers || []
-  });
-});
-
-app.post('/api/admin/growth/youth-school', requireAdmin, (req, res) => {
-  const store = db.get();
-  if (!store.youthSchools) store.youthSchools = [];
-  const schoolData = req.body;
-  const idx = store.youthSchools.findIndex(s => s.id === schoolData.id);
-
-  if (idx >= 0) {
-    store.youthSchools[idx] = { ...store.youthSchools[idx], ...schoolData };
-  } else {
-    store.youthSchools.push({
-      id: schoolData.id || 'school-' + crypto.randomUUID().slice(0, 6),
-      name: schoolData.name,
-      region: schoolData.region || 'UAE',
-      city: schoolData.city || 'Abu Dhabi',
-      studentsCount: parseInt(schoolData.studentsCount, 10) || 200,
-      tapeBallTeam: schoolData.tapeBallTeam || `${schoolData.name} XI`,
-      status: schoolData.status || 'registered',
-      equipmentKitGranted: !!schoolData.equipmentKitGranted,
-      matchdayTicketsAllocated: parseInt(schoolData.matchdayTicketsAllocated, 10) || 25
-    });
-  }
-
-  db.save();
-  res.json({ success: true, youthSchools: store.youthSchools });
-});
-
-app.delete('/api/admin/growth/youth-school/:id', requireAdmin, (req, res) => {
-  const store = db.get();
-  store.youthSchools = (store.youthSchools || []).filter(s => s.id !== req.params.id);
-  db.save();
-  res.json({ success: true, youthSchools: store.youthSchools });
-});
-
-app.post('/api/admin/growth/creator', requireAdmin, (req, res) => {
-  const store = db.get();
-  if (!store.creatorPartners) store.creatorPartners = [];
-  const creatorData = req.body;
-  const idx = store.creatorPartners.findIndex(c => c.id === creatorData.id);
-
-  if (idx >= 0) {
-    store.creatorPartners[idx] = { ...store.creatorPartners[idx], ...creatorData };
-  } else {
-    store.creatorPartners.push({
-      id: creatorData.id || 'creator-' + crypto.randomUUID().slice(0, 6),
-      name: creatorData.name,
-      handle: creatorData.handle,
-      platform: creatorData.platform || 'YouTube',
-      followers: creatorData.followers || '100K',
-      streamUrl: creatorData.streamUrl || 'https://youtube.com',
-      specialty: creatorData.specialty || 'Cricket Reactions & Watch-Along',
-      status: creatorData.status || 'partnered',
-      totalWatchViews: creatorData.totalWatchViews || '1.0M',
-      avatar: creatorData.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=200&auto=format&fit=crop'
-    });
-  }
-
-  db.save();
-  res.json({ success: true, creatorPartners: store.creatorPartners });
-});
-
-app.delete('/api/admin/growth/creator/:id', requireAdmin, (req, res) => {
-  const store = db.get();
-  store.creatorPartners = (store.creatorPartners || []).filter(c => c.id !== req.params.id);
-  db.save();
-  res.json({ success: true, creatorPartners: store.creatorPartners });
-});
-
-app.post('/api/admin/growth/audio-feed', requireAdmin, (req, res) => {
-  const store = db.get();
-  if (!store.commentaryFeeds) store.commentaryFeeds = [];
-  const feedData = req.body;
-  const idx = store.commentaryFeeds.findIndex(f => f.id === feedData.id);
-
-  if (idx >= 0) {
-    store.commentaryFeeds[idx] = { ...store.commentaryFeeds[idx], ...feedData };
-  } else {
-    store.commentaryFeeds.push(feedData);
-  }
-
-  db.save();
-  res.json({ success: true, commentaryFeeds: store.commentaryFeeds });
-});
-
-app.post('/api/growth/superfan-passport/subscribe', (req, res) => {
-  const user = getAuthUser(req);
-  if (!user) return res.status(401).json({ error: 'Please sign in to activate your Superfan Digital Passport' });
-
-  const store = db.get();
-  if (!user.badges.includes('Superfan Gold Passport')) {
-    user.badges.push('Superfan Gold Passport');
-  }
-  user.points += 250;
-
-  if (store.passportTiers && store.passportTiers[0]) {
-    store.passportTiers[0].totalSubscribers = (store.passportTiers[0].totalSubscribers || 38000) + 1;
-  }
-
-  db.save();
-
-  dispatchNotification({
-    title: '🌟 SUPERFAN DIGITAL PASSPORT ACTIVATED',
-    body: 'Welcome to the inner circle! Enjoy 15% off all match tickets, priority entry at all 5 Fan Spaces, and 2x contest points.',
-    category: 'perk',
-    targetAudience: 'logged_in',
-    data: {
-      url: '/growth',
-      membershipStatus: 'Active'
-    },
-    priority: 'high',
-    createdBy: 'Superfan Membership Desk'
-  });
-
-  res.json({ success: true, user });
-});
-
-// ----------------- PROPOSAL & FINANCIAL BUDGET -----------------
-app.get('/api/proposal', (req, res) => {
-  const store = db.get();
-  res.json({ proposalSettings: store.proposalSettings });
-});
-
-app.post('/api/admin/proposal', requireAdmin, (req, res) => {
-  const store = db.get();
-  store.proposalSettings = {
-    ...store.proposalSettings,
-    ...req.body,
-    updatedAt: new Date().toISOString()
+  const idx = b.id ? store.matches.findIndex(m => m.id === b.id) : -1;
+  const prev = idx >= 0 ? store.matches[idx] : undefined;
+  const teamA = str(b.teamA ?? prev?.teamA, 60);
+  const teamB = str(b.teamB ?? prev?.teamB, 60);
+  if (!store.teams.some(t => t.id === teamA) || !store.teams.some(t => t.id === teamB)) return bad(res, 'Choose two existing teams');
+  if (teamA === teamB) return bad(res, 'A team cannot play itself');
+  const startsAt = isoOrEmpty(b.startsAt ?? prev?.startsAt);
+  if (!startsAt) return bad(res, 'Start date and time are required');
+  const status: Match['status'] = ['upcoming', 'live', 'completed'].includes(b.status) ? b.status : prev?.status || 'upcoming';
+  const winner = b.winner !== undefined ? str(b.winner, 60) : prev?.winner || '';
+  if (winner && winner !== teamA && winner !== teamB) return bad(res, 'Winner must be one of the two teams');
+  const opt = (k: keyof Match, max = 200) => (b[k] !== undefined ? str(b[k], max) || undefined : (prev?.[k] as any));
+  const match: Match = {
+    id: prev?.id || newId('m'),
+    matchNo: Math.max(1, Math.round(num(b.matchNo, prev?.matchNo || store.matches.length + 1))),
+    stage: str(b.stage ?? prev?.stage, 60) || 'Group stage',
+    teamA,
+    teamB,
+    startsAt,
+    venue: str(b.venue ?? prev?.venue, 120) || store.settings.venue || '',
+    status,
+    scoreA: opt('scoreA', 20),
+    scoreB: opt('scoreB', 20),
+    oversA: opt('oversA', 10),
+    oversB: opt('oversB', 10),
+    currentOver: opt('currentOver', 120),
+    lastCommentary: opt('lastCommentary', 300),
+    topScorer: opt('topScorer', 120),
+    topWicketTaker: opt('topWicketTaker', 120),
+    toss: opt('toss', 200),
+    playerOfTheMatch: opt('playerOfTheMatch', 120),
+    scorecard: b.scorecard !== undefined ? b.scorecard : prev?.scorecard,
+    result: opt('result', 200),
+    winner: winner || undefined,
+    totalSixes: b.totalSixes !== undefined && b.totalSixes !== '' ? Math.max(0, Math.round(num(b.totalSixes))) : prev?.totalSixes,
+    firstInnings: prev?.firstInnings,
+    updatedAt: new Date().toISOString(),
   };
+  if (idx >= 0) store.matches[idx] = match;
+  else store.matches.push(match);
   db.save();
-  res.json({ success: true, proposalSettings: store.proposalSettings });
+  let notification: NotificationItem | undefined;
+  if (match.status === 'completed' && prev?.status !== 'completed' && req.body?.notify !== false) {
+    notification = await dispatchNotification(resultNotificationFor(match));
+  }
+  res.json({ success: true, matches: store.matches, targetMatch: match, notification });
+}));
+
+app.delete('/api/matches/:id', requireAdmin, (req, res) => {
+  const store = db.get();
+  store.matches = store.matches.filter(m => m.id !== req.params.id);
+  store.fantasyTeams = store.fantasyTeams.filter(f => f.matchId !== req.params.id);
+  db.save();
+  res.json({ success: true, matches: store.matches });
 });
 
-app.post('/api/admin/proposal/reset', requireAdmin, (req, res) => {
-  const proposalSettings = db.resetProposal();
-  res.json({ success: true, proposalSettings });
+// ---------- contests ----------
+function contestLocked(c: Contest) {
+  return c.status !== 'open' || (c.locksAt ? +new Date(c.locksAt) <= Date.now() : false);
+}
+function stripAnswers(c: Contest, isAdmin: boolean): Contest {
+  if (isAdmin || c.status === 'settled') return c;
+  return { ...c, questions: c.questions.map(({ answer, explain, ...q }) => q) as Contest['questions'] };
+}
+
+function drawStatus(d: PrizeDraw): PrizeDraw['status'] {
+  if (d.status === 'drawn') return 'drawn';
+  if (d.status === 'closed' || +new Date(d.closesAt) <= Date.now()) return 'closed';
+  return 'open';
+}
+
+app.get('/api/contests', (req, res) => {
+  const user = getAuthUser(req);
+  const store = db.get();
+  const isAdmin = user?.role === 'admin';
+  const entryCounts: Record<string, number> = {};
+  for (const e of store.contestEntries) entryCounts[e.contestId] = (entryCounts[e.contestId] || 0) + 1;
+  const contests = store.contests.map(c => {
+    // Auto-lock once the lock time has passed.
+    if (c.status === 'open' && c.locksAt && +new Date(c.locksAt) <= Date.now()) c.status = 'locked';
+    return stripAnswers(c, isAdmin);
+  });
+  res.json({ contests, myEntries: user ? store.contestEntries.filter(e => e.userId === user.id) : [], entryCounts });
 });
 
-// ----------------- CONTESTS & FANTASY ADMIN -----------------
+app.post('/api/contests/:id/enter', requireUser, rateLimit('contest', 30, 60_000), (req, res) => {
+  const user = userOf(req);
+  const store = db.get();
+  const contest = store.contests.find(c => c.id === req.params.id);
+  if (!contest) return bad(res, 'Contest not found', 404);
+  if (contestLocked(contest)) return bad(res, 'This contest is closed');
+  const raw = req.body?.answers && typeof req.body.answers === 'object' ? req.body.answers : {};
+  const answers: Record<string, string> = {};
+  for (const q of contest.questions) {
+    const a = str(raw[q.id], 200);
+    if (a && q.options.includes(a)) answers[q.id] = a;
+  }
+  if (Object.keys(answers).length !== contest.questions.length) return bad(res, 'Please answer every question');
+  const existingIdx = store.contestEntries.findIndex(e => e.userId === user.id && e.contestId === contest.id);
+  let pointsAwarded: number | undefined;
+  if (contest.instant) {
+    if (existingIdx >= 0) return bad(res, 'You have already played this quiz');
+    pointsAwarded = contest.questions.reduce((sum, q) => sum + (q.answer && answers[q.id] === q.answer ? q.points : 0), 0);
+    user.points += pointsAwarded;
+  }
+  const entry = { userId: user.id, contestId: contest.id, answers, pointsAwarded, createdAt: new Date().toISOString() };
+  if (existingIdx >= 0) store.contestEntries[existingIdx] = entry;
+  else store.contestEntries.push(entry);
+  db.save();
+  const results = contest.instant
+    ? contest.questions.map(q => ({ id: q.id, correct: answers[q.id] === q.answer, answer: q.answer, explain: q.explain }))
+    : undefined;
+  res.json({ success: true, pointsAwarded: pointsAwarded || 0, user, results });
+});
+
 app.post('/api/admin/contests', requireAdmin, (req, res) => {
+  const b = req.body || {};
   const store = db.get();
-  if (!store.contests) store.contests = [];
-  const contestData = req.body;
-  const idx = store.contests.findIndex(c => c.id === contestData.id);
-
-  if (idx >= 0) {
-    store.contests[idx] = { ...store.contests[idx], ...contestData };
-  } else {
-    store.contests.push({
-      id: contestData.id || 'c-' + crypto.randomUUID().slice(0, 6),
-      type: contestData.type || 'predictor',
-      title: contestData.title || 'Match Predictor Challenge',
-      description: contestData.description || 'Predict match milestones and earn fan points.',
-      matchId: contestData.matchId || null,
-      locksAt: contestData.locksAt || new Date(Date.now() + 3600 * 1000 * 24).toISOString(),
-      status: contestData.status || 'open',
-      prize: contestData.prize || 'VIP Passes & Points',
-      instant: !!contestData.instant,
-      questions: contestData.questions || [
-        {
-          id: 'q-1',
-          prompt: 'Which team strikes more sixes?',
-          options: ['Arabian Aces', 'Deccan Gladiators', 'Tie'],
-          points: 50
-        }
-      ],
-      createdAt: new Date().toISOString()
-    });
+  const title = str(b.title, 150);
+  if (!title) return bad(res, 'Contest title is required');
+  const questions = (Array.isArray(b.questions) ? b.questions : []).map((q: any, i: number) => ({
+    id: str(q.id, 60) || `q${i + 1}-${crypto.randomUUID().slice(0, 4)}`,
+    prompt: str(q.prompt, 300),
+    options: Array.from(new Set((Array.isArray(q.options) ? q.options : []).map((o: any) => str(o, 120)).filter(Boolean))) as string[],
+    points: Math.max(1, Math.round(num(q.points, 10))),
+    answer: str(q.answer, 120) || undefined,
+    explain: str(q.explain, 300) || undefined,
+  }));
+  if (!questions.length) return bad(res, 'Add at least one question');
+  for (const q of questions) {
+    if (!q.prompt) return bad(res, 'Every question needs a prompt');
+    if (q.options.length < 2) return bad(res, `"${q.prompt}" needs at least two options`);
+    if (q.answer && !q.options.includes(q.answer)) return bad(res, `The answer for "${q.prompt}" must be one of its options`);
   }
-
+  const instant = Boolean(b.instant);
+  if (instant && questions.some((q: any) => !q.answer)) return bad(res, 'Instant quizzes need a correct answer for every question');
+  const matchId = str(b.matchId, 60) || undefined;
+  if (matchId && !store.matches.some(m => m.id === matchId)) return bad(res, 'Unknown match');
+  const idx = b.id ? store.contests.findIndex(c => c.id === b.id) : -1;
+  const contest: Contest = {
+    ...(idx >= 0 ? store.contests[idx] : {}),
+    id: idx >= 0 ? store.contests[idx].id : newId('c'),
+    type: ['predictor', 'sixes', 'captain', 'season', 'trivia'].includes(b.type) ? b.type : 'predictor',
+    title,
+    description: str(b.description, 600),
+    matchId,
+    locksAt: isoOrEmpty(b.locksAt) || undefined,
+    status: ['open', 'locked', 'settled'].includes(b.status) ? b.status : idx >= 0 ? store.contests[idx].status : 'open',
+    prize: str(b.prize, 200),
+    instant,
+    questions,
+    createdAt: idx >= 0 ? store.contests[idx].createdAt : new Date().toISOString(),
+  };
+  if (idx >= 0) store.contests[idx] = contest;
+  else store.contests.push(contest);
   db.save();
   res.json({ success: true, contests: store.contests });
 });
 
 app.delete('/api/admin/contests/:id', requireAdmin, (req, res) => {
   const store = db.get();
-  store.contests = (store.contests || []).filter(c => c.id !== req.params.id);
+  store.contests = store.contests.filter(c => c.id !== req.params.id);
+  store.contestEntries = store.contestEntries.filter(e => e.contestId !== req.params.id);
   db.save();
   res.json({ success: true, contests: store.contests });
 });
 
 app.post('/api/admin/contests/:id/toggle-status', requireAdmin, (req, res) => {
-  const { status } = req.body; // 'open' | 'locked' | 'settled'
-  const store = db.get();
-  const contest = (store.contests || []).find(c => c.id === req.params.id);
-  if (!contest) return res.status(404).json({ error: 'Contest not found' });
-
-  contest.status = status || (contest.status === 'open' ? 'locked' : 'open');
+  const c = db.get().contests.find(x => x.id === req.params.id);
+  if (!c) return bad(res, 'Contest not found', 404);
+  if (c.status === 'settled') return bad(res, 'Settled contests cannot be reopened');
+  c.status = req.body?.status === 'open' || req.body?.status === 'locked' ? req.body.status : c.status === 'open' ? 'locked' : 'open';
+  if (c.status === 'open' && c.locksAt && +new Date(c.locksAt) <= Date.now()) c.locksAt = undefined;
   db.save();
-  res.json({ success: true, contest });
+  res.json({ success: true, contest: c });
 });
 
-app.post('/api/admin/contests/:id/settle', requireAdmin, (req, res) => {
-  const { answers } = req.body; // { [questionId: string]: string }
+app.post('/api/admin/contests/:id/settle', requireAdmin, wrap(async (req, res) => {
   const store = db.get();
-  const contest = (store.contests || []).find(c => c.id === req.params.id);
-  if (!contest) return res.status(404).json({ error: 'Contest not found' });
-
-  // Update question answers
-  if (answers && typeof answers === 'object') {
-    contest.questions.forEach(q => {
-      if (answers[q.id]) {
-        q.answer = answers[q.id];
-      }
-    });
-  }
-
-  contest.status = 'settled';
-
-  // Evaluate entries for this contest
-  const entries = (store.contestEntries || []).filter(e => e.contestId === contest.id);
-  let settledEntriesCount = 0;
-  let totalPointsDistributed = 0;
-
-  entries.forEach(entry => {
-    let points = 0;
-    contest.questions.forEach(q => {
-      if (q.answer && entry.answers[q.id] === q.answer) {
-        points += q.points;
-      }
-    });
-    entry.pointsAwarded = points;
-
-    // Credit user points
-    const user = store.users.find(u => u.id === entry.userId);
-    if (user && points > 0) {
-      user.points += points;
-      if (!user.stats) {
-        user.stats = { contestsEntered: 1, contestsWon: 1, predictionPoints: points };
-      } else {
-        user.stats.predictionPoints = (user.stats.predictionPoints || 0) + points;
-        user.stats.contestsWon = (user.stats.contestsWon || 0) + 1;
-      }
-      totalPointsDistributed += points;
-      settledEntriesCount++;
+  const contest = store.contests.find(c => c.id === req.params.id);
+  if (!contest) return bad(res, 'Contest not found', 404);
+  if (contest.status === 'settled') return bad(res, 'Already settled');
+  const answers = req.body?.answers && typeof req.body.answers === 'object' ? req.body.answers : {};
+  for (const q of contest.questions) {
+    const a = str(answers[q.id], 120);
+    if (a) {
+      if (!q.options.includes(a)) return bad(res, `Answer for "${q.prompt}" must be one of its options`);
+      q.answer = a;
     }
-  });
-
-  dispatchNotification({
-    title: `🎯 CONTEST SETTLED: ${contest.title}`,
-    body: `Results are out! Points have been distributed to all winners. Check the Leaderboard to see where you rank!`,
+  }
+  if (contest.questions.some(q => !q.answer)) return bad(res, 'Pick the correct answer for every question');
+  contest.status = 'settled';
+  let winners = 0;
+  let total = 0;
+  for (const e of store.contestEntries.filter(x => x.contestId === contest.id)) {
+    if (contest.instant) continue; // already graded on entry
+    const pts = contest.questions.reduce((s, q) => s + (e.answers[q.id] === q.answer ? q.points : 0), 0);
+    e.pointsAwarded = pts;
+    const u = store.users.find(x => x.id === e.userId);
+    if (u && pts > 0) {
+      u.points += pts;
+      winners++;
+      total += pts;
+    }
+  }
+  db.save();
+  await dispatchNotification({
+    title: `🎯 Results: ${contest.title}`,
+    body: 'Answers are in and points have been added. See where you rank on the leaderboard.',
     category: 'announcement',
-    targetAudience: 'all',
-    data: {
-      contestId: contest.id,
-      url: '/contests',
-      totalPointsDistributed
-    },
-    priority: 'high',
-    createdBy: 'Contest Settlement Engine'
+    targetAudience: 'logged_in',
+    data: { contestId: contest.id, url: '/contests' },
+    createdBy: 'Contests',
   });
+  res.json({ success: true, contest, settledEntriesCount: winners, totalPointsDistributed: total });
+}));
 
-  db.save();
-  res.json({ success: true, contest, settledEntriesCount, totalPointsDistributed });
+// ---------- fantasy ----------
+const FANTASY_CREDIT_CAP = 55;
+app.get('/api/fantasy/:matchId', (req, res) => {
+  const user = getAuthUser(req);
+  res.json({ fantasyTeam: user ? db.get().fantasyTeams.find(f => f.userId === user.id && f.matchId === req.params.matchId) || null : null });
 });
 
-// Delete match endpoint
-app.delete('/api/matches/:id', requireAdmin, (req, res) => {
+app.post('/api/fantasy/:matchId', requireUser, (req, res) => {
+  const user = userOf(req);
   const store = db.get();
-  store.matches = (store.matches || []).filter(m => m.id !== req.params.id);
+  const match = store.matches.find(m => m.id === req.params.matchId);
+  if (!match) return bad(res, 'Match not found', 404);
+  if (match.status !== 'upcoming' || +new Date(match.startsAt) <= Date.now()) return bad(res, 'Lineups are locked for this match');
+  const ids: string[] = Array.isArray(req.body?.playerIds) ? Array.from(new Set(req.body.playerIds.map((x: any) => String(x)))) : [];
+  const captainId = str(req.body?.captainId, 80);
+  if (ids.length !== 6 || !ids.includes(captainId)) return bad(res, 'Pick exactly 6 players and choose one of them as captain');
+  const pool = store.teams.filter(t => t.id === match.teamA || t.id === match.teamB).flatMap(t => t.squad);
+  const picked = ids.map(id => pool.find(p => p.id === id));
+  if (picked.some(p => !p)) return bad(res, 'Players must come from the two teams in this match');
+  const credits = picked.reduce((s, p) => s + (p!.credits || 0), 0);
+  if (credits > FANTASY_CREDIT_CAP) return bad(res, `Your lineup uses ${credits} credits; the cap is ${FANTASY_CREDIT_CAP}`);
+  const idx = store.fantasyTeams.findIndex(f => f.userId === user.id && f.matchId === match.id);
+  const team = { userId: user.id, matchId: match.id, playerIds: ids, captainId, createdAt: new Date().toISOString() };
+  if (idx >= 0) store.fantasyTeams[idx] = team;
+  else store.fantasyTeams.push(team);
   db.save();
-  res.json({ success: true, matches: store.matches });
+  res.json({ success: true, fantasyTeam: team, user });
 });
 
-// Gemini Marketing Generator
-app.post('/api/gemini/marketing', async (req, res) => {
-  const { prompt, teamName } = req.body;
-  const result = await generateMarketingContent(prompt || 'Generate Abu Dhabi T10 hype campaign', { teamName });
-  res.json(result);
+// ---------- draws ----------
+app.get('/api/draws', (req, res) => {
+  const user = getAuthUser(req);
+  const store = db.get();
+  const myEntries = user ? store.drawEntries.filter(e => e.userId === user.id).map(e => e.drawId) : [];
+  const draws = store.draws.map(d => ({
+    ...d,
+    status: drawStatus(d),
+    winnerUserId: undefined,
+    entriesCount: store.drawEntries.filter(e => e.drawId === d.id).length,
+    entered: myEntries.includes(d.id),
+  }));
+  res.json({ draws, myEntries });
 });
 
-// Gemini Multi-Turn Chatbot
-app.post('/api/gemini/chat', async (req, res) => {
-  const { messages } = req.body;
-  if (!messages || !Array.isArray(messages)) {
-    return res.status(400).json({ error: 'Messages array required' });
+app.post('/api/draws/:id/enter', requireUser, (req, res) => {
+  const user = userOf(req);
+  const store = db.get();
+  const draw = store.draws.find(d => d.id === req.params.id);
+  if (!draw) return bad(res, 'Draw not found', 404);
+  if (drawStatus(draw) !== 'open') return bad(res, 'This draw is closed');
+  if (draw.teamOnly && user.teamId !== draw.teamOnly) {
+    const t = store.teams.find(x => x.id === draw.teamOnly);
+    return bad(res, `This draw is only for ${t?.name || 'one team'}'s fans`, 403);
   }
-  const result = await chatWithGemini(messages);
-  res.json(result);
+  if (store.drawEntries.some(e => e.drawId === draw.id && e.userId === user.id)) return bad(res, "You're already in this draw");
+  store.drawEntries.push({ drawId: draw.id, userId: user.id, userEmail: user.email, userName: user.name, createdAt: new Date().toISOString() });
+  db.save();
+  res.json({ success: true, message: "You're in! Good luck." });
 });
 
-// Google Search Grounding for live cricket & league updates
-app.post('/api/gemini/search', async (req, res) => {
-  const { query } = req.body;
-  if (!query) {
-    return res.status(400).json({ error: 'Query required' });
+app.post('/api/admin/draws', requireAdmin, (req, res) => {
+  const b = req.body || {};
+  const store = db.get();
+  const title = str(b.title, 150);
+  const prize = str(b.prize, 200);
+  const closesAt = isoOrEmpty(b.closesAt);
+  if (!title || !prize) return bad(res, 'Title and prize are required');
+  if (!closesAt) return bad(res, 'Closing date is required');
+  const teamOnly = str(b.teamOnly, 60) || null;
+  if (teamOnly && !store.teams.some(t => t.id === teamOnly)) return bad(res, 'Unknown team');
+  const idx = b.id ? store.draws.findIndex(d => d.id === b.id) : -1;
+  if (idx >= 0 && store.draws[idx].status === 'drawn') return bad(res, 'This draw has already been drawn');
+  const draw: PrizeDraw = {
+    ...(idx >= 0 ? store.draws[idx] : {}),
+    id: idx >= 0 ? store.draws[idx].id : newId('draw'),
+    title,
+    prize,
+    description: str(b.description, 800),
+    color: /^#[0-9a-f]{6}$/i.test(str(b.color, 7)) ? str(b.color, 7) : '#D9A92E',
+    closesAt,
+    status: b.status === 'closed' ? 'closed' : 'open',
+    teamOnly,
+    createdAt: idx >= 0 ? store.draws[idx].createdAt : new Date().toISOString(),
+  };
+  if (idx >= 0) store.draws[idx] = draw;
+  else store.draws.push(draw);
+  db.save();
+  res.json({ success: true, draws: store.draws });
+});
+
+app.delete('/api/admin/draws/:id', requireAdmin, (req, res) => {
+  const store = db.get();
+  store.draws = store.draws.filter(d => d.id !== req.params.id);
+  store.drawEntries = store.drawEntries.filter(e => e.drawId !== req.params.id);
+  db.save();
+  res.json({ success: true, draws: store.draws });
+});
+
+app.get('/api/admin/draws/:id/entries', requireAdmin, (req, res) => {
+  res.json({ entries: db.get().drawEntries.filter(e => e.drawId === req.params.id).map(({ userName, userEmail, createdAt }) => ({ userName, userEmail, createdAt })) });
+});
+
+app.post('/api/draws/:id/execute', requireAdmin, (req, res) => {
+  const store = db.get();
+  const draw = store.draws.find(d => d.id === req.params.id);
+  if (!draw) return bad(res, 'Draw not found', 404);
+  if (draw.status === 'drawn') return bad(res, 'Already drawn');
+  const entries = store.drawEntries.filter(e => e.drawId === draw.id).sort((a, b) => a.userId.localeCompare(b.userId));
+  if (!entries.length) return bad(res, 'No entries yet');
+  // Verifiable: winnerIndex = int(sha256(seed + ':' + entrantsHash)[0..8], 16) % entries (entrants sorted by id)
+  const seed = crypto.randomBytes(16).toString('hex');
+  const entrantsHash = crypto.createHash('sha256').update(entries.map(e => e.userId).join(':')).digest('hex');
+  const h = crypto.createHash('sha256').update(`${seed}:${entrantsHash}`).digest('hex');
+  const winner = entries[parseInt(h.slice(0, 8), 16) % entries.length];
+  Object.assign(draw, { status: 'drawn', winnerUserId: winner.userId, winnerName: winner.userName, seed, entrantsHash, drawnAt: new Date().toISOString() });
+  db.save();
+  res.json({ success: true, draw, winner: { userName: winner.userName, userEmail: winner.userEmail } });
+});
+
+// ---------- fan actions ----------
+app.post('/api/checkin', requireUser, (req, res) => {
+  const user = userOf(req);
+  const now = new Date();
+  const dayKey = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Dubai' });
+  const last = user.lastCheckin ? new Date(user.lastCheckin) : null;
+  if (last && dayKey(last) === dayKey(now)) return bad(res, "You've already checked in today. Come back tomorrow!");
+  const yesterday = new Date(now.getTime() - 86400000);
+  user.streak = last && dayKey(last) === dayKey(yesterday) ? user.streak + 1 : 1;
+  const pts = 10 * Math.min(user.streak, 5);
+  user.points += pts;
+  user.lastCheckin = now.toISOString();
+  db.save();
+  res.json({ success: true, user, pointsAdded: pts });
+});
+
+app.post('/api/me/team', requireUser, (req, res) => {
+  const user = userOf(req);
+  const team = db.get().teams.find(t => t.id === req.body?.teamId);
+  if (!team) return bad(res, 'Team not found', 404);
+  if (user.teamId !== team.id) {
+    user.teamId = team.id;
+    user.teamChanges += 1;
   }
-  const result = await searchGroundingCricket(query);
-  res.json(result);
+  db.save();
+  res.json({ success: true, user });
 });
 
-// Audio Speech-to-Text Transcription with gemini-3.5-transcribe
-app.post('/api/gemini/transcribe', async (req, res) => {
-  const { audioBase64, mimeType } = req.body;
-  if (!audioBase64) {
-    return res.status(400).json({ error: 'Base64 audio required' });
+app.get('/api/leaderboard', (_req, res) => {
+  const store = db.get();
+  const totals = new Map(store.teams.map(t => [t.id, { team: t, points: 0, fansCount: 0 }]));
+  for (const u of store.users) {
+    const row = u.teamId ? totals.get(u.teamId) : undefined;
+    if (row) {
+      row.points += u.points;
+      row.fansCount++;
+    }
   }
-  const result = await transcribeAudioVoice(audioBase64, mimeType || 'audio/webm');
-  res.json(result);
+  const fanWars = [...totals.values()].sort((a, b) => b.points - a.points || a.team.sort - b.team.sort);
+  const topFans = [...store.users].filter(u => u.points > 0).sort((a, b) => b.points - a.points).slice(0, 20).map(publicUser);
+  res.json({ fanWars, topFans });
 });
 
-// Stadium Music Generation with Lyria
-app.post('/api/gemini/music', async (req, res) => {
-  const { prompt } = req.body;
-  const result = await generateStadiumMusic(prompt || 'Abu Dhabi T10 high-energy stadium walkout fanfare');
-  res.json(result);
+// ---------- forum ----------
+const FORUM_CATEGORIES = ['matchday', 'tactics', 'franchises', 'fantasy', 'fanspaces', 'giveaways', 'general'];
+app.get('/api/forum/threads', (req, res) => {
+  const { category, teamId, search } = req.query;
+  let threads = [...db.get().forumThreads];
+  if (category && category !== 'all') threads = threads.filter(t => t.category === category);
+  if (teamId && teamId !== 'all') threads = threads.filter(t => t.teamId === teamId);
+  if (typeof search === 'string' && search.trim()) {
+    const q = search.trim().toLowerCase();
+    threads = threads.filter(t => t.title.toLowerCase().includes(q) || t.content.toLowerCase().includes(q) || t.tags?.some(g => g.toLowerCase().includes(q)));
+  }
+  threads.sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || +new Date(b.lastActivityAt || b.createdAt) - +new Date(a.lastActivityAt || a.createdAt));
+  res.json({ threads: threads.slice(0, 200).map(({ upvotedBy, ...t }) => ({ ...t, upvotedBy })) });
 });
 
-// Veo 3 Video Generation (Text-to-Video & Image-to-Video)
-app.post('/api/gemini/video', async (req, res) => {
-  const { prompt, imageBase64, aspectRatio } = req.body;
-  const result = await generateVeoVideo(prompt, imageBase64, aspectRatio || '16:9');
-  res.json(result);
+app.post('/api/forum/threads', requireUser, rateLimit('thread', 5, 10 * 60_000), (req, res) => {
+  const user = userOf(req);
+  const title = str(req.body?.title, 150);
+  const content = str(req.body?.content, 5000);
+  if (title.length < 5) return bad(res, 'Title must be at least 5 characters');
+  if (content.length < 10) return bad(res, 'Post must be at least 10 characters');
+  const store = db.get();
+  const teamId = req.body?.teamId && store.teams.some(t => t.id === req.body.teamId) ? req.body.teamId : null;
+  const tags = (Array.isArray(req.body?.tags) ? req.body.tags : []).map((t: any) => str(t, 24)).filter(Boolean).slice(0, 5);
+  const now = new Date().toISOString();
+  const thread = {
+    id: newId('thread'),
+    title,
+    content,
+    category: FORUM_CATEGORIES.includes(req.body?.category) ? req.body.category : 'general',
+    tags,
+    teamId,
+    userId: user.id,
+    userName: user.name,
+    userAvatar: user.avatar,
+    userBadge: user.role === 'admin' ? 'Admin' : undefined,
+    pinned: false,
+    upvotes: 0,
+    upvotedBy: [],
+    views: 0,
+    commentsCount: 0,
+    lastActivityAt: now,
+    createdAt: now,
+  };
+  store.forumThreads.unshift(thread);
+  user.points += 15;
+  db.save();
+  res.json({ success: true, thread, pointsAdded: 15, user });
 });
 
-// ----------------- SEO: SITEMAP & ROBOTS.TXT -----------------
-app.get('/robots.txt', (req, res) => {
-  const robots = `# Abu Dhabi T10 Fan Hub - Copyright by Azlir Sport
-User-agent: *
-Allow: /
-
-Sitemap: https://adt10.azlirsport.com/sitemap.xml
-`;
-  res.type('text/plain').send(robots);
+app.get('/api/forum/threads/:id', (req, res) => {
+  const store = db.get();
+  const thread = store.forumThreads.find(t => t.id === req.params.id);
+  if (!thread) return bad(res, 'Thread not found', 404);
+  thread.views = (thread.views || 0) + 1;
+  db.save();
+  const comments = store.forumComments.filter(c => c.threadId === thread.id).sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt));
+  res.json({ thread, comments });
 });
 
-app.get('/sitemap.xml', (req, res) => {
-  const baseUrl = 'https://adt10.azlirsport.com';
-  const today = new Date().toISOString().split('T')[0];
-
-  const routes = [
-    { loc: '/', priority: '1.0', changefreq: 'daily' },
-    { loc: '/matches', priority: '0.9', changefreq: 'hourly' },
-    { loc: '/teams', priority: '0.9', changefreq: 'daily' },
-    { loc: '/teams/aces', priority: '0.8', changefreq: 'daily' },
-    { loc: '/teams/bulls', priority: '0.8', changefreq: 'daily' },
-    { loc: '/teams/champions', priority: '0.8', changefreq: 'daily' },
-    { loc: '/teams/tigers', priority: '0.8', changefreq: 'daily' },
-    { loc: '/teams/lions', priority: '0.8', changefreq: 'daily' },
-    { loc: '/teams/eagles', priority: '0.8', changefreq: 'daily' },
-    { loc: '/social', priority: '0.9', changefreq: 'hourly' },
-    { loc: '/forum', priority: '0.8', changefreq: 'hourly' },
-    { loc: '/contests', priority: '0.8', changefreq: 'daily' },
-    { loc: '/draws', priority: '0.7', changefreq: 'daily' },
-    { loc: '/leaderboard', priority: '0.8', changefreq: 'hourly' },
-    { loc: '/fanspaces', priority: '0.9', changefreq: 'daily' },
-    { loc: '/growth', priority: '0.8', changefreq: 'daily' },
-    { loc: '/proposal', priority: '0.9', changefreq: 'weekly' }
-  ];
-
-  const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${routes.map(r => `  <url>
-    <loc>${baseUrl}${r.loc}</loc>
-    <lastmod>${today}</lastmod>
-    <changefreq>${r.changefreq}</changefreq>
-    <priority>${r.priority}</priority>
-  </url>`).join('\n')}
-</urlset>`;
-
-  res.type('application/xml').send(sitemapXml);
+app.post('/api/forum/threads/:id/comments', requireUser, rateLimit('comment', 20, 10 * 60_000), (req, res) => {
+  const user = userOf(req);
+  const content = str(req.body?.content, 3000);
+  if (content.length < 2) return bad(res, 'Reply cannot be empty');
+  const store = db.get();
+  const thread = store.forumThreads.find(t => t.id === req.params.id);
+  if (!thread) return bad(res, 'Thread not found', 404);
+  const comment = {
+    id: newId('comment'),
+    threadId: thread.id,
+    userId: user.id,
+    userName: user.name,
+    userAvatar: user.avatar,
+    userBadge: user.role === 'admin' ? 'Admin' : undefined,
+    teamId: user.teamId || null,
+    content,
+    upvotes: 0,
+    upvotedBy: [],
+    createdAt: new Date().toISOString(),
+  };
+  store.forumComments.push(comment);
+  thread.commentsCount = store.forumComments.filter(c => c.threadId === thread.id).length;
+  thread.lastActivityAt = comment.createdAt;
+  user.points += 5;
+  db.save();
+  res.json({ success: true, comment, thread, pointsAdded: 5, user });
 });
 
-// ----------------- VITE MIDDLEWARE / STATIC FILES -----------------
-async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
-    const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
+function toggleVote(entity: { upvotes: number; upvotedBy?: string[] }, userId: string) {
+  entity.upvotedBy = entity.upvotedBy || [];
+  const had = entity.upvotedBy.includes(userId);
+  entity.upvotedBy = had ? entity.upvotedBy.filter(id => id !== userId) : [...entity.upvotedBy, userId];
+  entity.upvotes = entity.upvotedBy.length;
+  return !had;
+}
+app.post('/api/forum/threads/:id/upvote', requireUser, (req, res) => {
+  const t = db.get().forumThreads.find(x => x.id === req.params.id);
+  if (!t) return bad(res, 'Thread not found', 404);
+  const upvoted = toggleVote(t, userOf(req).id);
+  db.save();
+  res.json({ success: true, upvotes: t.upvotes, upvoted });
+});
+app.post('/api/forum/comments/:id/upvote', requireUser, (req, res) => {
+  const c = db.get().forumComments.find(x => x.id === req.params.id);
+  if (!c) return bad(res, 'Comment not found', 404);
+  const upvoted = toggleVote(c, userOf(req).id);
+  db.save();
+  res.json({ success: true, upvotes: c.upvotes, upvoted });
+});
+
+app.delete('/api/admin/forum/threads/:id', requireAdmin, (req, res) => {
+  const store = db.get();
+  store.forumThreads = store.forumThreads.filter(t => t.id !== req.params.id);
+  store.forumComments = store.forumComments.filter(c => c.threadId !== req.params.id);
+  db.save();
+  res.json({ success: true });
+});
+app.delete('/api/admin/forum/comments/:id', requireAdmin, (req, res) => {
+  const store = db.get();
+  const c = store.forumComments.find(x => x.id === req.params.id);
+  store.forumComments = store.forumComments.filter(x => x.id !== req.params.id);
+  const t = c && store.forumThreads.find(x => x.id === c.threadId);
+  if (t) t.commentsCount = store.forumComments.filter(x => x.threadId === t.id).length;
+  db.save();
+  res.json({ success: true });
+});
+app.post('/api/admin/forum/threads/:id/pin', requireAdmin, (req, res) => {
+  const t = db.get().forumThreads.find(x => x.id === req.params.id);
+  if (!t) return bad(res, 'Thread not found', 404);
+  t.pinned = Boolean(req.body?.pinned);
+  db.save();
+  res.json({ success: true, thread: t });
+});
+
+// ---------- admin: dashboard, agents, approvals, settings ----------
+function maskedSettings() {
+  const s = db.get().settings;
+  return {
+    ...s,
+    adminEmails: adminEmails(),
+    curatorApiKey: s.curatorApiKey ? '********' : '',
+    smtp: { ...s.smtp, pass: s.smtp.pass ? '********' : '' },
+  };
+}
+
+app.get('/api/admin/dashboard', requireAdmin, (_req, res) => {
+  const s = db.get();
+  res.json({
+    usersCount: s.users.length,
+    handlesCount: s.handles.length,
+    feedItemsCount: s.feedItems.length,
+    matchesCount: s.matches.length,
+    contestsCount: s.contests.length,
+    drawsCount: s.draws.length,
+    notificationsCount: s.notifications.length,
+    fcmSubscribersCount: s.fcmTokens.filter(t => t.enabled).length,
+    pendingApprovals: s.approvals.filter(a => a.status === 'pending'),
+    agentRuns: s.agentRuns.slice(0, 20),
+    settings: maskedSettings(),
+    integrations: {
+      gemini: geminiConfigured(),
+      smtp: emailOtpAvailable() && (IS_PROD || Boolean(process.env.SMTP_HOST || s.settings.smtp.enabled)),
+      pushServer: pushServerConfigured(),
+      pushClient: Boolean(process.env.FCM_VAPID_KEY),
+      googleSignIn: Boolean(FIREBASE_PROJECT_ID),
+      curator: Boolean(s.settings.curatorFeedId),
+      persistentStorage: Boolean(process.env.DATA_DIR),
+    },
+  });
+});
+
+const AGENTS: Record<string, () => Promise<any>> = {
+  discovery: runDiscoveryAgent,
+  social: runSocialAgent,
+  news: runNewsAgent,
+  scores: runScoresAgent,
+  content: runContentAgent,
+  ops: runOpsAgent,
+};
+app.post('/api/admin/agents/:name/run', requireAdmin, wrap(async (req, res) => {
+  const fn = AGENTS[req.params.name];
+  if (!fn) return bad(res, 'Unknown agent');
+  res.json({ success: true, agent: req.params.name, result: await fn() });
+}));
+
+app.post('/api/admin/approvals/:id/decide', requireAdmin, (req, res) => {
+  const store = db.get();
+  const a = store.approvals.find(x => x.id === req.params.id);
+  if (!a) return bad(res, 'Approval not found', 404);
+  if (a.status !== 'pending') return bad(res, 'Already decided');
+  const approve = req.body?.decision === 'approve';
+  a.status = approve ? 'approved' : 'rejected';
+  a.decidedAt = new Date().toISOString();
+  if (a.kind === 'handle') {
+    const h = store.handles.find(x => x.id === a.payload?.handleId);
+    if (h) {
+      if (approve) {
+        h.status = 'verified';
+        h.verifiedAt = a.decidedAt;
+      } else {
+        store.handles = store.handles.filter(x => x.id !== h.id);
+      }
+    }
+  } else if (a.kind === 'post' && approve) {
+    store.feedItems.unshift({
+      id: newId('feed'),
+      teamId: a.payload?.teamId || null,
+      platform: 'Web',
+      kind: 'article',
+      category: 'marketing',
+      title: str(a.payload?.title, 200) || a.title,
+      url: '/matches',
+      image: null,
+      source: brand(),
+      summary: str(a.payload?.summary, 1200),
+      status: 'live',
+      publishedAt: a.decidedAt,
+      createdAt: a.decidedAt,
+      sourceType: 'ai',
     });
+  }
+  db.save();
+  res.json({ success: true, approval: a });
+});
+
+app.get('/api/admin/settings', requireAdmin, (_req, res) => res.json({ settings: maskedSettings() }));
+
+app.post('/api/admin/settings', requireAdmin, (req, res) => {
+  const b = req.body || {};
+  const s = db.get().settings;
+  const d = defaultSettings();
+  const textKeys = ['brandName', 'tagline', 'copyrightHolder', 'seasonLabel', 'venue', 'tickerText', 'curatorFeedId', 'curatorContainerId', 'curatorFeedUuid', 'curatorHashtags'] as const;
+  for (const k of textKeys) if (b[k] !== undefined) (s as any)[k] = str(b[k], k === 'tickerText' ? 300 : 120);
+  if (!s.brandName) s.brandName = d.brandName;
+  if (!s.copyrightHolder) s.copyrightHolder = d.copyrightHolder;
+  if (b.seasonStart !== undefined) s.seasonStart = str(b.seasonStart, 10);
+  if (b.seasonEnd !== undefined) s.seasonEnd = str(b.seasonEnd, 10);
+  if (b.newsQueries !== undefined) s.newsQueries = str(b.newsQueries, 2000);
+  if (b.maxSocialPerPlatform !== undefined) s.maxSocialPerPlatform = Math.min(20, Math.max(1, Math.round(num(b.maxSocialPerPlatform, 5))));
+  if (b.curatorApiKey !== undefined && b.curatorApiKey !== '********') s.curatorApiKey = str(b.curatorApiKey, 200);
+  if (b.adminEmails !== undefined) {
+    const list = (Array.isArray(b.adminEmails) ? b.adminEmails : String(b.adminEmails).split(','))
+      .map((e: any) => String(e).trim().toLowerCase())
+      .filter((e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
+    const envAdmins = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+    s.adminEmails = list.filter((e: string) => !envAdmins.includes(e));
+    const me = userOf(req).email.toLowerCase();
+    if (!envAdmins.includes(me) && !s.adminEmails.includes(me)) s.adminEmails.push(me); // never lock yourself out
+  }
+  if (b.smtp && typeof b.smtp === 'object') {
+    s.smtp = {
+      host: b.smtp.host !== undefined ? str(b.smtp.host, 120) : s.smtp.host,
+      port: b.smtp.port !== undefined ? Math.round(num(b.smtp.port, 587)) : s.smtp.port,
+      user: b.smtp.user !== undefined ? str(b.smtp.user, 120) : s.smtp.user,
+      pass: b.smtp.pass && b.smtp.pass !== '********' ? String(b.smtp.pass).slice(0, 200) : s.smtp.pass,
+      from: b.smtp.from !== undefined ? str(b.smtp.from, 160) : s.smtp.from,
+      enabled: b.smtp.enabled !== undefined ? Boolean(b.smtp.enabled) : s.smtp.enabled,
+    };
+  }
+  db.save();
+  res.json({ success: true, settings: maskedSettings() });
+});
+
+// ---------- fan spaces ----------
+app.get('/api/fanspaces', (req, res) => {
+  const user = getAuthUser(req);
+  const store = db.get();
+  res.json({
+    spaces: store.fanSpaces,
+    bookings: user ? store.fanSpaceBookings.filter(b => b.userId === user.id) : [],
+    totalHubs: store.fanSpaces.length,
+    activeCities: [...new Set(store.fanSpaces.map(s => s.city).filter(Boolean))],
+  });
+});
+
+app.post('/api/fanspaces/:id/book', requireUser, rateLimit('booking', 10, 60_000), (req, res) => {
+  const user = userOf(req);
+  const store = db.get();
+  const space = store.fanSpaces.find(s => s.id === req.params.id);
+  if (!space) return bad(res, 'Fan Space not found', 404);
+  if (space.status === 'sold_out' || space.bookingEnabled === false) return bad(res, 'Reservations are not open for this Fan Space');
+  const ticketType = ['standard_entry', 'vip_pass'].includes(req.body?.ticketType) ? req.body.ticketType : 'standard_entry';
+  const ticketsCount = Math.min(6, Math.max(1, Math.round(num(req.body?.ticketsCount, 1))));
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(str(req.body?.date, 10)) ? str(req.body.date, 10) : '';
+  if (!date) return bad(res, 'Choose a date');
+  const reserved = store.fanSpaceBookings.filter(b => b.spaceId === space.id && b.date === date).reduce((s, b) => s + b.ticketsCount, 0);
+  if (space.capacity && reserved + ticketsCount > space.capacity) return bad(res, 'That date is full');
+  const passCode = `${(space.city || 'FS').slice(0, 3).toUpperCase()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+  const booking = {
+    id: newId('bk'), spaceId: space.id, spaceName: space.name, userId: user.id, userName: user.name, userEmail: user.email,
+    date, ticketType, ticketsCount, passCode, createdAt: new Date().toISOString(),
+  };
+  store.fanSpaceBookings.unshift(booking as any);
+  space.totalBookings = store.fanSpaceBookings.filter(b => b.spaceId === space.id).reduce((s, b) => s + b.ticketsCount, 0);
+  db.save();
+  res.json({ success: true, booking, passCode, user });
+});
+
+app.get('/api/admin/fanspaces/bookings', requireAdmin, (_req, res) => res.json({ bookings: db.get().fanSpaceBookings }));
+
+app.post('/api/admin/fanspaces', requireAdmin, (req, res) => {
+  const b = req.body || {};
+  const store = db.get();
+  const name = str(b.name, 100);
+  const city = str(b.city, 60);
+  if (!name || !city) return bad(res, 'Name and city are required');
+  const image = optionalUrl(b.image);
+  const mapUrl = optionalUrl(b.mapUrl);
+  if (image === null || mapUrl === null) return bad(res, 'Image and map links must start with https://');
+  const list = (v: any) => (Array.isArray(v) ? v : typeof v === 'string' ? v.split(',') : []).map((x: any) => str(x, 80)).filter(Boolean);
+  const idx = b.id ? store.fanSpaces.findIndex(s => s.id === b.id) : -1;
+  const space = {
+    ...(idx >= 0 ? store.fanSpaces[idx] : {}),
+    id: idx >= 0 ? store.fanSpaces[idx].id : newId('space'),
+    name,
+    city,
+    country: str(b.country, 60),
+    tagline: str(b.tagline, 160),
+    location: str(b.location, 200),
+    capacity: Math.max(0, Math.round(num(b.capacity, 0))),
+    status: ['active', 'upcoming', 'sold_out'].includes(b.status) ? b.status : 'upcoming',
+    image: image || '',
+    mapUrl: mapUrl || '',
+    features: list(b.features),
+    amenities: list(b.amenities),
+    openHours: str(b.openHours, 120),
+    liveMatchSchedule: str(b.liveMatchSchedule, 200),
+    vipPassPriceAed: Math.max(0, num(b.vipPassPriceAed, 0)),
+    vipPassPriceUsd: Math.max(0, num(b.vipPassPriceUsd, 0)),
+    vipPerks: list(b.vipPerks),
+    merchBoutique: str(b.merchBoutique, 200),
+    menuHighlights: str(b.menuHighlights, 200),
+    bookingEnabled: b.bookingEnabled !== false,
+    totalBookings: idx >= 0 ? store.fanSpaces[idx].totalBookings : 0,
+  };
+  if (idx >= 0) store.fanSpaces[idx] = space as any;
+  else store.fanSpaces.push(space as any);
+  db.save();
+  res.json({ success: true, spaces: store.fanSpaces });
+});
+
+app.delete('/api/admin/fanspaces/:id', requireAdmin, (req, res) => {
+  const store = db.get();
+  store.fanSpaces = store.fanSpaces.filter(s => s.id !== req.params.id);
+  db.save();
+  res.json({ success: true, spaces: store.fanSpaces });
+});
+
+// ---------- growth ----------
+app.get('/api/growth-catalysts', (_req, res) => {
+  const s = db.get();
+  res.json({ youthSchools: s.youthSchools, creatorPartners: s.creatorPartners, commentaryFeeds: s.commentaryFeeds, passportTiers: s.passportTiers });
+});
+
+function upsert<T extends { id: string }>(list: T[], item: T, idProvided: boolean): T[] {
+  const idx = idProvided ? list.findIndex(x => x.id === item.id) : -1;
+  if (idx >= 0) list[idx] = { ...list[idx], ...item };
+  else list.push(item);
+  return list;
+}
+
+app.post('/api/admin/growth/youth-school', requireAdmin, (req, res) => {
+  const b = req.body || {};
+  const name = str(b.name, 120);
+  if (!name) return bad(res, 'School name is required');
+  const store = db.get();
+  upsert(store.youthSchools, {
+    id: str(b.id, 60) || newId('school'),
+    name,
+    region: str(b.region, 40) || 'UAE',
+    city: str(b.city, 60),
+    studentsCount: Math.max(0, Math.round(num(b.studentsCount, 0))),
+    tapeBallTeam: str(b.tapeBallTeam, 80),
+    status: ['registered', 'bracket_qualified', 'champion'].includes(b.status) ? b.status : 'registered',
+    equipmentKitGranted: Boolean(b.equipmentKitGranted),
+    matchdayTicketsAllocated: Math.max(0, Math.round(num(b.matchdayTicketsAllocated, 0))),
+  }, Boolean(b.id));
+  db.save();
+  res.json({ success: true, youthSchools: store.youthSchools });
+});
+app.delete('/api/admin/growth/youth-school/:id', requireAdmin, (req, res) => {
+  const store = db.get();
+  store.youthSchools = store.youthSchools.filter(s => s.id !== req.params.id);
+  db.save();
+  res.json({ success: true, youthSchools: store.youthSchools });
+});
+
+app.post('/api/admin/growth/creator', requireAdmin, (req, res) => {
+  const b = req.body || {};
+  const name = str(b.name, 80);
+  if (!name) return bad(res, 'Creator name is required');
+  if (!isHttpsUrl(b.streamUrl)) return bad(res, "Add the creator's channel or profile link (https://)");
+  const avatar = optionalUrl(b.avatar);
+  if (avatar === null) return bad(res, 'Avatar must be an https:// image link');
+  const store = db.get();
+  upsert(store.creatorPartners, {
+    id: str(b.id, 60) || newId('creator'),
+    name,
+    handle: str(b.handle, 80),
+    platform: ['YouTube', 'Twitch', 'Kick', 'TikTok'].includes(b.platform) ? b.platform : 'YouTube',
+    followers: str(b.followers, 20) || undefined,
+    streamUrl: str(b.streamUrl, 500),
+    specialty: str(b.specialty, 120),
+    status: ['live', 'scheduled', 'partnered'].includes(b.status) ? b.status : 'partnered',
+    totalWatchViews: str(b.totalWatchViews, 20) || undefined,
+    avatar: avatar || '',
+  }, Boolean(b.id));
+  db.save();
+  res.json({ success: true, creatorPartners: store.creatorPartners });
+});
+app.delete('/api/admin/growth/creator/:id', requireAdmin, (req, res) => {
+  const store = db.get();
+  store.creatorPartners = store.creatorPartners.filter(c => c.id !== req.params.id);
+  db.save();
+  res.json({ success: true, creatorPartners: store.creatorPartners });
+});
+
+app.post('/api/admin/growth/audio-feed', requireAdmin, (req, res) => {
+  const b = req.body || {};
+  if (!isHttpsUrl(b.streamUrl)) return bad(res, 'Add the stream or broadcast link (https://)');
+  const store = db.get();
+  upsert(store.commentaryFeeds, {
+    id: str(b.id, 60) || newId('audio'),
+    language: ['Arabic', 'English', 'Hindi', 'Urdu', 'Bengali'].includes(b.language) ? b.language : 'English',
+    commentator: str(b.commentator, 80),
+    status: b.status === 'live' ? 'live' : 'standby',
+    streamUrl: str(b.streamUrl, 500),
+    description: str(b.description, 300) || undefined,
+  } as any, Boolean(b.id));
+  db.save();
+  res.json({ success: true, commentaryFeeds: store.commentaryFeeds });
+});
+app.delete('/api/admin/growth/audio-feed/:id', requireAdmin, (req, res) => {
+  const store = db.get();
+  store.commentaryFeeds = store.commentaryFeeds.filter(f => f.id !== req.params.id);
+  db.save();
+  res.json({ success: true, commentaryFeeds: store.commentaryFeeds });
+});
+
+app.post('/api/admin/growth/passport-tier', requireAdmin, (req, res) => {
+  const b = req.body || {};
+  const tierName = str(b.tierName, 60);
+  if (!tierName) return bad(res, 'Tier name is required');
+  const signupUrl = optionalUrl(b.signupUrl);
+  if (signupUrl === null) return bad(res, 'Sign-up link must start with https://');
+  const store = db.get();
+  const id = str(b.id, 60) || newId('tier');
+  upsert(store.passportTiers, {
+    id,
+    tierName,
+    description: str(b.description, 400) || undefined,
+    annualFeeUsd: Math.max(0, num(b.annualFeeUsd, 0)),
+    annualFeeAed: Math.max(0, num(b.annualFeeAed, 0)),
+    ticketDiscountPct: Math.min(100, Math.max(0, num(b.ticketDiscountPct, 0))),
+    fanSpacePriorityEntry: Boolean(b.fanSpacePriorityEntry),
+    exclusiveBadge: str(b.exclusiveBadge, 60),
+    doublePointsMultiplier: Boolean(b.doublePointsMultiplier),
+    signupUrl: signupUrl || undefined,
+    totalSubscribers: store.passportInterest.filter(p => p.tierId === id).length,
+  }, Boolean(b.id));
+  db.save();
+  res.json({ success: true, passportTiers: store.passportTiers });
+});
+app.delete('/api/admin/growth/passport-tier/:id', requireAdmin, (req, res) => {
+  const store = db.get();
+  store.passportTiers = store.passportTiers.filter(t => t.id !== req.params.id);
+  store.passportInterest = store.passportInterest.filter(p => p.tierId !== req.params.id);
+  db.save();
+  res.json({ success: true, passportTiers: store.passportTiers });
+});
+
+app.post('/api/growth/superfan-passport/subscribe', requireUser, (req, res) => {
+  const user = userOf(req);
+  const store = db.get();
+  const tier = store.passportTiers.find(t => t.id === req.body?.tierId) || (store.passportTiers.length === 1 ? store.passportTiers[0] : undefined);
+  if (!tier) return bad(res, 'Choose a membership tier', 404);
+  const already = store.passportInterest.some(p => p.tierId === tier.id && p.userId === user.id);
+  if (!already) store.passportInterest.push({ tierId: tier.id, userId: user.id, createdAt: new Date().toISOString() });
+  tier.totalSubscribers = store.passportInterest.filter(p => p.tierId === tier.id).length;
+  db.save();
+  res.json({ success: true, user, alreadyRegistered: already, tier });
+});
+
+// ---------- proposal (confidential, admin only) ----------
+app.get('/api/admin/proposal', requireAdmin, (_req, res) => res.json({ proposalSettings: db.get().proposalSettings }));
+app.post('/api/admin/proposal', requireAdmin, (req, res) => {
+  const store = db.get();
+  store.proposalSettings = { ...store.proposalSettings, ...req.body, updatedAt: new Date().toISOString() };
+  db.save();
+  res.json({ success: true, proposalSettings: store.proposalSettings });
+});
+app.post('/api/admin/proposal/reset', requireAdmin, (_req, res) => res.json({ success: true, proposalSettings: db.resetProposal() }));
+
+// ---------- Gemini ----------
+const teamNames = () => db.get().teams.map(t => t.name);
+const geminiError = (res: Response, e: any) => bad(res, e?.status === 503 ? e.message : `The AI assistant had a problem: ${e?.message || 'unknown error'}`, e?.status === 503 ? 503 : 502);
+
+app.post('/api/gemini/chat', requireUser, rateLimit('ai', 20, 10 * 60_000), wrap(async (req, res) => {
+  if (!Array.isArray(req.body?.messages) || !req.body.messages.length) return bad(res, 'Message required');
+  try {
+    res.json(await chatWithGemini(req.body.messages, teamNames()));
+  } catch (e) {
+    geminiError(res, e);
+  }
+}));
+app.post('/api/gemini/search', requireUser, rateLimit('ai', 20, 10 * 60_000), wrap(async (req, res) => {
+  const q = str(req.body?.query, 500);
+  if (!q) return bad(res, 'Query required');
+  try {
+    res.json(await searchGroundingCricket(q, teamNames()));
+  } catch (e) {
+    geminiError(res, e);
+  }
+}));
+app.post('/api/gemini/marketing', requireAdmin, wrap(async (req, res) => {
+  try {
+    res.json(await generateMarketingContent(str(req.body?.prompt, 2000) || 'Write a matchday social post.', { teamName: str(req.body?.teamName, 80) }));
+  } catch (e) {
+    geminiError(res, e);
+  }
+}));
+app.post('/api/gemini/transcribe', requireAdmin, wrap(async (req, res) => {
+  if (!req.body?.audioBase64) return bad(res, 'Audio required');
+  try {
+    res.json(await transcribeAudioVoice(String(req.body.audioBase64), str(req.body.mimeType, 60) || 'audio/webm'));
+  } catch (e) {
+    geminiError(res, e);
+  }
+}));
+
+// ---------- SEO ----------
+function baseUrl(req: Request) {
+  return (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+}
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain').send(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /proposal\nDisallow: /api/\n\nSitemap: ${baseUrl(req)}/sitemap.xml\n`);
+});
+app.get('/sitemap.xml', (req, res) => {
+  const base = baseUrl(req);
+  const today = new Date().toISOString().split('T')[0];
+  const routes = ['/', '/matches', '/teams', ...db.get().teams.map(t => `/teams/${encodeURIComponent(t.id)}`), '/social', '/forum', '/contests', '/draws', '/leaderboard', '/fanspaces', '/growth'];
+  res.type('application/xml').send(
+    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
+    routes.map(r => `  <url><loc>${base}${r}</loc><lastmod>${today}</lastmod></url>`).join('\n') +
+    `\n</urlset>`
+  );
+});
+
+app.use('/api', (_req, res) => bad(res, 'Not found', 404));
+
+// JSON errors instead of HTML stack traces
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  console.error('[ERROR]', err);
+  if (res.headersSent) return;
+  res.status(err?.status || 500).json({ error: IS_PROD ? 'Something went wrong' : err?.message || 'Server error' });
+});
+
+// ---------- static / Vite ----------
+async function startServer() {
+  if (!IS_PROD) {
+    const { createServer } = await import('vite');
+    const vite = await createServer({ server: { middlewareMode: true }, appType: 'spa' });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.resolve(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+    const dist = path.resolve(process.cwd(), 'dist');
+    if (!fs.existsSync(path.join(dist, 'index.html'))) {
+      console.error('dist/index.html not found. Run `npm run build` before `npm start`.');
+      process.exit(1);
+    }
+    app.use('/assets', express.static(path.join(dist, 'assets'), { immutable: true, maxAge: '1y' }));
+    app.use(express.static(dist, { maxAge: '1h', index: false }));
+    app.get('*', (_req, res) => {
+      res.setHeader('Cache-Control', 'no-cache');
+      res.sendFile(path.join(dist, 'index.html'));
     });
+  }
+
+  // Ensure official 2026 Cricbuzz franchises & confirmed squads are seeded if database is fresh
+  const currentStore = db.get();
+  if (!currentStore.teams || currentStore.teams.length === 0) {
+    console.log('[SETUP] Fresh database detected. Seeding official 2026 Cricbuzz franchises & squads...');
+    seedOfficialTeams(false);
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`⚡ Abu Dhabi T10 Hub running on http://0.0.0.0:${PORT}`);
-
-    // Auto-seed the 6 announced teams and search their handles dynamically on server startup
-    try {
-      const store = db.get();
-      const announcedNames = ['UAE Bulls', 'United Tigers', 'Yas Lions', 'Arabian Aces', 'Emirates Eagles', 'Desert Royal Champions'];
-      const hasAllAnnounced = announcedNames.every(name => store.teams.some(t => t.name.toLowerCase() === name.toLowerCase()));
-      const teamHandlesCount = store.handles.filter(h => h.teamId !== null).length;
-
-      if (!hasAllAnnounced || teamHandlesCount < 10) {
-        console.log('[STARTUP] Seeding 6 announced teams and searching handles dynamically...');
-        seedAnnouncedTeamsAndSearch().then(res => {
-          console.log(`[STARTUP] ${res.summary}`);
-        }).catch(e => console.warn('[STARTUP] Background handle search notice:', e));
-      } else {
-        // Ensure all feed posts are verified real from official team channels & live RSS
-        syncRealSocialFeeds(store).then(res => {
-          db.save();
-          console.log(`[STARTUP] ${res.summary}`);
-        }).catch(e => console.warn('[STARTUP] Background real feeds sync notice:', e));
-      }
-    } catch (e) {
-      console.warn('[STARTUP] Seeding check notice:', e);
+    console.log(`ADT10 Fans running on http://0.0.0.0:${PORT} (${IS_PROD ? 'production' : 'development'})`);
+    if (!process.env.ADMIN_EMAILS && !db.get().settings.adminEmails.length) {
+      console.warn('[SETUP] No admins configured. Set ADMIN_EMAILS=you@example.com to access the Admin Console.');
     }
   });
+
+  // Background agent: refresh official YouTube + news feeds periodically.
+  const minutes = Math.max(0, num(process.env.FEED_SYNC_MINUTES, 30));
+  if (minutes > 0) {
+    const tick = () => {
+      const s = db.get();
+      if (!s.teams.length && !s.handles.length) return;
+      syncAllFeeds().then(r => console.log(`[FEEDS] ${r.summary}`)).catch(e => console.warn('[FEEDS] sync failed:', e?.message));
+    };
+    setTimeout(tick, 20_000).unref();
+    setInterval(tick, minutes * 60_000).unref();
+  }
 }
 
 startServer().catch(err => {
   console.error('Failed to start server:', err);
+  process.exit(1);
 });

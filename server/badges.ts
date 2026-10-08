@@ -43,6 +43,9 @@ export function computeUserBadges(user: User, store: AppStore): {
   const userFantasy = store.fantasyTeams.filter(f => f.userId === user.id);
   const userDrawEntries = store.drawEntries.filter(d => d.userId === user.id);
 
+  const joinOrder = [...store.users].sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt)).findIndex(u => u.id === user.id);
+  const foundingFan = joinOrder >= 0 && joinOrder < 1000;
+  const typeOf = (contestId: string) => store.contests.find(c => c.id === contestId)?.type;
   const contestsEntered = userEntries.length;
   const contestsWon = userWonEntries.length;
   const predictionPoints = userEntries.reduce((acc, curr) => acc + (curr.pointsAwarded || 0), 0);
@@ -52,17 +55,13 @@ export function computeUserBadges(user: User, store: AppStore): {
   let fantasyTotalPoints = 0;
   let fantasyBestScore = 0;
   for (const ft of userFantasy) {
-    const pts = ft.points || 120; // default estimated match score
+    const pts = ft.points || 0; // points are only set once a match is scored
     fantasyTotalPoints += pts;
     if (pts > fantasyBestScore) fantasyBestScore = pts;
   }
-  if (userFantasy.length > 0 && fantasyTotalPoints === 0) {
-    fantasyTotalPoints = userFantasy.length * 120;
-    fantasyBestScore = 120;
-  }
 
-  const currentStreak = user.streak || 1;
-  const highestStreak = Math.max(currentStreak, user.role === 'admin' ? 14 : 7);
+  const currentStreak = user.streak || 0;
+  const highestStreak = currentStreak;
   const drawsEntered = userDrawEntries.length;
 
   const anyStore = store as any;
@@ -79,14 +78,14 @@ export function computeUserBadges(user: User, store: AppStore): {
       tier: 'bronze',
       description: 'Locked in your first official Abu Dhabi T10 match prediction.',
       requirement: 'Enter at least 1 prediction contest',
-      lore: 'The Zayed Stadium roar begins with a single bold prediction. You took the leap.',
+      lore: 'Every season starts with a single bold prediction. You took the leap.',
       tip: 'Go to Contests & Fantasy and pick the match winner or boundary tally.',
       actionTab: 'contests',
       actionLabel: 'Enter Contests',
       icon: 'Target',
       currentProgress: Math.min(contestsEntered, 1),
       maxProgress: 1,
-      unlocked: contestsEntered >= 1 || user.badges.includes('First Strike') || user.role === 'admin',
+      unlocked: contestsEntered >= 1 || user.badges.includes('First Strike'),
       unlockedAt: contestsEntered >= 1 ? user.createdAt : undefined,
       rewardPoints: 50
     },
@@ -102,9 +101,9 @@ export function computeUserBadges(user: User, store: AppStore): {
       actionTab: 'contests',
       actionLabel: 'Predict Boundaries',
       icon: 'Zap',
-      currentProgress: userEntries.some(e => e.contestId.includes('six') || e.contestId.includes('boundary')) || user.role === 'admin' ? 1 : 0,
+      currentProgress: userEntries.some(e => typeOf(e.contestId) === 'sixes') ? 1 : 0,
       maxProgress: 1,
-      unlocked: userEntries.some(e => e.contestId.includes('six') || e.contestId.includes('boundary')) || user.role === 'admin',
+      unlocked: userEntries.some(e => typeOf(e.contestId) === 'sixes'),
       rewardPoints: 100
     },
     {
@@ -121,7 +120,7 @@ export function computeUserBadges(user: User, store: AppStore): {
       icon: 'Award',
       currentProgress: Math.min(contestsWon, 3),
       maxProgress: 3,
-      unlocked: contestsWon >= 3 || user.badges.includes('Predictor Master') || user.role === 'admin',
+      unlocked: contestsWon >= 3 || user.badges.includes('Predictor Master'),
       rewardPoints: 150
     },
     {
@@ -136,9 +135,9 @@ export function computeUserBadges(user: User, store: AppStore): {
       actionTab: 'contests',
       actionLabel: 'Play Trivia Quiz',
       icon: 'Star',
-      currentProgress: userEntries.some(e => e.contestId.includes('trivia')) || user.badges.includes('Trivia Ace') || user.role === 'admin' ? 1 : 0,
+      currentProgress: userEntries.some(e => typeOf(e.contestId) === 'trivia') || user.badges.includes('Trivia Ace') ? 1 : 0,
       maxProgress: 1,
-      unlocked: userEntries.some(e => e.contestId.includes('trivia')) || user.badges.includes('Trivia Ace') || user.role === 'admin',
+      unlocked: userEntries.some(e => typeOf(e.contestId) === 'trivia') || user.badges.includes('Trivia Ace'),
       rewardPoints: 150
     },
     {
@@ -153,9 +152,9 @@ export function computeUserBadges(user: User, store: AppStore): {
       actionTab: 'contests',
       actionLabel: 'Lock Season Pick',
       icon: 'Eye',
-      currentProgress: userEntries.some(e => e.contestId.includes('season')) || user.role === 'admin' ? 1 : 0,
+      currentProgress: userEntries.some(e => typeOf(e.contestId) === 'season') ? 1 : 0,
       maxProgress: 1,
-      unlocked: userEntries.some(e => e.contestId.includes('season')) || user.role === 'admin',
+      unlocked: userEntries.some(e => typeOf(e.contestId) === 'season'),
       rewardPoints: 250
     },
     {
@@ -172,7 +171,7 @@ export function computeUserBadges(user: User, store: AppStore): {
       icon: 'Crown',
       currentProgress: Math.min(contestsWon, 5),
       maxProgress: 5,
-      unlocked: contestsWon >= 5 || (user.role === 'admin' && (user.points || 0) >= 1000),
+      unlocked: contestsWon >= 5,
       rewardPoints: 500
     },
 
@@ -193,7 +192,7 @@ export function computeUserBadges(user: User, store: AppStore): {
       icon: 'Flame',
       currentProgress: Math.min(currentStreak, 3),
       maxProgress: 3,
-      unlocked: currentStreak >= 3 || user.role === 'admin',
+      unlocked: currentStreak >= 3,
       rewardPoints: 50
     },
     {
@@ -210,7 +209,7 @@ export function computeUserBadges(user: User, store: AppStore): {
       icon: 'Sun',
       currentProgress: Math.min(currentStreak, 7),
       maxProgress: 7,
-      unlocked: currentStreak >= 7 || user.badges.includes('7-Day Streak Master') || user.role === 'admin',
+      unlocked: currentStreak >= 7 || user.badges.includes('7-Day Streak Master'),
       rewardPoints: 150
     },
     {
@@ -227,7 +226,7 @@ export function computeUserBadges(user: User, store: AppStore): {
       icon: 'Shield',
       currentProgress: Math.min(currentStreak, 14),
       maxProgress: 14,
-      unlocked: currentStreak >= 14 || (user.role === 'admin' && (user.streak || 0) >= 12),
+      unlocked: currentStreak >= 14,
       rewardPoints: 300
     },
     {
@@ -244,7 +243,7 @@ export function computeUserBadges(user: User, store: AppStore): {
       icon: 'Zap',
       currentProgress: Math.min(currentStreak, 21),
       maxProgress: 21,
-      unlocked: currentStreak >= 21 || user.role === 'admin',
+      unlocked: currentStreak >= 21,
       rewardPoints: 400
     },
     {
@@ -282,7 +281,7 @@ export function computeUserBadges(user: User, store: AppStore): {
       icon: 'Users',
       currentProgress: Math.min(fantasyTeamsCreated, 1),
       maxProgress: 1,
-      unlocked: fantasyTeamsCreated >= 1 || user.role === 'admin',
+      unlocked: fantasyTeamsCreated >= 1,
       rewardPoints: 75
     },
     {
@@ -297,9 +296,9 @@ export function computeUserBadges(user: User, store: AppStore): {
       actionTab: 'contests',
       actionLabel: 'Draft Captain',
       icon: 'Star',
-      currentProgress: userFantasy.some(f => !!f.captainId) || user.role === 'admin' ? 1 : 0,
+      currentProgress: userFantasy.some(f => !!f.captainId) ? 1 : 0,
       maxProgress: 1,
-      unlocked: userFantasy.some(f => !!f.captainId) || user.role === 'admin',
+      unlocked: userFantasy.some(f => !!f.captainId),
       rewardPoints: 120
     },
     {
@@ -314,9 +313,9 @@ export function computeUserBadges(user: User, store: AppStore): {
       actionTab: 'contests',
       actionLabel: 'Manage Lineup',
       icon: 'Trophy',
-      currentProgress: fantasyTeamsCreated >= 1 || user.role === 'admin' ? 1 : 0,
+      currentProgress: fantasyTeamsCreated >= 1 ? 1 : 0,
       maxProgress: 1,
-      unlocked: fantasyTeamsCreated >= 1 || user.role === 'admin',
+      unlocked: fantasyTeamsCreated >= 1,
       rewardPoints: 100
     },
     {
@@ -333,7 +332,7 @@ export function computeUserBadges(user: User, store: AppStore): {
       icon: 'Trophy',
       currentProgress: Math.min(fantasyTotalPoints, 250),
       maxProgress: 250,
-      unlocked: fantasyTotalPoints >= 250 || user.role === 'admin',
+      unlocked: fantasyTotalPoints >= 250,
       rewardPoints: 250
     },
     {
@@ -350,7 +349,7 @@ export function computeUserBadges(user: User, store: AppStore): {
       icon: 'Medal',
       currentProgress: Math.min(fantasyBestScore, 150),
       maxProgress: 150,
-      unlocked: fantasyBestScore >= 150 || (user.role === 'admin' && fantasyBestScore >= 100),
+      unlocked: fantasyBestScore >= 150,
       rewardPoints: 350
     },
     {
@@ -360,14 +359,14 @@ export function computeUserBadges(user: User, store: AppStore): {
       tier: 'diamond',
       description: 'Ranked among the premier franchise tacticians with 500+ total fantasy points.',
       requirement: 'Reach 500+ total fantasy points across matches',
-      lore: 'Tactical genius recognized across all 6 franchises. A true master of the 10-over game.',
+      lore: 'Tactical genius recognized across every franchise. A true master of the 10-over game.',
       tip: 'Compete in every scheduled matchday to build your supreme fantasy tally.',
       actionTab: 'contests',
       actionLabel: 'Enter Next Match',
       icon: 'Crown',
       currentProgress: Math.min(fantasyTotalPoints, 500),
       maxProgress: 500,
-      unlocked: fantasyTotalPoints >= 500 || (user.role === 'admin' && (user.points || 0) >= 1000),
+      unlocked: fantasyTotalPoints >= 500,
       rewardPoints: 500
     },
 
@@ -375,20 +374,20 @@ export function computeUserBadges(user: User, store: AppStore): {
     // 4. FRANCHISE LOYALTY & VIP PASSES
     // ==========================================
     {
-      id: 'aces-loyalist',
-      name: 'Aces Loyalist',
+      id: 'team-loyalist',
+      name: 'Team Loyalist',
       category: 'loyalty',
       tier: 'gold',
-      description: 'Backed the Arabian Aces franchise, channeling all fan points into Fan Wars.',
-      requirement: 'Select Arabian Aces as your backed franchise',
-      lore: 'Gold and navy blue flowing through your veins. Standing proud with the Aces.',
-      tip: 'Select Arabian Aces from the team switcher to represent them in Fan Wars.',
+      description: 'Backed a franchise and started earning Fan Wars points for them.',
+      requirement: 'Pick the franchise you support',
+      lore: 'Every point you earn now counts for your team.',
+      tip: 'Choose your franchise from the team picker.',
       actionTab: 'teams',
-      actionLabel: 'Back Arabian Aces',
+      actionLabel: 'Pick your team',
       icon: 'Shield',
-      currentProgress: user.teamId === 'aces' ? 1 : 0,
+      currentProgress: user.teamId ? 1 : 0,
       maxProgress: 1,
-      unlocked: user.teamId === 'aces' || user.badges.includes('Aces Loyalist'),
+      unlocked: Boolean(user.teamId && store.teams.some(t => t.id === user.teamId)),
       rewardPoints: 100
     },
     {
@@ -396,33 +395,33 @@ export function computeUserBadges(user: User, store: AppStore): {
       name: 'VIP Contender',
       category: 'loyalty',
       tier: 'silver',
-      description: 'Entered the cryptographic provably fair VIP Grand Final Prize Draw.',
+      description: 'Entered a prize draw.',
       requirement: 'Enter at least 1 prize draw',
-      lore: 'Your ticket is in the digital drum. The President Box hospitality pass awaits.',
+      lore: 'Your entry is in. Winners are drawn when the draw closes.',
       tip: 'Head over to Prize Draws and claim your free entry ticket.',
       actionTab: 'draws',
       actionLabel: 'Enter Prize Draw',
       icon: 'Gift',
       currentProgress: Math.min(drawsEntered, 1),
       maxProgress: 1,
-      unlocked: drawsEntered >= 1 || user.role === 'admin',
+      unlocked: drawsEntered >= 1,
       rewardPoints: 80
     },
     {
       id: 'founding-vip',
-      name: 'Founding VIP',
+      name: 'Founding Fan',
       category: 'loyalty',
       tier: 'diamond',
-      description: 'Inaugural pillar of the franchise and VIP platform pioneer.',
-      requirement: 'Franchise VIP or Founding Member status',
-      lore: 'Present from day one when the autonomous platform revolutionized cricket.',
-      tip: 'Awarded to official franchise owners, VIP administrators, and founding fans.',
+      description: 'One of the first 1,000 fans to join the hub.',
+      requirement: 'Be among the first 1,000 registered fans',
+      lore: 'You were here from the start.',
+      tip: 'Awarded automatically to early members.',
       actionTab: 'home',
-      actionLabel: 'View Franchise Hub',
+      actionLabel: 'Back to home',
       icon: 'Sparkles',
-      currentProgress: user.role === 'admin' || user.badges.includes('Founding Member') ? 1 : 0,
+      currentProgress: foundingFan ? 1 : 0,
       maxProgress: 1,
-      unlocked: user.role === 'admin' || user.badges.includes('Founding Member'),
+      unlocked: foundingFan,
       rewardPoints: 500
     }
   ];

@@ -1,8 +1,11 @@
 node_modules/
 build/
 dist/
+dist-server/
 coverage/
 .DS_Store
 *.log
 .env*
 !.env.example
+# Runtime data (users, sessions, content) — never commit
+data/

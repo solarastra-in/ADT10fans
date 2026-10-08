@@ -1,25 +1,7 @@
 import React from 'react';
 import { User, Team } from '../types';
 import { getPathForTab } from '../utils/navigation';
-import { 
-  Trophy, 
-  Flame, 
-  User as UserIcon, 
-  ShieldCheck, 
-  LogIn, 
-  LogOut, 
-  Calendar, 
-  Share2, 
-  Sparkles, 
-  SlidersHorizontal,
-  Gift,
-  Award,
-  MessageSquare,
-  FileText,
-  Bell,
-  MapPin,
-  GraduationCap
-} from 'lucide-react';
+import { Flame, LogIn, LogOut, Bell, SlidersHorizontal, Sparkles, User as UserIcon } from 'lucide-react';
 
 interface HeaderProps {
   user: User | null;
@@ -28,14 +10,63 @@ interface HeaderProps {
   setActiveTab: (tab: string) => void;
   onOpenAuth: () => void;
   onOpenTeamPicker: () => void;
-  onOpenAI: () => void;
+  onOpenAI?: () => void;
+  /** Show the AI Studio entry (config.features.gemini) */
+  aiEnabled?: boolean;
   onLogout: () => void;
+  brandName?: string;
+  /** '' or undefined hides the ticker */
   tickerText?: string;
   onDailyCheckin: () => void;
   checkingIn: boolean;
   onOpenNotifications: () => void;
   unreadNotificationsCount?: number;
 }
+
+const DESKTOP_NAV: { id: string; label: string }[] = [
+  { id: 'home', label: 'Home' },
+  { id: 'matches', label: 'Matches' },
+  { id: 'teams', label: 'Teams' },
+  { id: 'social', label: 'Social' },
+  { id: 'contests', label: 'Contests' },
+  { id: 'draws', label: 'Draws' },
+  { id: 'leaderboard', label: 'Fan Wars' },
+  { id: 'forum', label: 'Forum' },
+  { id: 'fanspaces', label: 'Fan Spaces' },
+  { id: 'growth', label: 'Growth' },
+];
+
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase())
+    .join('') || '?';
+}
+
+export const Avatar: React.FC<{ user: User; size?: number }> = ({ user, size = 32 }) => {
+  const [failed, setFailed] = React.useState(false);
+  const showImg = !!user.avatar && !failed;
+  return (
+    <span
+      className="rounded-full ring-2 ring-amber-400/40 overflow-hidden bg-slate-800 flex items-center justify-center shrink-0 text-xs font-black text-amber-300"
+      style={{ width: size, height: size }}
+    >
+      {showImg ? (
+        <img
+          src={user.avatar}
+          alt=""
+          className="w-full h-full object-cover"
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        initials(user.name || user.email)
+      )}
+    </span>
+  );
+};
 
 export const Header: React.FC<HeaderProps> = ({
   user,
@@ -45,252 +76,166 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAuth,
   onOpenTeamPicker,
   onOpenAI,
+  aiEnabled = false,
   onLogout,
-  tickerText = '⚡ ABU DHABI T10 2026 LIVE · ARABIAN ACES VS DECCAN GLADIATORS · PREDICT & WIN VIP PASSES ⚡',
+  brandName = 'ADT10 Fans',
+  tickerText,
   onDailyCheckin,
   checkingIn,
   onOpenNotifications,
-  unreadNotificationsCount = 0
+  unreadNotificationsCount = 0,
 }) => {
-  return (
-    <header className="sticky top-0 z-50 bg-slate-950/95 backdrop-blur-md border-b border-amber-500/20">
-      {/* Live Ticker Tape */}
-      <div className="bg-gradient-to-r from-amber-600 via-amber-500 to-amber-600 text-slate-950 font-bold text-xs py-1.5 px-4 overflow-hidden shadow-inner">
-        <div className="flex items-center justify-between max-w-7xl mx-auto">
-          <div className="flex items-center gap-2 whitespace-nowrap overflow-hidden">
-            <span className="flex h-2 w-2 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-slate-950 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-slate-950"></span>
-            </span>
-            <span className="tracking-wider uppercase font-black text-[11px]">ADT10 LIVE WIRE:</span>
-            <span className="marquee font-medium text-slate-900">{tickerText}</span>
-          </div>
+  const ticker = (tickerText || '').trim();
 
-          <div className="hidden md:flex items-center gap-4 text-[11px] font-bold">
-            <span className="flex items-center gap-1">
-              <Trophy className="w-3.5 h-3.5" /> 6 FRANCHISES · 90-MIN CRICKET
-            </span>
-            <span className="bg-slate-950 text-amber-400 px-2 py-0.5 rounded text-[10px] tracking-wide uppercase">
-              Zayed Stadium, Abu Dhabi
-            </span>
+  const navLink = (id: string, label: string) => {
+    const active = activeTab === id;
+    return (
+      <a
+        key={id}
+        href={getPathForTab(id)}
+        onClick={(e) => {
+          e.preventDefault();
+          setActiveTab(id);
+        }}
+        aria-current={active ? 'page' : undefined}
+        className={`px-2.5 py-1.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors ${
+          active ? 'bg-amber-400/15 text-amber-400' : 'text-slate-300 hover:text-white hover:bg-slate-900'
+        }`}
+      >
+        {label}
+      </a>
+    );
+  };
+
+  return (
+    <header className="sticky top-0 z-50 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80 pt-safe">
+      {ticker && (
+        <div className="h-7 bg-amber-500 text-slate-950 text-xs font-bold overflow-hidden flex items-center" aria-label="Announcement">
+          <div className="max-w-7xl mx-auto w-full px-4 overflow-hidden whitespace-nowrap">
+            <span className="ticker-marquee inline-block">{ticker}</span>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Main Navbar */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
-        {/* Brand Logo */}
-        <a 
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 lg:h-16 flex items-center justify-between gap-3">
+        {/* Brand */}
+        <a
           href="/"
           onClick={(e) => {
             e.preventDefault();
             setActiveTab('home');
           }}
-          className="flex items-center gap-3 cursor-pointer group select-none"
+          className="flex items-center gap-2.5 min-w-0 select-none"
+          aria-label={`${brandName} home`}
         >
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 p-0.5 shadow-lg shadow-amber-500/20 group-hover:scale-105 transition-transform flex items-center justify-center">
-            <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
-              <span className="text-amber-400 font-black text-xl tracking-tighter">T10</span>
-            </div>
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-extrabold text-base sm:text-lg tracking-tight text-white group-hover:text-amber-400 transition-colors">
-                ABU DHABI <span className="text-amber-400">T10</span>
-              </span>
-              <span className="text-[10px] font-black uppercase tracking-wider bg-amber-400/10 text-amber-400 border border-amber-400/30 px-1.5 py-0.5 rounded">
-                Fan Hub
-              </span>
-            </div>
-            <p className="text-[10px] sm:text-[11px] text-slate-400 font-medium">
-              Official League & Arabian Aces Curator · Azlir Sport
-            </p>
-          </div>
+          <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 p-0.5 shrink-0">
+            <span className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
+              <span className="text-amber-400 font-black text-sm tracking-tighter">T10</span>
+            </span>
+          </span>
+          <span className="font-extrabold text-base lg:text-lg tracking-tight text-white truncate">{brandName}</span>
         </a>
 
-        {/* Navigation Tabs */}
-        <nav className="hidden lg:flex items-center gap-1 text-sm font-semibold">
-          {[
-            { id: 'home', label: 'Home', icon: Flame },
-            { id: 'matches', label: 'Matches & Live', icon: Calendar },
-            { id: 'teams', label: 'Teams & Squads', icon: Trophy },
-            { id: 'social', label: 'Social Hub', icon: Share2 },
-            { id: 'forum', label: 'Discussion Forum', icon: MessageSquare },
-            { id: 'fanspaces', label: 'Fan Spaces', icon: MapPin },
-            { id: 'growth', label: 'Youth & Creators', icon: GraduationCap },
-            { id: 'contests', label: 'Contests & Fantasy', icon: Sparkles },
-            { id: 'draws', label: 'Prize Draws', icon: Gift },
-            { id: 'leaderboard', label: 'Fan Wars', icon: Flame },
-            ...(user ? [{ id: 'profile', label: 'My Badges', icon: Award }] : []),
-            { id: 'proposal', label: 'League Proposal', icon: FileText, highlight: true },
-          ].map(item => {
-            const Icon = item.icon;
-            const active = activeTab === item.id;
-            return (
-              <a
-                key={item.id}
-                href={getPathForTab(item.id)}
-                onClick={(e) => {
-                  e.preventDefault();
-                  setActiveTab(item.id);
-                }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
-                  active 
-                    ? 'bg-amber-400/15 text-amber-400 border border-amber-400/30 font-bold' 
-                    : item.highlight
-                    ? 'bg-amber-500/10 text-amber-300 border border-amber-400/40 hover:bg-amber-500/20 font-bold'
-                    : 'text-slate-300 hover:text-white hover:bg-slate-900'
-                }`}
-              >
-                <Icon className={`w-4 h-4 ${active ? 'text-amber-400' : item.highlight ? 'text-amber-400' : 'text-slate-400'}`} />
-                {item.label}
-              </a>
-            );
-          })}
-          <button
-            onClick={onOpenAI}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-500/20 to-amber-600/10 text-amber-300 border border-amber-400/40 hover:bg-amber-500/30 font-bold transition-all ml-1 shadow-sm"
-            title="Open Gemini AI Chatbot, Search Grounding, Voice & Media Studio"
-          >
-            <Sparkles className="w-4 h-4 text-amber-400" />
-            <span>AI Studio</span>
-          </button>
+        {/* Desktop nav */}
+        <nav className="hidden lg:flex flex-1 items-center gap-0.5 min-w-0 overflow-x-auto scrollbar-none" aria-label="Main">
+          {DESKTOP_NAV.map((n) => navLink(n.id, n.label))}
+          {user && navLink('profile', 'Profile')}
+          {user?.role === 'admin' && navLink('proposal', 'Proposal')}
         </nav>
 
-        {/* Right Section: Team badge, Points, Admin Switcher & User Auth */}
-        <div className="flex items-center gap-2.5">
-          {/* User Team selection badge */}
+        {/* Actions */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {user && (
             <button
               onClick={onOpenTeamPicker}
-              className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 hover:border-amber-400/50 transition-colors text-xs"
-              title="Click to switch supported franchise"
+              className="hidden sm:flex lg:hidden xl:flex items-center gap-2 h-9 px-2.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-amber-400/50 transition-colors text-xs"
+              title="Choose your franchise"
             >
-              <div 
-                className="w-3 h-3 rounded-full" 
-                style={{ backgroundColor: userTeam?.color || '#94A3B8' }}
-              />
-              <span className="font-bold text-slate-200">
-                {userTeam ? userTeam.short : 'Pick Team'}
-              </span>
+              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: userTeam?.color || '#94A3B8' }} />
+              <span className="font-bold text-slate-200">{userTeam ? userTeam.short : 'Pick team'}</span>
             </button>
           )}
 
-          {/* Daily Streak / Check-in */}
           {user && (
             <button
               onClick={onDailyCheckin}
               disabled={checkingIn}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 text-xs font-bold transition-all"
-              title="Claim daily +25 fan points"
+              className="hidden md:flex lg:hidden 2xl:flex items-center gap-1.5 h-9 px-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 text-xs font-bold transition-colors disabled:opacity-60"
+              title="Daily check-in"
             >
-              <Flame className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-              <span>{user.streak || 1}d Streak</span>
-              <span className="text-slate-400">·</span>
+              <Flame className="w-3.5 h-3.5" />
+              <span>{user.streak || 0}d</span>
+              <span className="text-slate-500">·</span>
               <span className="text-amber-300">{user.points || 0} pts</span>
             </button>
           )}
 
-          {/* Real-time Notifications Bell Button */}
+          {aiEnabled && onOpenAI && (
+            <button
+              onClick={onOpenAI}
+              className="hidden lg:flex items-center gap-1.5 h-9 px-3 rounded-lg bg-amber-500/10 border border-amber-400/40 text-amber-300 hover:bg-amber-500/20 text-xs font-bold transition-colors"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>AI</span>
+            </button>
+          )}
+
           <button
             onClick={onOpenNotifications}
-            className="relative p-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-amber-400/50 text-slate-300 hover:text-amber-400 transition-colors"
-            title="Real-Time Match & Contest Alerts"
+            className="relative w-11 h-11 lg:w-10 lg:h-10 flex items-center justify-center rounded-lg text-slate-300 hover:text-amber-400 hover:bg-slate-900 transition-colors"
+            aria-label={unreadNotificationsCount > 0 ? `Notifications, ${unreadNotificationsCount} unread` : 'Notifications'}
           >
-            <Bell className="w-4 h-4" />
+            <Bell className="w-5 h-5" />
             {unreadNotificationsCount > 0 && (
-              <span className="absolute -top-1 -right-1 px-1.5 py-0.5 rounded-full text-[9px] font-black bg-amber-400 text-slate-950 animate-pulse ring-2 ring-slate-950 leading-none">
+              <span className="absolute top-1.5 right-1.5 min-w-[18px] h-[18px] px-1 rounded-full text-[11px] font-black bg-amber-400 text-slate-950 ring-2 ring-slate-950 leading-[18px] text-center">
                 {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
               </span>
             )}
           </button>
 
-          {/* Admin Portal Button */}
-          {user?.role === 'admin' ? (
+          {user?.role === 'admin' && (
             <button
               onClick={() => setActiveTab(activeTab === 'admin' ? 'home' : 'admin')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${
+              className={`hidden lg:flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-bold transition-colors ${
                 activeTab === 'admin'
-                  ? 'bg-amber-400 text-slate-950 font-black shadow-amber-500/20'
+                  ? 'bg-amber-400 text-slate-950'
                   : 'bg-slate-900 border border-amber-500/40 text-amber-400 hover:bg-amber-500/10'
               }`}
             >
               <SlidersHorizontal className="w-3.5 h-3.5" />
-              <span>Admin Console</span>
-            </button>
-          ) : (
-            /* Quick Access for Admin demo prompt */
-            <button
-              onClick={onOpenAuth}
-              className="hidden xl:flex items-center gap-1 text-[11px] text-amber-400/80 hover:text-amber-300 font-semibold px-2 py-1 rounded hover:bg-amber-400/5 transition-colors"
-            >
-              <ShieldCheck className="w-3 h-3" />
-              <span>Admin Login</span>
+              <span>Admin</span>
             </button>
           )}
 
-          {/* Sign In / User Profile */}
           {user ? (
-            <div className="flex items-center gap-2">
-              <div 
+            <>
+              <button
                 onClick={() => setActiveTab('profile')}
-                className="w-8 h-8 rounded-full ring-2 ring-amber-400/40 hover:ring-amber-400 overflow-hidden cursor-pointer bg-slate-800 flex items-center justify-center transition-all"
-                title={`${user.name} - View Profile & Badges`}
+                className="w-11 h-11 lg:w-10 lg:h-10 flex items-center justify-center rounded-full"
+                aria-label={`${user.name} — profile`}
               >
-                <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
-              </div>
+                <Avatar user={user} />
+              </button>
               <button
                 onClick={onLogout}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-900 transition-colors"
+                className="hidden lg:flex w-10 h-10 items-center justify-center rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-900 transition-colors"
+                aria-label="Sign out"
                 title="Sign out"
               >
                 <LogOut className="w-4 h-4" />
               </button>
-            </div>
+            </>
           ) : (
             <button
               onClick={onOpenAuth}
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-extrabold text-xs shadow-md shadow-amber-500/20 transition-all hover:scale-105 active:scale-95"
+              className="flex items-center gap-1.5 h-10 px-3.5 rounded-lg bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-extrabold text-sm transition-colors"
             >
-              <LogIn className="w-3.5 h-3.5" />
-              <span>Join / Sign In</span>
+              <LogIn className="w-4 h-4 hidden sm:block" />
+              <UserIcon className="w-4 h-4 sm:hidden" />
+              <span>Sign in</span>
             </button>
           )}
         </div>
-      </div>
-
-      {/* Mobile Sub-Navigation Bar */}
-      <div className="lg:hidden border-t border-slate-900 px-4 py-2 flex items-center justify-between gap-1 overflow-x-auto text-xs font-semibold no-scrollbar">
-        {[
-          { id: 'home', label: 'Home' },
-          { id: 'matches', label: 'Matches' },
-          { id: 'teams', label: 'Teams' },
-          { id: 'social', label: 'Social' },
-          { id: 'forum', label: 'Fan Forum' },
-          { id: 'fanspaces', label: 'Fan Spaces' },
-          { id: 'growth', label: 'Youth & Creators' },
-          { id: 'contests', label: 'Contests' },
-          { id: 'draws', label: 'Draws' },
-          { id: 'leaderboard', label: 'Fan Wars' },
-          ...(user ? [{ id: 'profile', label: 'My Badges' }] : []),
-          { id: 'proposal', label: 'League Proposal' },
-        ].map(item => (
-          <a
-            key={item.id}
-            href={getPathForTab(item.id)}
-            onClick={(e) => {
-              e.preventDefault();
-              setActiveTab(item.id);
-            }}
-            className={`whitespace-nowrap px-2.5 py-1.5 rounded-md transition-colors ${
-              activeTab === item.id 
-                ? 'bg-amber-400 text-slate-950 font-bold' 
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            {item.label}
-          </a>
-        ))}
       </div>
     </header>
   );
