@@ -49,15 +49,42 @@ export interface AchievementBadge {
   rewardPoints: number;
 }
 
+export interface PlayerStats {
+  matches: number;
+  innings?: number;
+  runs: number;
+  highestScore: string | number;
+  average: number;
+  strikeRate: number;
+  fifties?: number;
+  hundreds?: number;
+  fours?: number;
+  sixes?: number;
+  wickets: number;
+  economy: number;
+  bestBowling: string;
+}
+
 export interface Player {
   id: string;
   teamId: string;
   name: string;
   role: 'batter' | 'bowler' | 'allrounder' | 'wicketkeeper';
-  credits: number;
+  credits?: number;
   isIcon: boolean;
   /** Draft category, e.g. 'Icon', 'Platinum', 'Gold', 'Diamond', 'Silver', 'Local' */
   category?: string;
+  cricbuzzId?: string;
+  cricbuzzRole?: string;
+  battingStyle?: string;
+  bowlingStyle?: string;
+  isCaptain?: boolean;
+  isKeeper?: boolean;
+  imageId?: number;
+  photoUrl?: string;
+  cricbuzzProfileUrl?: string;
+  nationality?: string;
+  stats?: PlayerStats;
 }
 
 export interface Team {

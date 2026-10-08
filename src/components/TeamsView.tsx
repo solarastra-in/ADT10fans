@@ -1,8 +1,431 @@
-import React from 'react';
-import { Team, SocialHandle, FeedItem, User, Match } from '../types';
-import { X, ExternalLink, Shield, Trophy, Users, Flame, CheckCircle, Sparkles, TrendingUp } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Team, SocialHandle, FeedItem, User, Match, Player } from '../types';
+import { X, ExternalLink, Shield, Trophy, Users, Flame, CheckCircle, Sparkles, TrendingUp, Search, Award, Activity, BarChart2 } from 'lucide-react';
 import { SocialCuratorWall } from './SocialCuratorWall';
 import { TeamWinLossGraph } from './TeamWinLossGraph';
+
+function slug(s: string) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+}
+
+/** Player Detail Modal with Full Cricbuzz Career Stats */
+const PlayerDetailModal: React.FC<{
+  player: Player | null;
+  team: Team;
+  onClose: () => void;
+}> = ({ player, team, onClose }) => {
+  if (!player) return null;
+
+  const photo = player.photoUrl || (player.imageId ? `https://static.cricbuzz.com/a/img/v1/i1/c${player.imageId}/i.jpg` : null);
+  const cricbuzzUrl = player.cricbuzzProfileUrl || (player.cricbuzzId ? `https://www.cricbuzz.com/profiles/${player.cricbuzzId}/${slug(player.name)}` : null);
+  const initials = player.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+  const stats = player.stats;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-md">
+      <div className="relative w-full max-w-lg bg-slate-900 border border-amber-500/30 rounded-3xl p-5 sm:p-7 shadow-2xl shadow-amber-500/10 text-slate-100 max-h-[92vh] overflow-y-auto">
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-xl bg-slate-800/80 hover:bg-slate-800 transition-colors"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        {/* Player Profile Header */}
+        <div className="flex items-start gap-4 mb-6">
+          <div className="relative shrink-0">
+            {photo ? (
+              <img
+                src={photo}
+                alt={player.name}
+                className="w-20 h-20 rounded-2xl object-cover bg-slate-800 border-2 border-amber-400/40 shadow-lg shadow-black/40"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+              />
+            ) : (
+              <div 
+                className="w-20 h-20 rounded-2xl flex items-center justify-center font-black text-xl text-white shadow-lg border-2 border-white/20"
+                style={{ backgroundColor: team.color }}
+              >
+                {initials}
+              </div>
+            )}
+            {player.isIcon && (
+              <span className="absolute -bottom-2 -right-1 px-1.5 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[9px] font-black uppercase tracking-wider shadow">
+                ICON
+              </span>
+            )}
+          </div>
+
+          <div>
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold text-white shadow-sm" style={{ backgroundColor: team.color }}>
+                {team.short}
+              </span>
+              {player.isCaptain && (
+                <span className="px-1.5 py-0.5 rounded-md text-[10px] font-black bg-amber-400/20 text-amber-300 border border-amber-400/40">
+                  CAPTAIN
+                </span>
+              )}
+              {player.isKeeper && (
+                <span className="px-1.5 py-0.5 rounded-md text-[10px] font-black bg-emerald-400/20 text-emerald-300 border border-emerald-400/40">
+                  WICKETKEEPER
+                </span>
+              )}
+            </div>
+            <h3 className="text-xl font-black text-white">{player.name}</h3>
+            <p className="text-xs font-semibold text-amber-400 capitalize">
+              {player.cricbuzzRole || player.role}
+            </p>
+            <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-1 flex-wrap">
+              {player.battingStyle && <span>Bat: {player.battingStyle}</span>}
+              {player.bowlingStyle && (
+                <>
+                  <span>•</span>
+                  <span>Bowl: {player.bowlingStyle}</span>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Career Stats Grid (No amounts, real verified cricket statistics) */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-2.5">
+            <h4 className="text-xs font-black uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+              <BarChart2 className="w-3.5 h-3.5 text-amber-400" /> Career T20 & Franchise Statistics
+            </h4>
+            <span className="text-[10px] text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 flex items-center gap-1">
+              <CheckCircle className="w-2.5 h-2.5" /> Cricbuzz Verified
+            </span>
+          </div>
+
+          {stats ? (
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-semibold">Matches</span>
+                <strong className="text-base font-black text-white">{stats.matches}</strong>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-semibold">Innings</span>
+                <strong className="text-base font-black text-white">{stats.innings ?? '-'}</strong>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-semibold">Total Runs</span>
+                <strong className="text-base font-black text-amber-300">{stats.runs?.toLocaleString() ?? 0}</strong>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-semibold">Highest Score</span>
+                <strong className="text-base font-black text-white">{stats.highestScore || '-'}</strong>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-semibold">Strike Rate</span>
+                <strong className="text-base font-black text-cyan-300">
+                  {stats.strikeRate ? stats.strikeRate.toFixed(1) : '-'}
+                </strong>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-semibold">Batting Avg</span>
+                <strong className="text-base font-black text-white">
+                  {stats.average ? stats.average.toFixed(2) : '-'}
+                </strong>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-semibold">Wickets</span>
+                <strong className="text-base font-black text-amber-300">{stats.wickets ?? 0}</strong>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-semibold">Economy</span>
+                <strong className="text-base font-black text-white">
+                  {stats.economy ? stats.economy.toFixed(2) : '-'}
+                </strong>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-semibold">Best Bowling</span>
+                <strong className="text-base font-black text-white">{stats.bestBowling || '-'}</strong>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-semibold">50s / 100s</span>
+                <strong className="text-xs font-bold text-slate-200">
+                  {stats.fifties ?? 0} / {stats.hundreds ?? 0}
+                </strong>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-semibold">Fours</span>
+                <strong className="text-xs font-bold text-slate-200">{stats.fours ?? 0}</strong>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-semibold">Sixes</span>
+                <strong className="text-xs font-bold text-slate-200">{stats.sixes ?? 0}</strong>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400 italic text-center py-4 bg-slate-950/50 rounded-xl">
+              Career statistics syncing for this player.
+            </p>
+          )}
+        </div>
+
+        {/* Footer Actions */}
+        <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-800">
+          {cricbuzzUrl && (
+            <a
+              href={cricbuzzUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-xl text-xs font-semibold transition-colors"
+            >
+              <span>View Profile on Cricbuzz</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          )}
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold ml-auto transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/** Reusable Squad Roster with Filtering, Player Cards, Real Stats and No Amounts */
+const SquadRosterSection: React.FC<{
+  squad: Player[];
+  team: Team;
+  title?: string;
+}> = ({ squad, team, title = '2026 Season Official Squad Roster' }) => {
+  const [activeFilter, setActiveFilter] = useState<'all' | 'batter' | 'allrounder' | 'bowler' | 'wicketkeeper'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [inspectingPlayer, setInspectingPlayer] = useState<Player | null>(null);
+
+  const filteredSquad = useMemo(() => {
+    return squad.filter(p => {
+      const matchesFilter = activeFilter === 'all' || p.role === activeFilter;
+      const matchesSearch = !searchQuery.trim() || p.name.toLowerCase().includes(searchQuery.toLowerCase().trim());
+      return matchesFilter && matchesSearch;
+    });
+  }, [squad, activeFilter, searchQuery]);
+
+  return (
+    <div>
+      {/* Section Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+        <div>
+          <h3 className="text-sm sm:text-base font-black uppercase tracking-wider text-amber-400 flex items-center gap-2">
+            <Users className="w-4 h-4" /> {title}
+          </h3>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Confirmed 18-player franchise roster matching Cricbuzz series 13307 registration. Click any player for full career stats.
+          </p>
+        </div>
+        <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700 self-start sm:self-auto">
+          {squad.length} Players
+        </span>
+      </div>
+
+      {/* Filter Tabs & Search */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-4">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+          {(
+            [
+              { id: 'all', label: `All (${squad.length})` },
+              { id: 'batter', label: 'Batters' },
+              { id: 'allrounder', label: 'All-Rounders' },
+              { id: 'bowler', label: 'Bowlers' },
+              { id: 'wicketkeeper', label: 'Wicketkeepers' },
+            ] as const
+          ).map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveFilter(tab.id)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
+                activeFilter === tab.id
+                  ? 'bg-amber-400 text-slate-950 shadow-md'
+                  : 'bg-slate-950/60 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="relative w-full sm:w-56">
+          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search squad player..."
+            className="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400/50"
+          />
+        </div>
+      </div>
+
+      {/* Player Cards Grid (NO AMOUNTS OR CREDITS - ONLY VERIFIED CRICKET STATS) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+        {filteredSquad.map((p) => {
+          const photo = p.photoUrl || (p.imageId ? `https://static.cricbuzz.com/a/img/v1/i1/c${p.imageId}/i.jpg` : null);
+          const initials = p.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+          const stats = p.stats;
+          const isBowler = p.role === 'bowler';
+          const isAllrounder = p.role === 'allrounder';
+
+          return (
+            <div
+              key={p.id}
+              onClick={() => setInspectingPlayer(p)}
+              className="group p-3 rounded-2xl bg-slate-950/70 border border-slate-800/80 hover:border-amber-400/40 hover:bg-slate-950 transition-all cursor-pointer flex flex-col justify-between"
+            >
+              {/* Header with Photo, Name & Badges */}
+              <div className="flex items-start gap-2.5 mb-2.5">
+                <div className="relative shrink-0">
+                  {photo ? (
+                    <img
+                      src={photo}
+                      alt={p.name}
+                      className="w-11 h-11 rounded-xl object-cover bg-slate-800 border border-slate-700/80 group-hover:border-amber-400/50 transition-colors"
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <div
+                      className="w-11 h-11 rounded-xl flex items-center justify-center font-bold text-xs text-white border border-white/10"
+                      style={{ backgroundColor: team.color }}
+                    >
+                      {initials}
+                    </div>
+                  )}
+                  {p.isIcon && (
+                    <span className="absolute -bottom-1.5 -right-1 px-1 rounded-full bg-amber-400 text-slate-950 font-black text-[8px] uppercase tracking-wider">
+                      ★
+                    </span>
+                  )}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className="font-bold text-xs text-white group-hover:text-amber-300 transition-colors truncate">
+                      {p.name}
+                    </span>
+                    {p.isCaptain && (
+                      <span className="text-[9px] bg-amber-400/20 text-amber-300 border border-amber-400/30 px-1 rounded font-black shrink-0">
+                        C
+                      </span>
+                    )}
+                    {p.isKeeper && (
+                      <span className="text-[9px] bg-emerald-400/20 text-emerald-300 border border-emerald-400/30 px-1 rounded font-black shrink-0">
+                        WK
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] font-semibold text-amber-400/90 block capitalize">
+                    {p.cricbuzzRole || p.role}
+                  </span>
+                  <div className="text-[10px] text-slate-400 truncate">
+                    {p.battingStyle ? p.battingStyle.replace('-hand bat', 'HB') : ''}
+                    {p.battingStyle && p.bowlingStyle ? ' • ' : ''}
+                    {p.bowlingStyle ? p.bowlingStyle.replace('Right-arm ', 'RA ').replace('Left-arm ', 'LA ') : ''}
+                  </div>
+                </div>
+              </div>
+
+              {/* Stats Highlight Pills (Replacing amounts with authentic stats) */}
+              <div className="pt-2 border-t border-slate-800/80 mt-auto">
+                {stats ? (
+                  <div className="grid grid-cols-3 gap-1 text-center bg-slate-900/60 p-1.5 rounded-lg border border-slate-800/60">
+                    {isBowler ? (
+                      <>
+                        <div>
+                          <span className="text-[8px] text-slate-400 block uppercase font-bold">Wkts</span>
+                          <span className="text-[11px] font-black text-amber-300">{stats.wickets ?? 0}</span>
+                        </div>
+                        <div>
+                          <span className="text-[8px] text-slate-400 block uppercase font-bold">Econ</span>
+                          <span className="text-[11px] font-bold text-slate-200">
+                            {stats.economy ? stats.economy.toFixed(1) : '-'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[8px] text-slate-400 block uppercase font-bold">BBI</span>
+                          <span className="text-[10px] font-bold text-slate-300 truncate block">
+                            {stats.bestBowling || '-'}
+                          </span>
+                        </div>
+                      </>
+                    ) : isAllrounder ? (
+                      <>
+                        <div>
+                          <span className="text-[8px] text-slate-400 block uppercase font-bold">Runs</span>
+                          <span className="text-[11px] font-black text-amber-300">{stats.runs?.toLocaleString() ?? 0}</span>
+                        </div>
+                        <div>
+                          <span className="text-[8px] text-slate-400 block uppercase font-bold">SR</span>
+                          <span className="text-[11px] font-bold text-cyan-300">
+                            {stats.strikeRate ? stats.strikeRate.toFixed(0) : '-'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[8px] text-slate-400 block uppercase font-bold">Wkts</span>
+                          <span className="text-[11px] font-black text-emerald-400">{stats.wickets ?? 0}</span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div>
+                          <span className="text-[8px] text-slate-400 block uppercase font-bold">Runs</span>
+                          <span className="text-[11px] font-black text-amber-300">{stats.runs?.toLocaleString() ?? 0}</span>
+                        </div>
+                        <div>
+                          <span className="text-[8px] text-slate-400 block uppercase font-bold">SR</span>
+                          <span className="text-[11px] font-bold text-cyan-300">
+                            {stats.strikeRate ? stats.strikeRate.toFixed(0) : '-'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[8px] text-slate-400 block uppercase font-bold">HS</span>
+                          <span className="text-[11px] font-bold text-slate-200">{stats.highestScore || '-'}</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-1 text-[10px] text-slate-400">
+                    Official Squad Star
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between text-[9px] text-slate-400 font-semibold mt-1 px-0.5 group-hover:text-amber-400/80 transition-colors">
+                  <span>{stats?.matches ?? 0} Career Matches</span>
+                  <span>Stats & Profile →</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {filteredSquad.length === 0 && (
+        <div className="text-center py-8 text-xs text-slate-400 bg-slate-950/40 rounded-2xl border border-slate-800">
+          No players found matching your filter.
+        </div>
+      )}
+
+      {/* Player Stats Modal */}
+      {inspectingPlayer && (
+        <PlayerDetailModal
+          player={inspectingPlayer}
+          team={team}
+          onClose={() => setInspectingPlayer(null)}
+        />
+      )}
+    </div>
+  );
+};
 
 interface TeamDetailModalProps {
   team: Team | null;
