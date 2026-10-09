@@ -2,9 +2,14 @@ import React from 'react';
 import { ExternalLink, Shield, Trophy } from 'lucide-react';
 
 /** Official Abu Dhabi T10 League Logo from https://abudhabit10.com/ */
-export const ADT10Logo: React.FC<{ className?: string; size?: 'sm' | 'md' | 'lg' | 'xl' }> = ({
+export const ADT10Logo: React.FC<{
+  className?: string;
+  size?: 'sm' | 'md' | 'lg' | 'xl';
+  asLink?: boolean;
+}> = ({
   className = '',
   size = 'md',
+  asLink = false,
 }) => {
   const [imgFailed, setImgFailed] = React.useState(false);
 
@@ -15,36 +20,18 @@ export const ADT10Logo: React.FC<{ className?: string; size?: 'sm' | 'md' | 'lg'
     xl: 'h-16 max-w-[220px]',
   }[size];
 
-  if (!imgFailed) {
-    return (
-      <a
-        href="https://abudhabit10.com/"
-        target="_blank"
-        rel="noopener noreferrer"
-        className={`inline-flex items-center select-none group transition-opacity hover:opacity-90 ${className}`}
-        title="Abu Dhabi T10 League Official Site"
-      >
-        <img
-          src="https://framerusercontent.com/images/mmKbaRRmkPEpmYP03xkvFKCySk.svg"
-          alt="Abu Dhabi T10 Official"
-          className={`${dim} object-contain filter drop-shadow`}
-          onError={() => {
-            // Try high-resolution fallback
-            setImgFailed(true);
-          }}
-        />
-      </a>
-    );
-  }
-
-  return (
-    <a
-      href="https://abudhabit10.com/"
-      target="_blank"
-      rel="noopener noreferrer"
-      className={`inline-flex items-center gap-2 select-none group ${className}`}
-      title="Abu Dhabi T10 League Official Site"
-    >
+  const content = !imgFailed ? (
+    <img
+      src="https://framerusercontent.com/images/mmKbaRRmkPEpmYP03xkvFKCySk.svg"
+      alt="Abu Dhabi T10 Official"
+      className={`${dim} object-contain filter drop-shadow`}
+      onError={() => {
+        // Try high-resolution fallback
+        setImgFailed(true);
+      }}
+    />
+  ) : (
+    <>
       <img
         src="https://upload.wikimedia.org/wikipedia/en/0/05/T10_League_Logo.png"
         alt="Abu Dhabi T10"
@@ -57,7 +44,30 @@ export const ADT10Logo: React.FC<{ className?: string; size?: 'sm' | 'md' | 'lg'
         <span className="text-[10px] uppercase font-black tracking-widest text-amber-400 leading-none">ABU DHABI</span>
         <span className="text-sm font-black text-white leading-none mt-0.5">T10 LEAGUE</span>
       </div>
-    </a>
+    </>
+  );
+
+  if (asLink) {
+    return (
+      <a
+        href="https://abudhabit10.com/"
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`inline-flex items-center gap-2 select-none group transition-opacity hover:opacity-90 ${className}`}
+        title="Abu Dhabi T10 League Official Site"
+      >
+        {content}
+      </a>
+    );
+  }
+
+  return (
+    <span
+      className={`inline-flex items-center gap-2 select-none ${className}`}
+      title="Abu Dhabi T10 League Official"
+    >
+      {content}
+    </span>
   );
 };
 

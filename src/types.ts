@@ -169,8 +169,8 @@ export interface FeedItem {
   /** true only when the item was ingested from a verified official handle's own feed */
   verifiedReal?: boolean;
   channelVerified?: boolean;
-  /** How the item got here: youtube-rss (official channel RSS), news-rss (Google News), admin (added by an admin), ai (admin-approved AI draft) */
-  sourceType?: 'youtube-rss' | 'news-rss' | 'admin' | 'ai';
+  /** How the item got here: youtube-rss (official channel RSS), news-rss (Google News), social-handle (team social media handle), social-syndication (live social feed syndication), admin (added by an admin), ai (admin-approved AI draft) */
+  sourceType?: 'youtube-rss' | 'news-rss' | 'admin' | 'ai' | 'social-handle' | 'social-syndication';
   handleId?: string | null;
 }
 

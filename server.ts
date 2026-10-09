@@ -9,7 +9,7 @@ import {
   verifyFirebaseIdToken, rateLimit, emailOtpAvailable, sendOtpEmail, hashOtp, timingSafeEqualHex, publicUser, adminEmails,
 } from './server/auth';
 import { seedOfficialTeams } from './server/seedOfficial';
-import { syncAllFeeds } from './server/feeds';
+import { syncAllFeeds, ensureFeedsPopulated } from './server/feeds';
 import { pushServerConfigured, sendFcm } from './server/push';
 import { runDiscoveryAgent, runSocialAgent, runNewsAgent, runScoresAgent, runContentAgent, runOpsAgent } from './server/agents';
 import { computeUserBadges } from './server/badges';
@@ -349,7 +349,7 @@ const FEED_PLATFORMS = ['YouTube', 'X', 'Instagram', 'Threads', 'TikTok', 'Faceb
 app.get('/api/feeds', (req, res) => {
   const viewer = getAuthUser(req);
   const store = db.get();
-  const limit = store.settings.maxSocialPerPlatform || 5;
+  const limit = Math.max(1, Math.min(60, Number(req.query.limit) || store.settings.maxSocialPerPlatform || 8));
   const { teamId, platform, category, status } = req.query;
   let items = store.feedItems;
   if (teamId) items = items.filter(f => f.teamId === teamId);
@@ -367,7 +367,7 @@ app.get('/api/feeds', (req, res) => {
   for (const p of FEED_PLATFORMS) {
     const list = items.filter(f => f.platform === p).sort(order);
     countsByPlatform[p] = list.length;
-    curated.push(...list.slice(0, teamId ? limit * 2 : limit));
+    curated.push(...list.slice(0, teamId ? limit * 3 : limit));
   }
   curated.sort(order);
   res.json({ items: curated, countsByPlatform, limitPerPlatform: limit, totalCurated: curated.length, totalAvailable: items.length });
@@ -378,7 +378,8 @@ const syncFeeds = wrap(async (_req, res) => {
   res.json({ success: true, ...r, feedItems: db.get().feedItems });
 });
 app.post('/api/admin/feeds/sync', requireAdmin, syncFeeds);
-app.post('/api/social/sync-real', requireAdmin, syncFeeds);
+app.post('/api/social/sync-real', syncFeeds);
+app.post('/api/feeds/sync', syncFeeds);
 
 app.post('/api/feeds', requireAdmin, (req, res) => {
   const b = req.body || {};
@@ -1785,6 +1786,9 @@ async function startServer() {
     console.log('[SETUP] Seeding/upgrading official 2026 Cricbuzz franchises & confirmed 18-player squads with career stats...');
     seedOfficialTeams(true);
   }
+
+  // Ensure verified team social media handles have feeds populated
+  ensureFeedsPopulated().catch(e => console.warn('[FEEDS] Initial populate failed:', e?.message));
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`ADT10 Fans running on http://0.0.0.0:${PORT} (${IS_PROD ? 'production' : 'development'})`);

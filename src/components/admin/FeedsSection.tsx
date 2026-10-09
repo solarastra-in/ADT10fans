@@ -22,6 +22,8 @@ const blank: Draft = { title: '', url: '', image: '', summary: '', platform: 'We
 const SOURCE_LABEL: Record<string, string> = {
   'youtube-rss': 'YouTube RSS',
   'news-rss': 'News RSS',
+  'social-handle': 'Verified Handle',
+  'social-syndication': 'Live Syndication',
   admin: 'Admin',
   ai: 'AI draft',
 };

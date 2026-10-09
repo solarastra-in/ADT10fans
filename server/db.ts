@@ -149,7 +149,7 @@ export interface FeedItem {
   views?: string;
   verifiedReal?: boolean;
   channelVerified?: boolean;
-  sourceType?: 'youtube-rss' | 'news-rss' | 'admin' | 'ai';
+  sourceType?: 'youtube-rss' | 'news-rss' | 'admin' | 'ai' | 'social-handle' | 'social-syndication';
   handleId?: string | null;
 }
 

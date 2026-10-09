@@ -246,6 +246,18 @@ export const SocialCuratorWall: React.FC<SocialCuratorWallProps> = ({
     }
   };
 
+  // Count items available for each platform given the active team filter
+  const platformCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: 0 };
+    for (const item of feedItems) {
+      if (activeTeamId && item.teamId !== activeTeamId) continue;
+      counts.all = (counts.all || 0) + 1;
+      const key = item.platform.toLowerCase();
+      counts[key] = (counts[key] || 0) + 1;
+    }
+    return counts;
+  }, [feedItems, activeTeamId]);
+
   // Filter items by team and platform
   const filtered = feedItems.filter(item => {
     if (activeTeamId && item.teamId !== activeTeamId) return false;
@@ -255,13 +267,14 @@ export const SocialCuratorWall: React.FC<SocialCuratorWallProps> = ({
 
   const platforms = [
     { id: 'all', label: 'All Feeds' },
-    { id: 'youtube', label: 'YouTube Live & Videos' },
     { id: 'x', label: 'X (Twitter)' },
     { id: 'instagram', label: 'Instagram' },
+    { id: 'youtube', label: 'YouTube' },
     { id: 'threads', label: 'Threads' },
     { id: 'tiktok', label: 'TikTok' },
-    { id: 'linkedin', label: 'LinkedIn' },
     { id: 'facebook', label: 'Facebook' },
+    { id: 'linkedin', label: 'LinkedIn' },
+    { id: 'web', label: 'News & Media' },
   ];
 
   // Verified official handles for quick-access scroll bar
@@ -520,11 +533,12 @@ export const SocialCuratorWall: React.FC<SocialCuratorWallProps> = ({
       <div className="relative z-10 flex items-center gap-1.5 overflow-x-auto pb-2 no-scrollbar text-xs font-bold">
         {platforms.map(p => {
           const active = platformFilter === p.id;
+          const count = platformCounts[p.id] ?? 0;
           return (
             <button
               key={p.id}
               onClick={() => setPlatformFilter(p.id)}
-              className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition-all ${
+              className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition-all inline-flex items-center gap-1.5 ${
                 active ? 'font-black' : 'bg-slate-900/80 text-slate-300 hover:text-white hover:bg-slate-800 border'
               }`}
               style={
@@ -539,7 +553,14 @@ export const SocialCuratorWall: React.FC<SocialCuratorWallProps> = ({
                     }
               }
             >
-              {p.label}
+              <span>{p.label}</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono transition-opacity ${
+                  active ? 'bg-black/25 text-inherit' : 'bg-slate-800 text-slate-400'
+                }`}
+              >
+                {count}
+              </span>
             </button>
           );
         })}

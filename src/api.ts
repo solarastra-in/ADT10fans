@@ -140,7 +140,7 @@ export const api = {
       method: 'DELETE',
     }),
   syncRealFeeds: () =>
-    fetchJson<{ success: boolean; syncedCount: number; added: number; feedItems: FeedItem[]; summary: string; errors: string[] }>('/api/admin/feeds/sync', {
+    fetchJson<{ success: boolean; syncedCount: number; added: number; feedItems: FeedItem[]; summary: string; errors: string[] }>('/api/social/sync-real', {
       method: 'POST',
     }),
 
