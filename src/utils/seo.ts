@@ -45,8 +45,6 @@ export function updatePageSeo(config: SeoConfig) {
   };
 
   setMeta('name', 'description', config.description);
-  setMeta('name', 'author', holder);
-  setMeta('name', 'copyright', holder);
   setMeta('name', 'robots', config.noindex ? 'noindex, nofollow' : 'index, follow, max-image-preview:large');
 
   setMeta('property', 'og:site_name', brand);
@@ -85,8 +83,6 @@ export function updatePageSeo(config: SeoConfig) {
         name: brand,
         url: `${baseUrl}/`,
         inLanguage: 'en',
-        publisher: { '@type': 'Organization', name: holder },
-        copyrightHolder: { '@type': 'Organization', name: holder },
       },
       {
         '@type': 'WebPage',

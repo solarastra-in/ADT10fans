@@ -6,12 +6,25 @@
         "email": { "type": "string" },
         "name": { "type": "string" },
         "role": { "type": "string", "enum": ["admin", "fan"] },
+        "isSuperAdmin": { "type": "boolean" },
+        "adminRole": { "type": "string" },
         "teamId": { "type": "string" },
         "points": { "type": "number" },
         "streak": { "type": "number" },
         "createdAt": { "type": "string" }
       },
       "required": ["email", "name", "role", "points"]
+    },
+    "AdminRecord": {
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "isSuperAdmin": { "type": "boolean" },
+        "addedAt": { "type": "string" }
+      },
+      "required": ["email", "role", "addedAt"]
     },
     "Team": {
       "type": "object",
@@ -91,6 +104,10 @@
     "/users/{userId}": {
       "schema": { "$ref": "User" },
       "description": "User profile with points, streak, and team choice"
+    },
+    "/admins/{adminEmail}": {
+      "schema": { "$ref": "AdminRecord" },
+      "description": "Configured portal administrators and RBAC roles with super admin solarastra.in@gmail.com"
     },
     "/teams/{teamId}": {
       "schema": { "$ref": "Team" },

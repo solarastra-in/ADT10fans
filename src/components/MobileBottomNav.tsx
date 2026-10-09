@@ -251,14 +251,19 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               </div>
             </div>
 
-            {/* Azlir Sport Copyright in Mobile Drawer */}
+            {/* Arabian Aces Franchise Attribution in Mobile Drawer (No copyright) */}
             <div className="pt-3 border-t border-slate-800/80 text-center">
-              <p className="text-[11px] font-semibold text-slate-400">
-                Copyright by Azlir Sport © 2026. All rights reserved.
+              <p className="text-[11px] font-bold text-amber-300">
+                Brought to you by Arabian Aces franchise
               </p>
-              <p className="text-[10px] text-slate-500 mt-0.5">
-                Abu Dhabi T10 Fan Hub · Official Franchise Platform
-              </p>
+              <a
+                href="https://www.arabianaces.ae"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[10px] text-amber-400 hover:underline block mt-0.5"
+              >
+                www.arabianaces.ae
+              </a>
             </div>
           </div>
         </div>

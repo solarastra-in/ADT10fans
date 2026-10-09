@@ -589,37 +589,11 @@ export const TeamDetailModal: React.FC<TeamDetailModalProps> = ({
 
         {/* Squad Roster */}
         <div className="mb-8">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-black uppercase tracking-wider text-amber-400 flex items-center gap-2">
-              <Users className="w-4 h-4" /> 2026 Season Squad & Credits
-            </h3>
-            <span className="text-xs text-slate-400">{team.squad.length} Players</span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-            {team.squad.map((p) => (
-              <div
-                key={p.id}
-                className="p-3 rounded-xl bg-slate-950/50 border border-slate-800 flex items-center justify-between"
-              >
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-xs text-white">{p.name}</span>
-                    {p.isIcon && (
-                      <span className="text-[9px] bg-amber-400/20 text-amber-300 border border-amber-400/30 px-1 rounded font-black">
-                        ICON
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-[10px] text-slate-400 capitalize">{p.role}</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-xs font-mono font-bold text-amber-400">{p.credits}</span>
-                  <span className="text-[10px] text-slate-400 block">cr</span>
-                </div>
-              </div>
-            ))}
-          </div>
+          <SquadRosterSection
+            squad={team.squad}
+            team={team}
+            title={`${team.name} 2026 Official Squad Roster`}
+          />
         </div>
 
         {/* Team-Specific Curated Social Feed with Dynamic Team Theme */}
@@ -821,37 +795,11 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
 
         {/* Squad Roster */}
         <div className="p-6 rounded-3xl bg-slate-900 border border-slate-800">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-black uppercase tracking-wider text-amber-400 flex items-center gap-2">
-              <Users className="w-4 h-4" /> 2026 Season Official Squad Roster
-            </h2>
-            <span className="text-xs text-slate-400 font-semibold">{dedicatedTeam.squad.length} Players Registered</span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-            {dedicatedTeam.squad.map((p) => (
-              <div
-                key={p.id}
-                className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-amber-400/40 transition-colors flex items-center justify-between"
-              >
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-xs sm:text-sm text-white">{p.name}</span>
-                    {p.isIcon && (
-                      <span className="text-[9px] bg-amber-400/20 text-amber-300 border border-amber-400/30 px-1 rounded font-black">
-                        ICON
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-[11px] text-slate-400 capitalize">{p.role}</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-sm font-mono font-bold text-amber-400">{p.credits}</span>
-                  <span className="text-[10px] text-slate-400 block">cr</span>
-                </div>
-              </div>
-            ))}
-          </div>
+          <SquadRosterSection
+            squad={dedicatedTeam.squad}
+            team={dedicatedTeam}
+            title={`${dedicatedTeam.name} Official 18-Player Squad Roster`}
+          />
         </div>
 
         {/* Curated Feed for this Franchise */}

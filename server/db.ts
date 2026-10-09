@@ -2,6 +2,37 @@ import fs from 'fs';
 import path from 'path';
 import { generateInitialProposalSettings } from './proposalDefaults';
 
+export const SUPER_ADMIN_EMAIL = 'solarastra.in@gmail.com';
+
+export type AdminPermission =
+  | 'all'
+  | 'leagues'
+  | 'matches'
+  | 'teams'
+  | 'contests'
+  | 'winners'
+  | 'draws'
+  | 'feeds'
+  | 'social'
+  | 'notifications'
+  | 'fanspaces'
+  | 'growth'
+  | 'settings'
+  | 'admins';
+
+export type AdminRole = 'superadmin' | 'league_admin' | 'contest_admin' | 'winner_admin' | 'social_admin' | 'custom';
+
+export interface AdminUserRecord {
+  email: string;
+  name?: string;
+  role: AdminRole;
+  permissions: AdminPermission[];
+  isSuperAdmin?: boolean;
+  addedBy?: string;
+  addedAt: string;
+  updatedAt?: string;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -15,6 +46,9 @@ export interface User {
   lastCheckin?: string;
   badges: string[];
   role: 'fan' | 'admin';
+  isSuperAdmin?: boolean;
+  adminRole?: AdminRole;
+  permissions?: AdminPermission[];
   createdAt: string;
   stats?: any;
 }
@@ -72,7 +106,7 @@ export interface Team {
   short: string;
   color: string;
   secondaryColor?: string;
-  home: string;
+  home?: string;
   iconPlayer: string;
   headCoach?: string;
   website?: string;
@@ -542,6 +576,7 @@ export interface AppStore {
   commentaryFeeds: CommentaryAudioFeed[];
   passportTiers: SuperfanPassportTier[];
   proposalSettings: ProposalSettings;
+  adminUsers: AdminUserRecord[];
 }
 
 export const SCHEMA_VERSION = 2;
@@ -551,12 +586,41 @@ export const SCHEMA_VERSION = 2;
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(process.cwd(), 'data'));
 const STORE_PATH = path.join(DATA_DIR, 't10_store.json');
 
+export function defaultAdminUsers(): AdminUserRecord[] {
+  return [
+    {
+      email: SUPER_ADMIN_EMAIL,
+      name: 'Super Admin',
+      role: 'superadmin',
+      permissions: [
+        'all',
+        'leagues',
+        'matches',
+        'teams',
+        'contests',
+        'winners',
+        'draws',
+        'feeds',
+        'social',
+        'notifications',
+        'fanspaces',
+        'growth',
+        'settings',
+        'admins',
+      ],
+      isSuperAdmin: true,
+      addedBy: 'system',
+      addedAt: '2026-11-01T00:00:00.000Z',
+    },
+  ];
+}
+
 export function defaultSettings(): SystemSettings {
   return {
-    adminEmails: [],
+    adminEmails: [SUPER_ADMIN_EMAIL],
     brandName: 'ADT10 Fans',
     tagline: 'The Abu Dhabi T10 fan hub',
-    copyrightHolder: 'Azlir Sports',
+    copyrightHolder: '',
     seasonLabel: '',
     seasonStart: '',
     seasonEnd: '',
@@ -605,6 +669,7 @@ export function emptyStore(): AppStore {
     commentaryFeeds: [],
     passportTiers: [],
     proposalSettings: generateInitialProposalSettings(),
+    adminUsers: defaultAdminUsers(),
   };
 }
 
@@ -627,6 +692,11 @@ function migrate(raw: any): AppStore {
     // Fill any collections added since the store was written.
     const merged: any = { ...fresh, ...raw };
     merged.settings = { ...fresh.settings, ...(raw.settings || {}), smtp: { ...fresh.settings.smtp, ...(raw.settings?.smtp || {}) } };
+    if (!Array.isArray(merged.adminUsers) || merged.adminUsers.length === 0) {
+      merged.adminUsers = defaultAdminUsers();
+    } else if (!merged.adminUsers.some((a: any) => a.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase())) {
+      merged.adminUsers.unshift(defaultAdminUsers()[0]);
+    }
     return merged as AppStore;
   }
 

@@ -1,3 +1,32 @@
+export type AdminPermission =
+  | 'all'
+  | 'leagues'
+  | 'matches'
+  | 'teams'
+  | 'contests'
+  | 'winners'
+  | 'draws'
+  | 'feeds'
+  | 'social'
+  | 'notifications'
+  | 'fanspaces'
+  | 'growth'
+  | 'settings'
+  | 'admins';
+
+export type AdminRole = 'superadmin' | 'league_admin' | 'contest_admin' | 'winner_admin' | 'social_admin' | 'custom';
+
+export interface AdminUserRecord {
+  email: string;
+  name?: string;
+  role: AdminRole;
+  permissions: AdminPermission[];
+  isSuperAdmin?: boolean;
+  addedBy?: string;
+  addedAt: string;
+  updatedAt?: string;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -11,6 +40,9 @@ export interface User {
   lastCheckin?: string;
   badges: string[];
   role: 'fan' | 'admin';
+  isSuperAdmin?: boolean;
+  adminRole?: AdminRole;
+  permissions?: AdminPermission[];
   createdAt: string;
   stats?: UserStats;
 }
@@ -93,7 +125,7 @@ export interface Team {
   short: string;
   color: string;
   secondaryColor?: string;
-  home: string;
+  home?: string;
   iconPlayer: string;
   headCoach?: string;
   website?: string;

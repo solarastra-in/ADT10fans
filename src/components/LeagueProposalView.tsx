@@ -491,9 +491,14 @@ Submitted to: ADT10 Governing Council & Franchise Board
               <span className="px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 text-[11px] font-bold">
                 Doc Ref: ADT10-FAN-EXP-2026-v1
               </span>
-              <span className="px-2.5 py-1 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/40 text-[11px] font-black">
-                Copyright by Azlir Sport
-              </span>
+              <a
+                href="https://www.arabianaces.ae"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-2.5 py-1 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/40 text-[11px] font-black hover:bg-amber-400/30 transition-colors"
+              >
+                Brought to you by Arabian Aces franchise (www.arabianaces.ae)
+              </a>
             </div>
 
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight leading-tight">
@@ -1358,14 +1363,14 @@ Submitted to: ADT10 Governing Council & Franchise Board
         </div>
       )}
 
-      {/* Proposal Copyright & Attribution */}
+      {/* Proposal Franchise Attribution (No copyright) */}
       <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/80 border border-amber-500/30 text-center text-xs text-slate-400 flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-amber-400" />
           <span className="font-bold text-white">Abu Dhabi T10 League Fan Base & Experiential Spaces Proposal</span>
         </div>
         <div className="font-semibold text-amber-300">
-          Copyright by Azlir Sport © 2026. All rights reserved.
+          Brought to you by Arabian Aces franchise · <a href="https://www.arabianaces.ae" target="_blank" rel="noopener noreferrer" className="underline hover:text-white">www.arabianaces.ae</a>
         </div>
       </div>
     </div>

@@ -1,7 +1,8 @@
 import React from 'react';
 import { User, Team } from '../types';
 import { getPathForTab } from '../utils/navigation';
-import { Flame, LogIn, LogOut, Bell, SlidersHorizontal, Sparkles, User as UserIcon } from 'lucide-react';
+import { Flame, LogIn, LogOut, Bell, SlidersHorizontal, Sparkles, User as UserIcon, ExternalLink } from 'lucide-react';
+import { ADT10Logo } from './Branding';
 
 interface HeaderProps {
   user: User | null;
@@ -118,23 +119,32 @@ export const Header: React.FC<HeaderProps> = ({
       )}
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 lg:h-16 flex items-center justify-between gap-3">
-        {/* Brand */}
-        <a
-          href="/"
-          onClick={(e) => {
-            e.preventDefault();
-            setActiveTab('home');
-          }}
-          className="flex items-center gap-2.5 min-w-0 select-none"
-          aria-label={`${brandName} home`}
-        >
-          <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 to-amber-600 p-0.5 shrink-0">
-            <span className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
-              <span className="text-amber-400 font-black text-sm tracking-tighter">T10</span>
-            </span>
-          </span>
-          <span className="font-extrabold text-base lg:text-lg tracking-tight text-white truncate">{brandName}</span>
-        </a>
+        {/* Brand with official ADT10 logo and Arabian Aces attribution */}
+        <div className="flex items-center gap-3 shrink-0">
+          <a
+            href="/"
+            onClick={(e) => {
+              e.preventDefault();
+              setActiveTab('home');
+            }}
+            className="flex items-center gap-2 select-none"
+            aria-label={`${brandName} home`}
+          >
+            <ADT10Logo size="md" />
+            <span className="font-extrabold text-base lg:text-lg tracking-tight text-white hidden sm:inline truncate">{brandName}</span>
+          </a>
+
+          <a
+            href="https://www.arabianaces.ae"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-400/10 border border-amber-400/30 text-[11px] font-bold text-amber-300 hover:bg-amber-400/20 transition-colors"
+            title="Brought to you by Arabian Aces franchise"
+          >
+            <span>Brought to you by <strong className="text-white">Arabian Aces</strong></span>
+            <ExternalLink className="w-2.5 h-2.5" />
+          </a>
+        </div>
 
         {/* Desktop nav */}
         <nav className="hidden lg:flex flex-1 items-center gap-0.5 min-w-0 overflow-x-auto scrollbar-none" aria-label="Main">

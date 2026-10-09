@@ -3,7 +3,7 @@ import express, { NextFunction, Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
-import { db, Contest, Match, NotificationItem, PrizeDraw, Team, Player, FeedItem, SocialHandle, User, defaultSettings } from './server/db';
+import { db, Contest, Match, NotificationItem, PrizeDraw, Team, Player, FeedItem, SocialHandle, User, defaultSettings, SUPER_ADMIN_EMAIL } from './server/db';
 import {
   IS_PROD, FIREBASE_PROJECT_ID, getAuthUser, requireAdmin, requireUser, upsertUser, createSession, revokeSession,
   verifyFirebaseIdToken, rateLimit, emailOtpAvailable, sendOtpEmail, hashOtp, timingSafeEqualHex, publicUser, adminEmails,
@@ -1301,6 +1301,167 @@ app.post('/api/admin/settings', requireAdmin, (req, res) => {
   res.json({ success: true, settings: maskedSettings() });
 });
 
+// ---------- Admins & RBAC Management ----------
+app.get('/api/admin/admins', requireAdmin('admins'), (_req, res) => {
+  const store = db.get();
+  const list = [...(store.adminUsers || [])];
+  if (!list.some(a => a.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase())) {
+    list.unshift({
+      email: SUPER_ADMIN_EMAIL,
+      name: 'Super Admin',
+      role: 'superadmin',
+      permissions: [
+        'all',
+        'leagues',
+        'matches',
+        'teams',
+        'contests',
+        'winners',
+        'draws',
+        'feeds',
+        'social',
+        'notifications',
+        'fanspaces',
+        'growth',
+        'settings',
+        'admins',
+      ],
+      isSuperAdmin: true,
+      addedBy: 'system',
+      addedAt: '2026-11-01T00:00:00.000Z',
+    });
+  }
+  res.json({ admins: list, superAdminEmail: SUPER_ADMIN_EMAIL });
+});
+
+app.post('/api/admin/admins', requireAdmin('admins'), (req, res) => {
+  const email = str(req.body?.email, 200).toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return bad(res, 'Valid email required');
+  const role = (req.body?.role || 'league_admin') as any;
+  const permissions = Array.isArray(req.body?.permissions) ? req.body.permissions : ['leagues'];
+  const name = str(req.body?.name, 80) || email.split('@')[0];
+
+  const store = db.get();
+  if (!store.adminUsers) store.adminUsers = [];
+
+  const existingIdx = store.adminUsers.findIndex(a => a.email.toLowerCase() === email);
+  const caller = userOf(req);
+  const now = new Date().toISOString();
+
+  if (email === SUPER_ADMIN_EMAIL.toLowerCase()) {
+    if (existingIdx !== -1) {
+      store.adminUsers[existingIdx] = {
+        ...store.adminUsers[existingIdx],
+        name: name || store.adminUsers[existingIdx].name,
+        role: 'superadmin',
+        isSuperAdmin: true,
+        permissions: [
+          'all',
+          'leagues',
+          'matches',
+          'teams',
+          'contests',
+          'winners',
+          'draws',
+          'feeds',
+          'social',
+          'notifications',
+          'fanspaces',
+          'growth',
+          'settings',
+          'admins',
+        ],
+        updatedAt: now,
+      };
+    }
+  } else {
+    const isSuper = role === 'superadmin';
+    const rec = {
+      email,
+      name,
+      role,
+      permissions: isSuper
+        ? [
+            'all',
+            'leagues',
+            'matches',
+            'teams',
+            'contests',
+            'winners',
+            'draws',
+            'feeds',
+            'social',
+            'notifications',
+            'fanspaces',
+            'growth',
+            'settings',
+            'admins',
+          ]
+        : permissions,
+      isSuperAdmin: isSuper,
+      addedBy: caller.email,
+      addedAt: existingIdx !== -1 ? store.adminUsers[existingIdx].addedAt : now,
+      updatedAt: now,
+    };
+    if (existingIdx !== -1) {
+      store.adminUsers[existingIdx] = rec;
+    } else {
+      store.adminUsers.push(rec);
+    }
+  }
+
+  const user = store.users.find(u => u.email.toLowerCase() === email);
+  if (user) {
+    user.role = 'admin';
+    if (email === SUPER_ADMIN_EMAIL.toLowerCase()) {
+      user.isSuperAdmin = true;
+      user.adminRole = 'superadmin';
+      user.permissions = [
+        'all',
+        'leagues',
+        'matches',
+        'teams',
+        'contests',
+        'winners',
+        'draws',
+        'feeds',
+        'social',
+        'notifications',
+        'fanspaces',
+        'growth',
+        'settings',
+        'admins',
+      ];
+    } else {
+      user.isSuperAdmin = role === 'superadmin';
+      user.adminRole = role;
+      user.permissions = role === 'superadmin' ? ['all'] : permissions;
+    }
+  }
+
+  db.save();
+  res.json({ success: true, admins: store.adminUsers });
+});
+
+app.delete('/api/admin/admins/:email', requireAdmin('admins'), (req, res) => {
+  const target = str(req.params.email, 200).toLowerCase();
+  if (target === SUPER_ADMIN_EMAIL.toLowerCase()) {
+    return bad(res, 'Super admin (solarastra.in@gmail.com) cannot be removed');
+  }
+  const store = db.get();
+  store.adminUsers = (store.adminUsers || []).filter(a => a.email.toLowerCase() !== target);
+
+  const user = store.users.find(u => u.email.toLowerCase() === target);
+  if (user) {
+    user.role = 'fan';
+    user.isSuperAdmin = false;
+    user.adminRole = undefined;
+    user.permissions = [];
+  }
+  db.save();
+  res.json({ success: true, admins: store.adminUsers });
+});
+
 // ---------- fan spaces ----------
 app.get('/api/fanspaces', (req, res) => {
   const user = getAuthUser(req);
@@ -1615,11 +1776,14 @@ async function startServer() {
     });
   }
 
-  // Ensure official 2026 Cricbuzz franchises & confirmed squads are seeded if database is fresh
+  // Ensure official 2026 Cricbuzz franchises & confirmed squads (18 players each, stats included, amounts removed) are seeded
   const currentStore = db.get();
-  if (!currentStore.teams || currentStore.teams.length === 0) {
-    console.log('[SETUP] Fresh database detected. Seeding official 2026 Cricbuzz franchises & squads...');
-    seedOfficialTeams(false);
+  const needsSquadUpgrade = !currentStore.teams || currentStore.teams.length === 0 ||
+    currentStore.teams.some(t => !t.squad || t.squad.length < 18 || t.squad.some(p => p.credits !== undefined));
+
+  if (needsSquadUpgrade) {
+    console.log('[SETUP] Seeding/upgrading official 2026 Cricbuzz franchises & confirmed 18-player squads with career stats...');
+    seedOfficialTeams(true);
   }
 
   app.listen(PORT, '0.0.0.0', () => {

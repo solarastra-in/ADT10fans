@@ -15,16 +15,18 @@ export type AdminSectionId =
   | 'approvals'
   | 'marketing'
   | 'settings'
-  | 'proposal';
+  | 'proposal'
+  | 'admins';
 
 export const ADMIN_SECTIONS: { id: AdminSectionId; label: string }[] = [
   { id: 'dashboard', label: 'Dashboard' },
+  { id: 'admins', label: 'Admins & RBAC' },
   { id: 'teams', label: 'Teams' },
   { id: 'handles', label: 'Handles' },
   { id: 'feeds', label: 'Feeds' },
   { id: 'matches', label: 'Matches' },
   { id: 'contests', label: 'Contests' },
-  { id: 'draws', label: 'Draws' },
+  { id: 'draws', label: 'Draws & Winners' },
   { id: 'forum', label: 'Forum' },
   { id: 'notifications', label: 'Notifications' },
   { id: 'fanspaces', label: 'Fan Spaces' },

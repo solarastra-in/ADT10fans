@@ -76,7 +76,7 @@ export const TeamPickerModal: React.FC<TeamPickerModalProps> = ({
                         {t.name}
                       </h3>
                       <span className="text-[10px] font-bold text-slate-400">
-                        {t.short} · {t.home.split(',')[0]}
+                        {t.short} · {(t.home || 'Abu Dhabi').split(',')[0]}
                       </span>
                     </div>
                   </div>

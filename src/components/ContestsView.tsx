@@ -39,7 +39,6 @@ interface ContestsViewProps {
   matches?: Match[];
 }
 
-const MAX_CREDITS = 55;
 const SQUAD_SIZE = 6;
 const LEAGUE_GOLD = '#E8B04A';
 
@@ -575,9 +574,6 @@ const FantasyBuilder: React.FC<{
     ) as React.ReactElement;
   }
 
-  const credits = selected.reduce((acc, id) => acc + (playerById.get(id)?.credits || 0), 0);
-  const remaining = MAX_CREDITS - credits;
-
   const toggle = (p: Player) => {
     if (!editable) return;
     setMessage(null);
@@ -588,10 +584,6 @@ const FantasyBuilder: React.FC<{
     }
     if (selected.length >= SQUAD_SIZE) {
       setMessage({ tone: 'err', text: `You can pick ${SQUAD_SIZE} players. Remove one first.` });
-      return;
-    }
-    if (credits + (p.credits || 0) > MAX_CREDITS) {
-      setMessage({ tone: 'err', text: `Not enough credits — ${remaining.toFixed(1)} left.` });
       return;
     }
     setSelected(s => [...s, p.id]);
@@ -633,7 +625,23 @@ const FantasyBuilder: React.FC<{
   const squadsMissing = !teamA?.squad?.length || !teamB?.squad?.length;
   const visible = pool
     .filter(p => teamFilter === 'all' || p.teamId === teamFilter)
-    .sort((a, b) => (b.credits || 0) - (a.credits || 0) || a.name.localeCompare(b.name));
+    .sort((a, b) => {
+      if (a.isIcon !== b.isIcon) return a.isIcon ? -1 : 1;
+      const aScore = (a.stats?.runs || 0) + (a.stats?.wickets || 0) * 20;
+      const bScore = (b.stats?.runs || 0) + (b.stats?.wickets || 0) * 20;
+      return bScore - aScore || a.name.localeCompare(b.name);
+    });
+
+  const getPlayerStatsText = (p: Player) => {
+    if (!p.stats) return p.cricbuzzRole || p.role;
+    if (p.role === 'bowler') {
+      return `${p.stats.wickets}w · Econ ${p.stats.economy ? p.stats.economy.toFixed(1) : '-'}`;
+    }
+    if (p.role === 'allrounder') {
+      return `${p.stats.runs}r · ${p.stats.wickets}w`;
+    }
+    return `${p.stats.runs}r · SR ${p.stats.strikeRate ? p.stats.strikeRate.toFixed(1) : '-'}`;
+  };
 
   return (
     <div className="space-y-4">
@@ -679,22 +687,22 @@ const FantasyBuilder: React.FC<{
 
             <div className="grid grid-cols-2 gap-2 mb-3 text-sm">
               <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-                <span className="block text-xs text-slate-400">Players</span>
+                <span className="block text-xs text-slate-400">Players Selected</span>
                 <span className={`font-mono font-black ${selected.length === SQUAD_SIZE ? 'text-emerald-400' : 'text-amber-400'}`}>
                   {selected.length}/{SQUAD_SIZE}
                 </span>
               </div>
               <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-                <span className="block text-xs text-slate-400">Credits</span>
-                <span className={`font-mono font-black ${credits > MAX_CREDITS ? 'text-red-400' : 'text-emerald-400'}`}>
-                  {credits.toFixed(1)}/{MAX_CREDITS}
+                <span className="block text-xs text-slate-400">Captain (2x Points)</span>
+                <span className={`font-mono font-black text-xs ${captainId ? 'text-emerald-400 truncate block' : 'text-slate-500'}`}>
+                  {captainId ? (playerById.get(captainId)?.name.split(' ').pop() || 'Selected') : 'Select (C)'}
                 </span>
               </div>
             </div>
 
             {selected.length === 0 ? (
               <p className="text-sm text-slate-400 py-2">
-                Pick {SQUAD_SIZE} players from the two squads, then tap a player's “C” to make them captain.
+                Draft any {SQUAD_SIZE} players from the two squads based on real career stats, then tap a player's “C” to make them captain.
               </p>
             ) : (
               <ul className="space-y-1.5 mb-3">
@@ -707,7 +715,9 @@ const FantasyBuilder: React.FC<{
                         {p.name}
                         {captainId === id && <span className="ml-1.5 text-amber-400 font-black">(C)</span>}
                       </span>
-                      <span className="text-slate-400 font-mono text-xs shrink-0">{p.credits} cr</span>
+                      <span className="text-amber-300 font-mono text-[11px] shrink-0 font-semibold">
+                        {getPlayerStatsText(p)}
+                      </span>
                     </li>
                   );
                 })}
@@ -731,7 +741,7 @@ const FantasyBuilder: React.FC<{
             {editable && (
               <button
                 onClick={submit}
-                disabled={submitting || (!!user && (selected.length !== SQUAD_SIZE || !captainId || credits > MAX_CREDITS))}
+                disabled={submitting || (!!user && (selected.length !== SQUAD_SIZE || !captainId))}
                 className="w-full min-h-[44px] bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-sm rounded-xl disabled:opacity-50"
               >
                 {submitting ? 'Saving…' : !user ? 'Sign in to save lineup' : savedAt ? 'Update lineup' : 'Save lineup'}
@@ -787,7 +797,9 @@ const FantasyBuilder: React.FC<{
                           {p.category ? ` · ${p.category}` : p.isIcon ? ' · Icon' : ''} · {t?.short || t?.name}
                         </span>
                       </span>
-                      <span className="font-mono font-bold text-xs text-amber-300 shrink-0">{p.credits} cr</span>
+                      <span className="font-mono font-bold text-xs text-amber-300 shrink-0">
+                        {getPlayerStatsText(p)}
+                      </span>
                     </button>
                     {isSel && editable && (
                       <button

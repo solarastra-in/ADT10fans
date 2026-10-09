@@ -100,7 +100,6 @@ const validateTeam = (d: TeamDraft, isNew: boolean, teams: Team[]): Errors => {
   }
   d.squad.forEach((p, i) => {
     if (!p.name.trim()) e[`squad.${i}.name`] = 'Player name is required.';
-    if (!Number.isFinite(Number(p.credits)) || Number(p.credits) < 0) e[`squad.${i}.credits`] = 'Credits must be 0 or more.';
   });
   return e;
 };
@@ -162,7 +161,6 @@ export const TeamsSection: React.FC<{ teams: Team[]; onRefreshAll: () => Promise
         ...p,
         teamId: id,
         name: p.name.trim(),
-        credits: Number(p.credits) || 0,
         category: p.category || undefined,
       })),
     };
@@ -383,16 +381,16 @@ export const TeamsSection: React.FC<{ teams: Team[]; onRefreshAll: () => Promise
                             {p.category && !(PLAYER_CATEGORIES as readonly string[]).includes(p.category) && <option value={p.category}>{p.category}</option>}
                           </Select>
                         </Field>
-                        <Field label="Credits" error={errors[`squad.${i}.credits`]} className="sm:col-span-2">
-                          <TextInput
-                            type="number"
-                            inputMode="decimal"
-                            step="0.5"
-                            min={0}
-                            value={String(p.credits ?? '')}
-                            onChange={e => setPlayer(i, { credits: e.target.value === '' ? ('' as any) : Number(e.target.value) })}
-                            error={!!errors[`squad.${i}.credits`]}
-                          />
+                        <Field label="Verified Stats" className="sm:col-span-2">
+                          <div className="min-h-[40px] px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono text-amber-300 flex items-center">
+                            {p.stats ? (
+                              <span>
+                                {p.stats.runs}r · {p.stats.wickets}w · SR {p.stats.strikeRate ? p.stats.strikeRate.toFixed(1) : '-'}
+                              </span>
+                            ) : (
+                              <span className="text-slate-500">Cricbuzz stats attached</span>
+                            )}
+                          </div>
                         </Field>
                       </div>
                       <div className="flex flex-wrap items-center justify-between gap-2 mt-1">

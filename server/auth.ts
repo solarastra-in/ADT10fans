@@ -4,7 +4,7 @@ import path from 'path';
 import type { Request, Response, NextFunction } from 'express';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import nodemailer from 'nodemailer';
-import { db, User } from './db';
+import { db, User, SUPER_ADMIN_EMAIL, AdminPermission, AdminRole, AdminUserRecord } from './db';
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 export const IS_PROD = process.env.NODE_ENV === 'production';
@@ -42,23 +42,124 @@ export async function verifyFirebaseIdToken(idToken: string) {
   };
 }
 
-// ---------- Admins ----------
+// ---------- Super Admin & Admins RBAC ----------
+export function isSuperAdminEmail(email: string): boolean {
+  return email.trim().toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+}
+
+export function getAdminRecord(email: string): AdminUserRecord | null {
+  const clean = email.trim().toLowerCase();
+  const store = db.get();
+  if (clean === SUPER_ADMIN_EMAIL.toLowerCase()) {
+    const existing = (store.adminUsers || []).find(a => a.email.toLowerCase() === clean);
+    return (
+      existing || {
+        email: SUPER_ADMIN_EMAIL,
+        name: 'Super Admin',
+        role: 'superadmin',
+        permissions: [
+          'all',
+          'leagues',
+          'matches',
+          'teams',
+          'contests',
+          'winners',
+          'draws',
+          'feeds',
+          'social',
+          'notifications',
+          'fanspaces',
+          'growth',
+          'settings',
+          'admins',
+        ],
+        isSuperAdmin: true,
+        addedBy: 'system',
+        addedAt: '2026-11-01T00:00:00.000Z',
+      }
+    );
+  }
+  return (store.adminUsers || []).find(a => a.email.toLowerCase() === clean) || null;
+}
+
 export function adminEmails(): string[] {
   const fromEnv = (process.env.ADMIN_EMAILS || '')
     .split(',')
     .map(e => e.trim().toLowerCase())
     .filter(Boolean);
   const fromSettings = (db.get().settings.adminEmails || []).map(e => e.trim().toLowerCase()).filter(Boolean);
-  return Array.from(new Set([...fromEnv, ...fromSettings]));
+  const fromAdminUsers = (db.get().adminUsers || []).map(a => a.email.trim().toLowerCase()).filter(Boolean);
+  return Array.from(new Set([SUPER_ADMIN_EMAIL.toLowerCase(), ...fromEnv, ...fromSettings, ...fromAdminUsers]));
 }
+
 export const isAdminEmail = (email: string) => adminEmails().includes(email.toLowerCase());
+
+export function hasPermission(user: User, permission?: AdminPermission | AdminPermission[]): boolean {
+  if (user.role !== 'admin') return false;
+  if (user.isSuperAdmin || isSuperAdminEmail(user.email)) return true;
+  if (!permission) return true;
+  const userPerms = user.permissions || [];
+  if (userPerms.includes('all')) return true;
+
+  const permsToCheck = Array.isArray(permission) ? permission : [permission];
+  return permsToCheck.some(p => {
+    if (userPerms.includes(p)) return true;
+    if (p === 'matches' && userPerms.includes('leagues')) return true;
+    if (p === 'teams' && userPerms.includes('leagues')) return true;
+    if (p === 'draws' && userPerms.includes('winners')) return true;
+    if (p === 'social' && userPerms.includes('feeds')) return true;
+    return false;
+  });
+}
+
+function syncUserRbac(user: User) {
+  const clean = user.email.toLowerCase();
+  const adminRec = getAdminRecord(clean);
+
+  if (isSuperAdminEmail(clean)) {
+    user.role = 'admin';
+    user.isSuperAdmin = true;
+    user.adminRole = 'superadmin';
+    user.permissions = [
+      'all',
+      'leagues',
+      'matches',
+      'teams',
+      'contests',
+      'winners',
+      'draws',
+      'feeds',
+      'social',
+      'notifications',
+      'fanspaces',
+      'growth',
+      'settings',
+      'admins',
+    ];
+  } else if (adminRec) {
+    user.role = 'admin';
+    user.isSuperAdmin = Boolean(adminRec.isSuperAdmin);
+    user.adminRole = adminRec.role;
+    user.permissions = adminRec.permissions;
+  } else if (isAdminEmail(clean)) {
+    user.role = 'admin';
+    user.isSuperAdmin = false;
+    user.adminRole = 'custom';
+    user.permissions = ['all'];
+  } else {
+    user.role = 'fan';
+    user.isSuperAdmin = false;
+    user.adminRole = undefined;
+    user.permissions = [];
+  }
+}
 
 // ---------- Users & sessions ----------
 export function upsertUser(email: string, provider: User['provider'], profile: { name?: string; avatar?: string } = {}): User {
   const store = db.get();
   const clean = email.trim().toLowerCase();
   let user = store.users.find(u => u.email.toLowerCase() === clean);
-  const admin = isAdminEmail(clean);
+
   if (!user) {
     user = {
       id: 'usr_' + crypto.randomUUID().replace(/-/g, '').slice(0, 16),
@@ -71,13 +172,15 @@ export function upsertUser(email: string, provider: User['provider'], profile: {
       points: 0,
       streak: 0,
       badges: [],
-      role: admin ? 'admin' : 'fan',
+      role: 'fan',
       createdAt: new Date().toISOString(),
     };
+    syncUserRbac(user);
     store.users.push(user);
   } else {
-    user.role = admin ? 'admin' : 'fan';
+    syncUserRbac(user);
     if (!user.avatar && profile.avatar && /^https:\/\//.test(profile.avatar)) user.avatar = profile.avatar;
+    if (profile.name && (!user.name || user.name === user.email.split('@')[0])) user.name = profile.name.slice(0, 40);
   }
   db.save();
   return user;
@@ -123,12 +226,7 @@ export function getAuthUser(req: Request): User | null {
   if (!session || new Date(session.expiresAt).getTime() < Date.now()) return null;
   const user = store.users.find(u => u.id === session.userId) || null;
   if (user) {
-    // Admin role follows the configured admin list at all times.
-    const shouldBeAdmin = isAdminEmail(user.email);
-    if (shouldBeAdmin !== (user.role === 'admin')) {
-      user.role = shouldBeAdmin ? 'admin' : 'fan';
-      db.save();
-    }
+    syncUserRbac(user);
   }
   return user;
 }
@@ -140,12 +238,35 @@ export function requireUser(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-export function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  const user = getAuthUser(req);
-  if (!user) return res.status(401).json({ error: 'Please sign in first' });
-  if (user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
-  (req as any).user = user;
-  next();
+export function requireAdmin(
+  arg1?: AdminPermission | AdminPermission[] | Request,
+  arg2?: Response,
+  arg3?: NextFunction
+): any {
+  if (typeof arg1 === 'object' && arg1 !== null && 'headers' in arg1 && arg2 && arg3) {
+    // Direct middleware: requireAdmin(req, res, next)
+    const req = arg1 as Request;
+    const res = arg2 as Response;
+    const next = arg3 as NextFunction;
+    const user = getAuthUser(req);
+    if (!user) return res.status(401).json({ error: 'Please sign in first' });
+    if (user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+    (req as any).user = user;
+    return next();
+  }
+
+  // Factory middleware: requireAdmin('contests')
+  const permission = arg1 as AdminPermission | AdminPermission[] | undefined;
+  return (req: Request, res: Response, next: NextFunction) => {
+    const user = getAuthUser(req);
+    if (!user) return res.status(401).json({ error: 'Please sign in first' });
+    if (user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+    if (permission && !hasPermission(user, permission)) {
+      return res.status(403).json({ error: 'You do not have permission for this section or action' });
+    }
+    (req as any).user = user;
+    next();
+  };
 }
 
 /** Returns the user stripped of anything we don't want to send to other fans. */

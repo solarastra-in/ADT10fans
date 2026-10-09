@@ -481,7 +481,7 @@ export const SocialCuratorWall: React.FC<SocialCuratorWallProps> = ({
             style={{ color: theme.handlesLabelColor }}
           >
             <CheckCircle className="w-3.5 h-3.5" style={{ color: theme.primaryHex }} /> 
-            {currentTeam ? `${currentTeam.name} Official Channels:` : 'Arabian Aces & League Official Channels:'}
+            {currentTeam ? `${currentTeam.name} Official Channels:` : 'League & Franchise Channels (Brought to you by Arabian Aces franchise - www.arabianaces.ae):'}
           </span>
           <span className="text-[10px] text-slate-400">Direct Verified Links</span>
         </div>

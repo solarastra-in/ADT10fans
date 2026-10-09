@@ -46,8 +46,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 0,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "bulls-kieron-pollard",
@@ -78,8 +77,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 42,
           "economy": 8.33,
           "bestBowling": "4/25"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "bulls-khushdil-shah",
@@ -110,8 +108,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 6,
           "economy": 7.11,
           "bestBowling": "3/13"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "bulls-shadab-khan",
@@ -142,8 +139,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 123,
           "economy": 7.4,
           "bestBowling": "4/8"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "bulls-romario-shepherd",
@@ -174,8 +170,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 81,
           "economy": 10.07,
           "bestBowling": "5/20"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "bulls-sunil-narine",
@@ -206,8 +201,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 52,
           "economy": 6.02,
           "bestBowling": "4/12"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "bulls-aneurin-donald",
@@ -238,8 +232,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 0,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "bulls-khawaja-nafay",
@@ -270,8 +263,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 0,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "bulls-azam-khan",
@@ -301,8 +293,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 0,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "bulls-andre-fletcher",
@@ -332,8 +323,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 5.57,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "bulls-mohammad-amir",
@@ -364,8 +354,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 71,
           "economy": 7.08,
           "bestBowling": "4/13"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "bulls-muhammad-rohid-khan",
@@ -396,8 +385,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 16,
           "economy": 8.21,
           "bestBowling": "3/23"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "bulls-nuwan-thushara",
@@ -428,8 +416,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 38,
           "economy": 8.14,
           "bestBowling": "5/20"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "bulls-mohammad-wasim-jr",
@@ -460,8 +447,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 42,
           "economy": 8.26,
           "bestBowling": "4/24"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "bulls-brad-currie",
@@ -492,8 +478,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 32,
           "economy": 5.88,
           "bestBowling": "5/13"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "bulls-uddish-suri",
@@ -524,8 +509,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 18,
           "economy": 7.42,
           "bestBowling": "4/18"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "bulls-wali-muhammad",
@@ -556,8 +540,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 11,
           "economy": 8.15,
           "bestBowling": "3/21"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "bulls-matiullah-khan",
@@ -588,8 +571,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 22,
           "economy": 7.85,
           "bestBowling": "3/16"
-        },
-        "credits": 8
+        }
       }
     ]
   },
@@ -632,8 +614,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 5,
           "economy": 11.13,
           "bestBowling": "2/13"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "champions-brandon-king",
@@ -663,8 +644,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 0,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "champions-sherfane-rutherford",
@@ -695,8 +675,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 2,
           "economy": 10.22,
           "bestBowling": "1/20"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "champions-ali-naseer",
@@ -727,8 +706,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 51,
           "economy": 7.51,
           "bestBowling": "4/24"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "champions-gulbadin-naib",
@@ -759,8 +737,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 35,
           "economy": 7.96,
           "bestBowling": "4/20"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "champions-janith-liyanage",
@@ -791,8 +768,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 4,
           "economy": 13.71,
           "bestBowling": "0/14"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "champions-dhruv-parashar",
@@ -823,8 +799,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 32,
           "economy": 6.84,
           "bestBowling": "4/12"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "champions-aayan-afzal-khan",
@@ -855,8 +830,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 40,
           "economy": 6.13,
           "bestBowling": "3/7"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "champions-keemo-paul",
@@ -887,8 +861,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 25,
           "economy": 9.09,
           "bestBowling": "5/15"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "champions-tajinder-dhillon",
@@ -919,8 +892,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 28,
           "economy": 7.64,
           "bestBowling": "3/19"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "champions-nicholas-pooran",
@@ -951,8 +923,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 6,
           "economy": 6.18,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "champions-philip-salt",
@@ -983,8 +954,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 0,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "champions-naseem-shah",
@@ -1015,8 +985,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 32,
           "economy": 8.13,
           "bestBowling": "3/21"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "champions-maheesh-theekshana",
@@ -1047,8 +1016,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 84,
           "economy": 7.11,
           "bestBowling": "3/17"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "champions-dushmantha-chameera",
@@ -1079,8 +1047,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 99,
           "economy": 8.17,
           "bestBowling": "5/24"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "champions-luke-wood",
@@ -1111,8 +1078,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 19,
           "economy": 9.06,
           "bestBowling": "3/24"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "champions-chris-jordan",
@@ -1143,8 +1109,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 108,
           "economy": 8.74,
           "bestBowling": "4/6"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "champions-raizal-nadir",
@@ -1175,8 +1140,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 12,
           "economy": 8.1,
           "bestBowling": "3/24"
-        },
-        "credits": 8
+        }
       }
     ]
   },
@@ -1219,8 +1183,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 5,
           "economy": 9.94,
           "bestBowling": "2/31"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "eagles-shimron-hetmyer",
@@ -1250,8 +1213,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 0,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "eagles-alex-hales",
@@ -1282,8 +1244,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 0,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "eagles-hasan-nawaz",
@@ -1314,8 +1275,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 0,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "eagles-david-wiese",
@@ -1346,8 +1306,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 59,
           "economy": 7.19,
           "bestBowling": "5/23"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "eagles-haider-razzaq",
@@ -1378,8 +1337,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 14,
           "economy": 7.92,
           "bestBowling": "3/20"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "eagles-rehan-ahmed",
@@ -1410,8 +1368,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 15,
           "economy": 9.5,
           "bestBowling": "3/39"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "eagles-chris-green",
@@ -1442,8 +1399,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 9,
           "bestBowling": "0/36"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "eagles-harshit-kaushik",
@@ -1474,8 +1430,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 2,
           "economy": 7.7,
           "bestBowling": "1/15"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "eagles-srikar-bharat",
@@ -1505,8 +1460,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 0,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "eagles-toby-albert",
@@ -1536,8 +1490,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 0,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "eagles-kusal-perera",
@@ -1567,8 +1520,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 0,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "eagles-trent-boult",
@@ -1599,8 +1551,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 83,
           "economy": 7.68,
           "bestBowling": "4/13"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "eagles-luqman-faisal",
@@ -1630,8 +1581,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 13,
           "economy": 8.35,
           "bestBowling": "3/26"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "eagles-noor-ahmad",
@@ -1662,8 +1612,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 20,
           "economy": 7.57,
           "bestBowling": "4/10"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "eagles-akif-javed",
@@ -1694,8 +1643,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 7,
           "economy": 5.89,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "eagles-ali-raza",
@@ -1726,8 +1674,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 21,
           "economy": 7.55,
           "bestBowling": "4/22"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "eagles-hilal-afghan",
@@ -1758,8 +1705,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 16,
           "economy": 7.88,
           "bestBowling": "3/18"
-        },
-        "credits": 8
+        }
       }
     ]
   },
@@ -1803,8 +1749,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 4,
           "economy": 8.5,
           "bestBowling": "2/16"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "aces-moeen-ali",
@@ -1835,8 +1780,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 51,
           "economy": 8.31,
           "bestBowling": "3/24"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "aces-liam-livingstone",
@@ -1867,8 +1811,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 33,
           "economy": 8.73,
           "bestBowling": "3/17"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "aces-alishan-sharafu",
@@ -1899,8 +1842,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 6,
           "bestBowling": "0/3"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "aces-paul-walter",
@@ -1931,8 +1873,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 82,
           "economy": 8.64,
           "bestBowling": "4/24"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "aces-quentin-sampson",
@@ -1963,8 +1904,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 0,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "aces-andre-russell",
@@ -1995,8 +1935,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 61,
           "economy": 9.43,
           "bestBowling": "3/19"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "aces-dwaine-pretorius",
@@ -2027,8 +1966,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 35,
           "economy": 8.29,
           "bestBowling": "5/17"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "aces-dunith-wellalage",
@@ -2059,8 +1997,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 21,
           "economy": 7.98,
           "bestBowling": "3/9"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "aces-tom-kohler-cadmore",
@@ -2091,8 +2028,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 0,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "aces-sam-billings",
@@ -2122,8 +2058,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 0,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "aces-vriitya-aravind",
@@ -2153,8 +2088,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 0,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "aces-muhammad-arfan",
@@ -2185,8 +2119,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 8,
           "economy": 7.04,
           "bestBowling": "2/23"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "aces-richard-gleeson",
@@ -2217,8 +2150,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 9,
           "economy": 8.9,
           "bestBowling": "3/15"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "aces-alzarri-joseph",
@@ -2249,8 +2181,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 62,
           "economy": 9.24,
           "bestBowling": "5/40"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "aces-imran-tahir",
@@ -2281,8 +2212,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 63,
           "economy": 6.73,
           "bestBowling": "5/23"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "aces-salman-irshad",
@@ -2313,8 +2243,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 79,
           "economy": 8.42,
           "bestBowling": "4/30"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "aces-amshi-de-silva",
@@ -2345,8 +2274,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 24,
           "economy": 7.95,
           "bestBowling": "3/22"
-        },
-        "credits": 8
+        }
       }
     ]
   },
@@ -2389,8 +2317,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 0,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "lions-james-vince",
@@ -2421,8 +2348,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 1,
           "economy": 5.43,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "lions-kamil-pooran",
@@ -2452,8 +2378,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 0,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "lions-dasun-shanaka",
@@ -2484,8 +2409,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 46,
           "economy": 8.35,
           "bestBowling": "3/16"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "lions-jason-holder",
@@ -2516,8 +2440,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 112,
           "economy": 8.65,
           "bestBowling": "5/27"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "lions-david-willey",
@@ -2548,8 +2471,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 51,
           "economy": 8.18,
           "bestBowling": "4/7"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "lions-karim-janat",
@@ -2580,8 +2502,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 42,
           "economy": 8.17,
           "bestBowling": "5/11"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "lions-sanjay-krishnamurthi",
@@ -2612,8 +2533,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 2,
           "economy": 4.2,
           "bestBowling": "2/13"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "lions-andries-gous",
@@ -2643,8 +2563,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 0,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "lions-tom-moores",
@@ -2674,8 +2593,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 0,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "lions-masood-gurbaz",
@@ -2705,8 +2623,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 0,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "lions-ajay-kumar",
@@ -2737,8 +2654,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 11,
           "economy": 4,
           "bestBowling": "0/16"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "lions-eshan-malinga",
@@ -2769,8 +2685,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 11,
           "economy": 9.94,
           "bestBowling": "2/24"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "lions-khuzaima-tanveer",
@@ -2801,8 +2716,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 7,
           "economy": 7.4,
           "bestBowling": "3/29"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "lions-obed-mccoy",
@@ -2833,8 +2747,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 52,
           "economy": 8.73,
           "bestBowling": "6/17"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "lions-haider-ali",
@@ -2865,8 +2778,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 35,
           "economy": 6.29,
           "bestBowling": "4/16"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "lions-aryan-dutt",
@@ -2897,8 +2809,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 30,
           "economy": 6.93,
           "bestBowling": "3/17"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "lions-akeal-hosein",
@@ -2929,8 +2840,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 95,
           "economy": 7.45,
           "bestBowling": "5/11"
-        },
-        "credits": 8
+        }
       }
     ]
   },
@@ -2972,8 +2882,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 1,
           "economy": 12,
           "bestBowling": "0/12"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "tigers-habibur-rahman-sohan",
@@ -3004,8 +2913,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 0,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "tigers-iftikhar-ahmed",
@@ -3036,8 +2944,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 8,
           "economy": 7.1,
           "bestBowling": "3/24"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "tigers-mahedi-hasan",
@@ -3068,8 +2975,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 78,
           "economy": 6.77,
           "bestBowling": "4/11"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "tigers-shamim-hossain",
@@ -3100,8 +3006,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 2,
           "economy": 7.86,
           "bestBowling": "1/10"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "tigers-noorullah-ayobi",
@@ -3132,8 +3037,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 12,
           "economy": 8.18,
           "bestBowling": "3/25"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "tigers-faheem-ashraf",
@@ -3164,8 +3068,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 61,
           "economy": 7.88,
           "bestBowling": "4/23"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "tigers-azmatullah-omarzai",
@@ -3196,8 +3099,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 57,
           "economy": 8.28,
           "bestBowling": "4/9"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "tigers-odean-smith",
@@ -3228,8 +3130,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 27,
           "economy": 10.29,
           "bestBowling": "3/29"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "tigers-nurul-hasan",
@@ -3259,8 +3160,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 0,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "tigers-noor-ul-rahman",
@@ -3290,8 +3190,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 0,
           "economy": 0,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "tigers-zeeshan-naseer",
@@ -3322,8 +3221,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 19,
           "economy": 7.62,
           "bestBowling": "4/20"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "tigers-awais-ali",
@@ -3354,8 +3252,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 23,
           "economy": 7.74,
           "bestBowling": "4/26"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "tigers-sufyan-moqim",
@@ -3386,8 +3283,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 30,
           "economy": 6.59,
           "bestBowling": "5/3"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "tigers-abbas-afridi",
@@ -3418,8 +3314,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 38,
           "economy": 8.49,
           "bestBowling": "3/17"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "tigers-adhitya-shetty",
@@ -3450,8 +3345,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 1,
           "economy": 5.6,
           "bestBowling": "-/-"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "tigers-paul-van-meekeren",
@@ -3482,8 +3376,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 86,
           "economy": 7.07,
           "bestBowling": "4/11"
-        },
-        "credits": 8
+        }
       },
       {
         "id": "tigers-yasin-patel",
@@ -3514,8 +3407,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
           "wickets": 70,
           "economy": 5.95,
           "bestBowling": "4/22"
-        },
-        "credits": 8
+        }
       }
     ]
   }

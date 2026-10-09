@@ -1,4 +1,4 @@
-import { PublicConfig, User, Team, SocialHandle, FeedItem, Match, Contest, PrizeDraw, SystemSettings, AchievementBadge, UserStats, ForumThread, ForumComment, NotificationItem, FCMDeviceToken } from './types';
+import { PublicConfig, User, Team, SocialHandle, FeedItem, Match, Contest, PrizeDraw, SystemSettings, AchievementBadge, UserStats, ForumThread, ForumComment, NotificationItem, FCMDeviceToken, AdminUserRecord, AdminRole, AdminPermission } from './types';
 
 const TOKEN_KEY = 't10_auth_token';
 
@@ -248,6 +248,18 @@ export const api = {
     fetchJson<{ success: boolean; settings: SystemSettings }>('/api/admin/settings', {
       method: 'POST',
       body: JSON.stringify(settings),
+    }),
+
+  // Admins & RBAC Management
+  getAdmins: () => fetchJson<{ admins: AdminUserRecord[]; superAdminEmail: string }>('/api/admin/admins'),
+  saveAdmin: (admin: { email: string; name?: string; role: AdminRole; permissions: AdminPermission[] }) =>
+    fetchJson<{ success: boolean; admins: AdminUserRecord[] }>('/api/admin/admins', {
+      method: 'POST',
+      body: JSON.stringify(admin),
+    }),
+  deleteAdmin: (email: string) =>
+    fetchJson<{ success: boolean; admins: AdminUserRecord[] }>(`/api/admin/admins/${encodeURIComponent(email)}`, {
+      method: 'DELETE',
     }),
 
   // Notifications & FCM Real-Time Alerts

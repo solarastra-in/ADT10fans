@@ -9,9 +9,13 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    function isSuperAdmin() {
+      return isAuthenticated() && request.auth.token.email == 'solarastra.in@gmail.com';
+    }
+
     function isAdmin() {
       return isAuthenticated() && (
-        request.auth.token.email == 'solarastra.in@gmail.com' ||
+        isSuperAdmin() ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
       );
@@ -20,7 +24,12 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if true;
       allow create, update: if isOwner(userId) || isAdmin();
-      allow delete: if isAdmin();
+      allow delete: if isSuperAdmin();
+    }
+
+    match /admins/{adminEmail} {
+      allow read: if isAdmin();
+      allow write: if isSuperAdmin();
     }
 
     match /teams/{teamId} {

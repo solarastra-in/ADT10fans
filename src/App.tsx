@@ -34,6 +34,7 @@ import { LeagueProposalView } from './components/LeagueProposalView';
 import { NotificationModal } from './components/NotificationModal';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { MatchOverviewModal } from './components/MatchOverviewModal';
+import { ADT10Logo, ArabianAcesAttribution } from './components/Branding';
 import { updatePageSeo, ROUTE_SEO } from './utils/seo';
 import { parsePath, getPathForTab } from './utils/navigation';
 import { requestFCMToken, registerForegroundPushListener } from './firebase';
@@ -614,9 +615,13 @@ export default function App() {
                   <span>The Fastest Format in World Cricket · 90-Minute Spectacle</span>
                 </div>
 
-                <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-white tracking-tight leading-[1.08] mb-4">
-                  Abu Dhabi <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-amber-300 to-amber-500">T10 League</span> & Arabian Aces
+                <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-white tracking-tight leading-[1.08] mb-3">
+                  Abu Dhabi <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-amber-300 to-amber-500">T10 League</span> Fan Hub
                 </h1>
+
+                <div className="mb-5">
+                  <ArabianAcesAttribution variant="pill" />
+                </div>
 
                 <p className="text-sm sm:text-base text-slate-300 mb-8 leading-relaxed">
                   Welcome to the autonomous league platform. Experience real-time social feeds curated from verified team handles, live ball-by-ball scorecards, Fantasy 10 leagues, and provably fair VIP prize draws.
@@ -728,7 +733,7 @@ export default function App() {
                     Match Predictor & Fantasy 10
                   </h3>
                   <p className="text-xs text-slate-300 mb-4 leading-relaxed">
-                    Call match winners, boundary counts, and draft your 6-player squad under 55 credits to earn points for your franchise!
+                    Call match winners, boundary counts, and draft your 6-player squad using verified Cricbuzz stats to earn points for your franchise!
                   </p>
                 </div>
 
@@ -1074,7 +1079,7 @@ export default function App() {
               userTeamId={user?.teamId}
               limitPerPlatform={settings.maxSocialPerPlatform}
               title="Official Social Media Hub"
-              subtitle="Real-time public postings, YouTube live streams, and verified announcements from Arabian Aces and all franchises."
+              subtitle="Real-time public postings, YouTube live streams, and verified announcements from all franchises, brought to you by Arabian Aces franchise (www.arabianaces.ae)."
               onRefreshFeeds={handleRefreshFeeds}
             />
           </div>
@@ -1117,6 +1122,7 @@ export default function App() {
         {/* ================= VIEW 8: ADMIN PORTAL ================= */}
         {activeTab === 'admin' && (
           <AdminPortal
+            currentUser={user}
             teams={teams}
             handles={handles}
             feedItems={feedItems}
@@ -1364,25 +1370,32 @@ export default function App() {
         onOpenAI={() => setGeminiModalOpen(true)}
       />
 
-      {/* Global Multi-Page SEO & Crawlable Footer with Copyright by Azlir Sport */}
+      {/* Global Portal Footer with Arabian Aces Attribution and ADT10 Official Logo (No Copyright) */}
       <footer className="border-t border-slate-900 bg-slate-950/95 py-10 text-xs text-slate-400">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 space-y-6">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-6 border-b border-slate-900">
-            <div>
-              <div className="flex items-center gap-2.5">
-                <span className="font-black text-amber-400 text-base tracking-tight">ABU DHABI T10</span>
-                <span className="text-slate-600">·</span>
-                <span className="font-bold text-white">Official Fan Hub & Arabian Aces Franchise</span>
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 pb-6 border-b border-slate-900">
+            <div className="max-w-md">
+              <div className="flex items-center gap-3">
+                <ADT10Logo size="lg" />
+                <div>
+                  <span className="font-extrabold text-white text-base block">Abu Dhabi T10 Fan Hub</span>
+                  <a
+                    href="https://abudhabit10.com/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] text-amber-400 hover:underline font-semibold"
+                  >
+                    abudhabit10.com
+                  </a>
+                </div>
               </div>
-              <p className="text-[11px] text-slate-400 mt-1 max-w-xl leading-relaxed">
-                Official platform for the Abu Dhabi T10 Cricket League. Real-time live scorecards, ball-by-ball simulators, verified franchise social curation, fantasy 10, VIP fan draws, and global expansion strategy.
+              <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
+                Official fan and analytics hub for the Abu Dhabi T10 Cricket League at Zayed Cricket Stadium. Real-time live scorecards, verified franchise social feeds, Fantasy 10, provably fair prize draws, and global expansion strategy.
               </p>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-amber-500/30 text-left md:text-right shrink-0">
-              <span className="text-[10px] uppercase font-black text-amber-400 tracking-wider block">Official Copyright</span>
-              <span className="text-xs font-black text-white">Copyright by Azlir Sport © 2026</span>
-              <span className="text-[10px] text-slate-400 block mt-0.5">All rights reserved · Powered by Autonomous AI Agents</span>
+            <div className="w-full lg:max-w-md">
+              <ArabianAcesAttribution variant="footer" />
             </div>
           </div>
 
@@ -1412,8 +1425,8 @@ export default function App() {
               </button>
             </nav>
 
-            <div className="text-[11px] text-slate-500">
-              <span>Copyright by <strong className="text-slate-300 font-semibold">{config?.copyrightHolder || 'Azlir Sports'}</strong>. Commissioned for {config?.brandName || 'Abu Dhabi T10'}.</span>
+            <div className="text-[11px] text-slate-400">
+              <span>Brought to you by <strong className="text-slate-200 font-semibold">Arabian Aces franchise</strong> (<a href="https://www.arabianaces.ae" target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:underline">www.arabianaces.ae</a>). League partner: <a href="https://abudhabit10.com/" target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:underline">abudhabit10.com</a>.</span>
             </div>
           </div>
         </div>
