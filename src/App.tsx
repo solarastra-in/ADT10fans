@@ -467,9 +467,9 @@ export default function App() {
       ] = await Promise.all([
         api.getMe().catch(() => ({ user: null })),
         api.getConfig().catch(() => ({ config: null as any })),
-        api.getTeams().catch(() => ({ teams: [] })),
-        api.getHandles().catch(() => ({ handles: [] })),
-        api.getFeeds().catch(() => ({ items: [], allItemsRaw: [], countsByPlatform: {}, limitPerPlatform: 5, totalCurated: 0, totalAvailable: 0 })),
+        api.getTeams().catch(() => ({ teams: OFFICIAL_2026_TEAMS })),
+        api.getHandles().catch(() => ({ handles: FALLBACK_HANDLES })),
+        api.getFeeds().catch(() => ({ items: OFFICIAL_FEED_ITEMS, allItemsRaw: OFFICIAL_FEED_ITEMS, countsByPlatform: {}, limitPerPlatform: 5, totalCurated: OFFICIAL_FEED_ITEMS.length, totalAvailable: OFFICIAL_FEED_ITEMS.length })),
         api.getMatches().catch(() => ({ matches: [] })),
         api.getContests().catch(() => ({ contests: [], entries: [] })),
         api.getDraws().catch(() => ({ draws: [], entries: [] })),
@@ -479,15 +479,43 @@ export default function App() {
 
       setUser(meRes.user);
       if (configRes && configRes.config) setConfig(configRes.config);
-      if (teamsRes.teams && teamsRes.teams.length > 0) {
-        setTeams(teamsRes.teams);
+
+      // Check for any client-side squad overrides saved by admin
+      let squadOverrides: Record<string, any[]> = {};
+      try {
+        if (typeof window !== 'undefined') {
+          squadOverrides = JSON.parse(localStorage.getItem('admin_squad_overrides') || '{}');
+        }
+      } catch {
+        // ignore
       }
+
+      const rawTeams = (teamsRes.teams && teamsRes.teams.length > 0) ? teamsRes.teams : OFFICIAL_2026_TEAMS;
+      const mergedTeams = rawTeams.map(t => {
+        const defaultTeam = OFFICIAL_2026_TEAMS.find(dt => dt.id === t.id);
+        const customSquad = squadOverrides[t.id];
+        const serverSquad = Array.isArray(t.squad) && t.squad.length > 0 ? t.squad : null;
+        const defaultSquad = defaultTeam?.squad || [];
+        const squad = customSquad || serverSquad || defaultSquad;
+        return {
+          ...(defaultTeam || {}),
+          ...t,
+          squad,
+        };
+      });
+      setTeams(mergedTeams);
+
       if (handlesRes.handles && handlesRes.handles.length > 0) {
         setHandles(handlesRes.handles);
+      } else {
+        setHandles(FALLBACK_HANDLES);
       }
+
       const rawFeeds = (feedsRes.allItemsRaw && feedsRes.allItemsRaw.length > 0) ? feedsRes.allItemsRaw : (feedsRes.items && feedsRes.items.length > 0 ? feedsRes.items : null);
       if (rawFeeds && rawFeeds.length > 0) {
         setFeedItems(rawFeeds);
+      } else {
+        setFeedItems(OFFICIAL_FEED_ITEMS);
       }
       setMatches(matchesRes.matches);
       setContests(contestsRes.contests);

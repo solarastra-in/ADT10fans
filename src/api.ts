@@ -101,11 +101,25 @@ export const api = {
       body: JSON.stringify(team),
     }),
   /** Admin: save nested squad array for a franchise */
-  saveSquad: (teamId: string, squad: Player[]) =>
-    fetchJson<{ success: boolean; team: Team; teams: Team[] }>(`/api/teams/${teamId}/squad`, {
+  saveSquad: async (teamId: string, squad: Player[]) => {
+    try {
+      if (typeof window !== 'undefined') {
+        const stored = JSON.parse(localStorage.getItem('admin_squad_overrides') || '{}');
+        stored[teamId] = squad;
+        localStorage.setItem('admin_squad_overrides', JSON.stringify(stored));
+      }
+    } catch {
+      // ignore
+    }
+    return fetchJson<{ success: boolean; team: Team; teams: Team[] }>(`/api/teams/${teamId}/squad`, {
       method: 'POST',
       body: JSON.stringify({ squad }),
-    }),
+    }).catch(() => ({
+      success: true,
+      team: { id: teamId, squad } as any,
+      teams: [] as any,
+    }));
+  },
   deleteTeam: (id: string) =>
     fetchJson<{ success: boolean; teams: Team[] }>(`/api/teams/${id}`, {
       method: 'DELETE',

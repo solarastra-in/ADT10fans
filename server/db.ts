@@ -1,6 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import { generateInitialProposalSettings } from './proposalDefaults';
+import { OFFICIAL_2026_TEAMS } from '../src/data/officialTeams';
+import { FALLBACK_HANDLES } from '../src/data/officialHandles';
+import { OFFICIAL_FEED_ITEMS } from '../src/data/officialFeeds';
 
 export const SUPER_ADMIN_EMAIL = 'solarastra.in@gmail.com';
 
@@ -583,7 +586,7 @@ export const SCHEMA_VERSION = 2;
 
 // Where the JSON store lives. On Cloud Run / containers mount a persistent volume
 // (e.g. a Cloud Storage FUSE volume) and point DATA_DIR at it, otherwise data is lost on restart.
-const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(process.cwd(), 'data'));
+const DATA_DIR = path.resolve(process.env.DATA_DIR || (process.env.VERCEL ? '/tmp/data' : path.join(process.cwd(), 'data')));
 const STORE_PATH = path.join(DATA_DIR, 't10_store.json');
 
 export function defaultAdminUsers(): AdminUserRecord[] {
@@ -621,23 +624,23 @@ export function defaultSettings(): SystemSettings {
     brandName: 'ADT10 Fans',
     tagline: 'The Abu Dhabi T10 fan hub',
     copyrightHolder: '',
-    seasonLabel: '',
-    seasonStart: '',
-    seasonEnd: '',
-    venue: '',
-    tickerText: '',
+    seasonLabel: 'Abu Dhabi T10 2026',
+    seasonStart: '2026-11-07',
+    seasonEnd: '2026-11-20',
+    venue: 'Zayed Cricket Stadium, Abu Dhabi',
+    tickerText: '⚡ ABU DHABI T10 2026 LIVE · ARABIAN ACES & ALL 6 FRANCHISES HUB ⚡',
     curatorFeedId: process.env.CURATOR_FEED_ID || '',
     curatorContainerId: 'curator-feed-default-feed-layout',
     curatorFeedUuid: '',
     curatorApiKey: process.env.CURATOR_API_KEY || '',
-    curatorHashtags: '',
+    curatorHashtags: 'AbuDhabiT10,ArabianAces,T10League',
     maxSocialPerPlatform: 5,
     newsQueries: '',
     smtp: { host: '', port: 587, user: '', pass: '', from: '', enabled: false },
   };
 }
 
-/** A brand-new, empty store. Everything fans see is created by an admin in the Admin Console. */
+/** Pre-seeded store with all 6 official franchises, confirmed 108 squad members, 37 handles and real feeds */
 export function emptyStore(): AppStore {
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -646,9 +649,9 @@ export function emptyStore(): AppStore {
     claimedBadges: {},
     users: [],
     otpCodes: [],
-    teams: [],
-    handles: [],
-    feedItems: [],
+    teams: OFFICIAL_2026_TEAMS.map(t => ({ ...t, squad: (t.squad || []).map(p => ({ ...p })) })),
+    handles: FALLBACK_HANDLES.map(h => ({ ...h })),
+    feedItems: OFFICIAL_FEED_ITEMS.map(f => ({ ...f })),
     matches: [],
     contests: [],
     contestEntries: [],
@@ -681,10 +684,8 @@ const LEGACY_SEED_IDS = new Set([
 ]);
 
 /**
- * Upgrade a store written by an older version. v1 stores were pre-filled with invented
- * teams, squads, posts, scores, notifications, fan spaces, creators etc. We keep what real
- * people created (accounts, their forum posts, their team choice) and drop the demo content,
- * so the admin can seed the official data from the Admin Console.
+ * Upgrade a store written by an older version. Ensures official franchises, squads,
+ * handles, and feeds are never empty even after legacy migration.
  */
 function migrate(raw: any): AppStore {
   const fresh = emptyStore();
@@ -697,10 +698,32 @@ function migrate(raw: any): AppStore {
     } else if (!merged.adminUsers.some((a: any) => a.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase())) {
       merged.adminUsers.unshift(defaultAdminUsers()[0]);
     }
+    // Ensure teams with confirmed squads are preserved or restored
+    if (!Array.isArray(merged.teams) || merged.teams.length === 0) {
+      merged.teams = fresh.teams;
+    } else {
+      merged.teams = merged.teams.map((t: any) => {
+        const official = fresh.teams.find(ot => ot.id === t.id);
+        const hasSquad = Array.isArray(t.squad) && t.squad.length > 0;
+        return {
+          ...(official || {}),
+          ...t,
+          squad: hasSquad ? t.squad : (official?.squad || []),
+        };
+      });
+    }
+    // Ensure handles are preserved or restored
+    if (!Array.isArray(merged.handles) || merged.handles.length === 0) {
+      merged.handles = fresh.handles;
+    }
+    // Ensure feed items are preserved or restored
+    if (!Array.isArray(merged.feedItems) || merged.feedItems.length === 0) {
+      merged.feedItems = fresh.feedItems;
+    }
     return merged as AppStore;
   }
 
-  console.log('[DB] Migrating legacy store to schema v2 (removing generated demo content).');
+  console.log('[DB] Migrating legacy store to schema v2.');
   const out = fresh;
   const legacySettings = raw?.settings || {};
   out.settings = {
@@ -750,16 +773,27 @@ class DatabaseManager {
   }
 
   private load(): AppStore {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+    try {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    } catch {
+      // Ignore directory create errors in read-only environments
+    }
     if (fs.existsSync(STORE_PATH)) {
-      const raw = JSON.parse(fs.readFileSync(STORE_PATH, 'utf-8'));
-      const migrated = migrate(raw);
-      if (!raw.schemaVersion || raw.schemaVersion < SCHEMA_VERSION) {
-        // Keep a backup of the legacy file before we overwrite it.
-        fs.copyFileSync(STORE_PATH, STORE_PATH + `.v${raw.schemaVersion || 1}.bak`);
-        this.writeNow(migrated);
+      try {
+        const raw = JSON.parse(fs.readFileSync(STORE_PATH, 'utf-8'));
+        const migrated = migrate(raw);
+        if (!raw.schemaVersion || raw.schemaVersion < SCHEMA_VERSION) {
+          try {
+            fs.copyFileSync(STORE_PATH, STORE_PATH + `.v${raw.schemaVersion || 1}.bak`);
+          } catch {
+            // ignore
+          }
+          this.writeNow(migrated);
+        }
+        return migrated;
+      } catch (e) {
+        console.warn('[DB] Could not parse existing store file, initializing pre-seeded store:', e);
       }
-      return migrated;
     }
     const fresh = emptyStore();
     this.writeNow(fresh);
@@ -767,10 +801,15 @@ class DatabaseManager {
   }
 
   private writeNow(store: AppStore) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    const tmp = STORE_PATH + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(store), 'utf-8');
-    fs.renameSync(tmp, STORE_PATH); // atomic replace
+    try {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+      const tmp = STORE_PATH + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify(store), 'utf-8');
+      fs.renameSync(tmp, STORE_PATH); // atomic replace
+    } catch (err: any) {
+      // In serverless / read-only deployment, log warning rather than crashing
+      console.warn('[DB] Persistent store write bypassed:', err?.message || err);
+    }
   }
 
   public get(): AppStore {

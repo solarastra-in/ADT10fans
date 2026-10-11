@@ -17,7 +17,7 @@ import { geminiConfigured, chatWithGemini, searchGroundingCricket, generateMarke
 import { testCricketProviderConnection, fetchAndPersistOfficialSquads } from './server/cricketProvider';
 import { getAllEnvVariables, saveEnvOverrides } from './server/envConfig';
 
-const app = express();
+export const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 app.set('trust proxy', true);
@@ -1934,7 +1934,11 @@ async function startServer() {
   }
 }
 
-startServer().catch(err => {
-  console.error('Failed to start server:', err);
-  process.exit(1);
-});
+export default app;
+
+if (!process.env.VERCEL) {
+  startServer().catch(err => {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  });
+}
