@@ -466,7 +466,7 @@ export default function App() {
         api.getConfig().catch(() => ({ config: null as any })),
         api.getTeams().catch(() => ({ teams: [] })),
         api.getHandles().catch(() => ({ handles: [] })),
-        api.getFeeds().catch(() => ({ items: [], countsByPlatform: {}, limitPerPlatform: 5, totalCurated: 0, totalAvailable: 0 })),
+        api.getFeeds().catch(() => ({ items: [], allItemsRaw: [], countsByPlatform: {}, limitPerPlatform: 5, totalCurated: 0, totalAvailable: 0 })),
         api.getMatches().catch(() => ({ matches: [] })),
         api.getContests().catch(() => ({ contests: [], entries: [] })),
         api.getDraws().catch(() => ({ draws: [], entries: [] })),
@@ -478,7 +478,7 @@ export default function App() {
       if (configRes && configRes.config) setConfig(configRes.config);
       setTeams(teamsRes.teams);
       setHandles(handlesRes.handles);
-      setFeedItems(feedsRes.items);
+      setFeedItems(feedsRes.allItemsRaw || feedsRes.items || []);
       setMatches(matchesRes.matches);
       setContests(contestsRes.contests);
       setDraws(drawsRes.draws);
@@ -509,7 +509,7 @@ export default function App() {
   const handleRefreshFeeds = async () => {
     try {
       const feedsRes = await api.getFeeds();
-      setFeedItems(feedsRes.items || []);
+      setFeedItems(feedsRes.allItemsRaw || feedsRes.items || []);
     } catch (e) {
       console.warn('Failed to refresh feeds:', e);
     }

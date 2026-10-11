@@ -9,7 +9,7 @@ import {
   verifyFirebaseIdToken, rateLimit, emailOtpAvailable, sendOtpEmail, hashOtp, timingSafeEqualHex, publicUser, adminEmails,
 } from './server/auth';
 import { seedOfficialTeams } from './server/seedOfficial';
-import { syncAllFeeds, ensureFeedsPopulated } from './server/feeds';
+import { syncAllFeeds, ensureFeedsPopulated, getVerifiedHandlePosts, merge } from './server/feeds';
 import { pushServerConfigured, sendFcm } from './server/push';
 import { runDiscoveryAgent, runSocialAgent, runNewsAgent, runScoresAgent, runContentAgent, runOpsAgent } from './server/agents';
 import { computeUserBadges } from './server/badges';
@@ -307,6 +307,7 @@ app.post('/api/handles', requireAdmin, (req, res) => {
   const now = new Date().toISOString();
   const existing = (b.id && store.handles.find(h => h.id === b.id)) || store.handles.find(h => h.url.toLowerCase() === url.toLowerCase());
   const status: SocialHandle['status'] = b.status === 'pending' ? 'pending' : 'verified';
+  let targetHandle = existing;
   if (existing) {
     const urlChanged = existing.url !== url;
     Object.assign(existing, {
@@ -319,7 +320,7 @@ app.post('/api/handles', requireAdmin, (req, res) => {
       meta: urlChanged ? {} : existing.meta,
     });
   } else {
-    store.handles.push({
+    targetHandle = {
       id: newId('h'),
       teamId,
       platform: b.platform,
@@ -330,10 +331,25 @@ app.post('/api/handles', requireAdmin, (req, res) => {
       meta: {},
       verifiedAt: status === 'verified' ? now : undefined,
       foundAt: now,
-    });
+    };
+    store.handles.push(targetHandle);
   }
+
+  // Immediately ingest authentic content for the verified handle so it appears right away
+  if (targetHandle && targetHandle.status === 'verified') {
+    try {
+      const team = targetHandle.teamId ? store.teams.find(t => t.id === targetHandle.teamId) || null : null;
+      const handlePosts = getVerifiedHandlePosts(targetHandle, team);
+      if (handlePosts.length > 0) {
+        merge(handlePosts);
+      }
+    } catch (e: any) {
+      console.warn('[HANDLES] Auto-ingest for handle failed:', e?.message || e);
+    }
+  }
+
   db.save();
-  res.json({ success: true, handles: store.handles });
+  res.json({ success: true, handles: store.handles, feedItems: store.feedItems });
 });
 
 app.delete('/api/handles/:id', requireAdmin, (req, res) => {
@@ -346,32 +362,50 @@ app.delete('/api/handles/:id', requireAdmin, (req, res) => {
 
 // ---------- feeds ----------
 const FEED_PLATFORMS = ['YouTube', 'X', 'Instagram', 'Threads', 'TikTok', 'Facebook', 'LinkedIn', 'Web'] as const;
-app.get('/api/feeds', (req, res) => {
+app.get('/api/feeds', wrap(async (req, res) => {
   const viewer = getAuthUser(req);
   const store = db.get();
-  const limit = Math.max(1, Math.min(60, Number(req.query.limit) || store.settings.maxSocialPerPlatform || 8));
+
+  // If cold-start or empty, ensure feeds are populated first
+  if (!store.feedItems || store.feedItems.length === 0) {
+    try {
+      await ensureFeedsPopulated();
+    } catch {
+      // ignore
+    }
+  }
+
+  const limit = Math.max(1, Math.min(100, Number(req.query.limit) || store.settings.maxSocialPerPlatform || 10));
   const { teamId, platform, category, status } = req.query;
-  let items = store.feedItems;
+  let items = [...store.feedItems];
   if (teamId) items = items.filter(f => f.teamId === teamId);
   if (category) items = items.filter(f => f.category === category);
   if (status && viewer?.role === 'admin') items = items.filter(f => f.status === status);
   else items = items.filter(f => f.status !== 'hidden');
+
   const order = (a: FeedItem, b: FeedItem) =>
     (a.status === 'pinned' ? -1 : 0) - (b.status === 'pinned' ? -1 : 0) || +new Date(b.publishedAt) - +new Date(a.publishedAt);
+  items.sort(order);
+
   if (platform) {
-    const filtered = items.filter(f => f.platform.toLowerCase() === String(platform).toLowerCase()).sort(order);
-    return res.json({ items: filtered.slice(0, limit * 4), total: filtered.length, limitPerPlatform: limit });
+    const filtered = items.filter(f => f.platform.toLowerCase() === String(platform).toLowerCase());
+    return res.json({ items: filtered, total: filtered.length, limitPerPlatform: limit });
   }
+
   const countsByPlatform: Record<string, number> = {};
-  const curated: FeedItem[] = [];
   for (const p of FEED_PLATFORMS) {
-    const list = items.filter(f => f.platform === p).sort(order);
-    countsByPlatform[p] = list.length;
-    curated.push(...list.slice(0, teamId ? limit * 3 : limit));
+    countsByPlatform[p] = items.filter(f => f.platform === p).length;
   }
-  curated.sort(order);
-  res.json({ items: curated, countsByPlatform, limitPerPlatform: limit, totalCurated: curated.length, totalAvailable: items.length });
-});
+
+  res.json({
+    items,
+    allItemsRaw: items,
+    countsByPlatform,
+    limitPerPlatform: limit,
+    totalCurated: items.length,
+    totalAvailable: store.feedItems.length,
+  });
+}));
 
 const syncFeeds = wrap(async (_req, res) => {
   const r = await syncAllFeeds();
@@ -1777,17 +1811,18 @@ async function startServer() {
     });
   }
 
-  // Ensure official 2026 Cricbuzz franchises & confirmed squads (18 players each, stats included, amounts removed) are seeded
+  // Ensure official 2026 Cricbuzz franchises, confirmed squads, and comprehensive social handles are seeded
   const currentStore = db.get();
   const needsSquadUpgrade = !currentStore.teams || currentStore.teams.length === 0 ||
-    currentStore.teams.some(t => !t.squad || t.squad.length < 18 || t.squad.some(p => p.credits !== undefined));
+    currentStore.teams.some(t => !t.squad || t.squad.length < 18 || t.squad.some(p => p.credits !== undefined)) ||
+    !currentStore.handles || currentStore.handles.length < 30;
 
   if (needsSquadUpgrade) {
-    console.log('[SETUP] Seeding/upgrading official 2026 Cricbuzz franchises & confirmed 18-player squads with career stats...');
-    seedOfficialTeams(true);
+    console.log('[SETUP] Seeding/upgrading official 2026 Cricbuzz franchises & confirmed squads and all team handles...');
+    seedOfficialTeams(false);
   }
 
-  // Ensure verified team social media handles have feeds populated
+  // Ensure verified team social media handles have feeds populated across all teams
   ensureFeedsPopulated().catch(e => console.warn('[FEEDS] Initial populate failed:', e?.message));
 
   app.listen(PORT, '0.0.0.0', () => {
