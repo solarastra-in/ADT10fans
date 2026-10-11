@@ -2,7 +2,11 @@ import { Team } from '../../types';
 
 export type AdminSectionId =
   | 'dashboard'
+  | 'admins'
+  | 'tools'
+  | 'env'
   | 'teams'
+  | 'squads'
   | 'handles'
   | 'feeds'
   | 'matches'
@@ -15,13 +19,15 @@ export type AdminSectionId =
   | 'approvals'
   | 'marketing'
   | 'settings'
-  | 'proposal'
-  | 'admins';
+  | 'proposal';
 
 export const ADMIN_SECTIONS: { id: AdminSectionId; label: string }[] = [
   { id: 'dashboard', label: 'Dashboard' },
+  { id: 'tools', label: 'Admin Tools' },
+  { id: 'env', label: 'Environment' },
   { id: 'admins', label: 'Admins & RBAC' },
   { id: 'teams', label: 'Teams' },
+  { id: 'squads', label: 'Squad Editor' },
   { id: 'handles', label: 'Handles' },
   { id: 'feeds', label: 'Feeds' },
   { id: 'matches', label: 'Matches' },
@@ -50,3 +56,15 @@ export const HANDLE_PLATFORMS = ['X', 'Instagram', 'Threads', 'Facebook', 'TikTo
 export const FEED_PLATFORMS = ['X', 'Instagram', 'Threads', 'Facebook', 'TikTok', 'LinkedIn', 'YouTube', 'Web'] as const;
 export const PLAYER_ROLES = ['batter', 'bowler', 'allrounder', 'wicketkeeper'] as const;
 export const PLAYER_CATEGORIES = ['Icon', 'Platinum', 'Diamond', 'Gold', 'Silver', 'Local', 'Emerging'] as const;
+export const BATTING_STYLES = ['Right-hand bat', 'Left-hand bat'] as const;
+export const BOWLING_STYLES = [
+  'Right-arm fast',
+  'Right-arm fast-medium',
+  'Right-arm medium',
+  'Right-arm offbreak',
+  'Right-arm legbreak',
+  'Left-arm fast',
+  'Left-arm fast-medium',
+  'Left-arm orthodox',
+  'Left-arm chinaman',
+] as const;

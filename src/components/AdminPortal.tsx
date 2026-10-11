@@ -18,6 +18,9 @@ import { ApprovalsSection } from './admin/ApprovalsSection';
 import { MarketingSection } from './admin/MarketingSection';
 import { SettingsSection } from './admin/SettingsSection';
 import { ProposalSection } from './admin/ProposalSection';
+import { AdminToolsSection } from './admin/AdminToolsSection';
+import { EnvVariablesSection } from './admin/EnvVariablesSection';
+import { SquadEditorSection } from './admin/SquadEditorSection';
 
 export type { AdminSectionId } from './admin/shared';
 
@@ -64,8 +67,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     if (hasFullAccess) return true;
     switch (secId) {
       case 'dashboard': return true;
+      case 'tools': return isSuperAdmin || permissions.includes('all') || permissions.includes('leagues') || permissions.includes('teams');
+      case 'env': return isSuperAdmin || permissions.includes('all') || permissions.includes('settings');
       case 'admins': return isSuperAdmin || permissions.includes('admins');
       case 'teams': return permissions.includes('leagues') || permissions.includes('teams');
+      case 'squads': return permissions.includes('leagues') || permissions.includes('teams');
       case 'matches': return permissions.includes('leagues') || permissions.includes('matches');
       case 'contests': return permissions.includes('contests');
       case 'draws': return permissions.includes('winners') || permissions.includes('draws');
@@ -169,8 +175,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
       <main className="min-w-0">
         {section === 'dashboard' && <DashboardSection agentRuns={agentRuns} approvals={approvals} onRefreshAll={onRefreshAll} goTo={goTo} />}
+        {section === 'tools' && <AdminToolsSection teams={teams} onRefreshAll={onRefreshAll} goToSection={goTo} />}
+        {section === 'env' && <EnvVariablesSection onRefreshAll={onRefreshAll} />}
         {section === 'admins' && <AdminsSection currentUserEmail={currentUser?.email} isCurrentUserSuperAdmin={isSuperAdmin} />}
-        {section === 'teams' && <TeamsSection teams={teams} onRefreshAll={onRefreshAll} />}
+        {section === 'teams' && <TeamsSection teams={teams} onRefreshAll={onRefreshAll} goToSection={goTo} />}
+        {section === 'squads' && <SquadEditorSection teams={teams} onRefreshAll={onRefreshAll} />}
         {section === 'handles' && <HandlesSection handles={handles} teams={teams} approvals={approvals} onRefreshAll={onRefreshAll} />}
         {section === 'feeds' && <FeedsSection feedItems={feedItems} teams={teams} onRefreshAll={onRefreshAll} />}
         {section === 'matches' && <MatchesSection matches={matches} teams={teams} settings={settings} onRefreshAll={onRefreshAll} />}

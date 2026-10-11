@@ -589,3 +589,31 @@ export interface ForumThread {
   lastActivityAt: string;
   createdAt: string;
 }
+
+export interface EnvVariableInfo {
+  key: string;
+  label: string;
+  category: 'core' | 'storage' | 'auth' | 'notifications' | 'ai' | 'social' | 'cricket';
+  value: string;
+  isSecret: boolean;
+  isSetInEnv: boolean;
+  isOverridden: boolean;
+  requiresRestart: boolean;
+  restartReason: string;
+  description: string;
+  defaultValue?: string;
+  type: 'string' | 'number' | 'boolean' | 'secret';
+}
+
+export interface CricketSyncResult {
+  success: boolean;
+  provider: string;
+  seriesId: string;
+  teamsCount: number;
+  playersCount: number;
+  teamsUpdated: string[];
+  executionTimeMs: number;
+  timestamp: string;
+  logs: { timestamp: string; level: 'info' | 'warn' | 'success' | 'error'; message: string }[];
+  error?: string;
+}

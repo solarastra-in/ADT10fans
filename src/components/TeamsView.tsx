@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Team, SocialHandle, FeedItem, User, Match, Player } from '../types';
-import { X, ExternalLink, Shield, Trophy, Users, Flame, CheckCircle, Sparkles, TrendingUp, Search, Award, Activity, BarChart2 } from 'lucide-react';
+import { X, ExternalLink, Shield, Trophy, Users, Flame, CheckCircle, Sparkles, TrendingUp, Search, Award, Activity, BarChart2, ChevronDown, ChevronUp, ShieldCheck } from 'lucide-react';
 import { SocialCuratorWall } from './SocialCuratorWall';
 import { TeamWinLossGraph } from './TeamWinLossGraph';
 
@@ -169,17 +169,10 @@ const PlayerDetailModal: React.FC<{
 
         {/* Footer Actions */}
         <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-800">
-          {cricbuzzUrl && (
-            <a
-              href={cricbuzzUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-xl text-xs font-semibold transition-colors"
-            >
-              <span>View Profile on Cricbuzz</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
-          )}
+          <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span>Pre-Seeded Squad Record {player.cricbuzzId ? `· Official ID #${player.cricbuzzId}` : ''}</span>
+          </div>
           <button
             onClick={onClose}
             className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold ml-auto transition-colors"
@@ -219,7 +212,7 @@ const SquadRosterSection: React.FC<{
             <Users className="w-4 h-4" /> {title}
           </h3>
           <p className="text-xs text-slate-400 mt-0.5">
-            Confirmed 18-player franchise roster matching Cricbuzz series 13307 registration. Click any player for full career stats.
+            Official 18-player franchise roster pre-seeded in the database. Click any player card to inspect complete batting, bowling, and career statistics.
           </p>
         </div>
         <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700 self-start sm:self-auto">
@@ -637,6 +630,8 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
   matches = []
 }) => {
   const [selectedTeamModal, setSelectedTeamModal] = React.useState<Team | null>(null);
+  const [expandedSquadTeamId, setExpandedSquadTeamId] = React.useState<string | null>(null);
+  const [inspectingPlayer, setInspectingPlayer] = React.useState<{ player: Player; team: Team } | null>(null);
 
   // If a specific team is selected via URL route (/teams/:teamId), render dedicated franchise page!
   const dedicatedTeam = selectedTeamId ? teams.find(t => t.id.toLowerCase() === selectedTeamId.toLowerCase()) : null;
@@ -839,15 +834,21 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
             Browse all 6 official Abu Dhabi T10 League franchises with confirmed icon stars, direct platinum signings, draft acquisitions, and verified social media channels.
           </p>
         </div>
-        <a
-          href="https://www.cricbuzz.com/cricket-series/13307/abu-dhabi-t10-league-2026/squads"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-amber-400/50 text-slate-300 hover:text-amber-300 text-xs font-semibold rounded-xl transition-colors self-start md:self-end"
-        >
-          <span>View on Cricbuzz</span>
-          <ExternalLink className="w-3.5 h-3.5" />
-        </a>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 self-start md:self-end">
+          <div className="px-3.5 py-2 bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs font-bold rounded-xl flex items-center gap-2 shadow-sm">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>Pre-Seeded in Database · 6 Franchises · 108 Squad Members</span>
+          </div>
+          {user?.role === 'admin' && (
+            <a
+              href="/admin"
+              className="px-3 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-black rounded-xl transition-colors shadow-sm flex items-center gap-1.5"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Admin: Edit & Save Squads</span>
+            </a>
+          )}
+        </div>
       </div>
 
       {/* Grid of Teams */}
@@ -855,23 +856,15 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
         {teams.map((t) => {
           const isAces = t.id === 'aces';
           const teamHandles = handles.filter(h => h.teamId === t.id);
+          const isSquadExpanded = expandedSquadTeamId === t.id;
 
           return (
-            <a
+            <div
               key={t.id}
-              href={`/teams/${t.id}`}
-              onClick={(e) => {
-                e.preventDefault();
-                if (onNavigateTeam) {
-                  onNavigateTeam(t.id);
-                } else {
-                  setSelectedTeamModal(t);
-                }
-              }}
-              className={`group relative rounded-2xl p-5 border cursor-pointer transition-all duration-300 flex flex-col justify-between ${
+              className={`group relative rounded-2xl p-5 border transition-all duration-300 flex flex-col justify-between ${
                 isAces
-                  ? 'bg-gradient-to-b from-amber-500/15 to-slate-900 border-amber-400/50 shadow-xl shadow-amber-500/10 hover:border-amber-400 hover:scale-[1.02]'
-                  : 'bg-slate-900/80 border-slate-800 hover:border-slate-700 hover:bg-slate-900 hover:scale-[1.01]'
+                  ? 'bg-gradient-to-b from-amber-500/15 to-slate-900 border-amber-400/50 shadow-xl shadow-amber-500/10'
+                  : 'bg-slate-900/80 border-slate-800'
               }`}
             >
               {isAces && (
@@ -884,16 +877,16 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
                 {/* Header */}
                 <div className="flex items-center gap-3.5 mb-3">
                   <div
-                    className="w-12 h-12 rounded-xl flex items-center justify-center font-black text-lg text-white shadow-md ring-2 ring-white/10"
+                    className="w-12 h-12 rounded-xl flex items-center justify-center font-black text-lg text-white shadow-md ring-2 ring-white/10 shrink-0"
                     style={{ backgroundColor: t.color }}
                   >
                     {t.short}
                   </div>
-                  <div>
-                    <h2 className="font-extrabold text-lg text-white group-hover:text-amber-300 transition-colors">
+                  <div className="min-w-0">
+                    <h2 className="font-extrabold text-lg text-white group-hover:text-amber-300 transition-colors truncate">
                       {t.name}
                     </h2>
-                    <p className="text-xs text-slate-400">{t.home}</p>
+                    <p className="text-xs text-slate-400 truncate">{t.home}</p>
                   </div>
                 </div>
 
@@ -901,22 +894,22 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
                 <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 text-xs space-y-1.5 mb-3">
                   <div className="flex justify-between">
                     <span className="text-slate-400">Icon Star:</span>
-                    <strong className="text-amber-300 font-semibold">{t.iconPlayer}</strong>
+                    <strong className="text-amber-300 font-semibold truncate ml-2">{t.iconPlayer}</strong>
                   </div>
                   {t.headCoach && (
                     <div className="flex justify-between">
                       <span className="text-slate-400">Head Coach:</span>
-                      <strong className="text-slate-200 font-semibold">{t.headCoach}</strong>
+                      <strong className="text-slate-200 font-semibold truncate ml-2">{t.headCoach}</strong>
                     </div>
                   )}
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Squad Size:</span>
-                    <strong className="text-slate-200 font-semibold">{t.squad.length} Players</strong>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400">Official Squad:</span>
+                    <strong className="text-emerald-400 font-semibold">{t.squad?.length || 0} Players Pre-Seeded</strong>
                   </div>
                 </div>
 
                 {/* Handles preview */}
-                <div className="flex items-center gap-1.5 flex-wrap">
+                <div className="flex items-center gap-1.5 flex-wrap mb-3">
                   {teamHandles.map((h) => (
                     <span
                       key={h.id}
@@ -926,19 +919,89 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
                     </span>
                   ))}
                 </div>
+
+                {/* Inline 18-Player Squad Accordion Toggle */}
+                <button
+                  type="button"
+                  onClick={() => setExpandedSquadTeamId(isSquadExpanded ? null : t.id)}
+                  className={`w-full py-2 px-3 rounded-xl text-xs font-bold border flex items-center justify-between transition-colors ${
+                    isSquadExpanded
+                      ? 'bg-amber-400 text-slate-950 border-amber-400'
+                      : 'bg-slate-950 hover:bg-slate-800 text-slate-300 border-slate-800'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5" />
+                    <span>{isSquadExpanded ? 'Hide Squad Roster' : `View 18-Player Squad Roster (${t.squad?.length || 0})`}</span>
+                  </span>
+                  {isSquadExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+
+                {/* Expanded Squad List right on the card */}
+                {isSquadExpanded && (
+                  <div className="mt-3 pt-3 border-t border-slate-800/80 space-y-2 max-h-72 overflow-y-auto pr-1">
+                    <div className="flex items-center justify-between text-[10px] text-slate-400 uppercase font-black px-1">
+                      <span>Confirmed Player & Role</span>
+                      <span>Batting & Bowling</span>
+                    </div>
+                    {t.squad && t.squad.length > 0 ? (
+                      t.squad.map((p, idx) => (
+                        <div
+                          key={p.id || idx}
+                          onClick={() => setInspectingPlayer({ player: p, team: t })}
+                          className="p-2 rounded-xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800/80 hover:border-amber-400/40 transition-colors cursor-pointer flex items-center justify-between gap-2"
+                        >
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] font-mono text-slate-500 w-3.5">{idx + 1}.</span>
+                              <span className="text-xs font-bold text-white hover:text-amber-300 truncate">{p.name}</span>
+                              {p.isCaptain && <span className="text-[8px] bg-amber-400/20 text-amber-300 border border-amber-400/40 px-1 rounded font-black">C</span>}
+                              {p.isKeeper && <span className="text-[8px] bg-emerald-400/20 text-emerald-300 border border-emerald-400/40 px-1 rounded font-black">WK</span>}
+                              {p.isIcon && <span className="text-[8px] bg-amber-400 text-slate-950 px-1 rounded font-black">ICON</span>}
+                            </div>
+                            <span className="text-[10px] text-amber-400/90 capitalize pl-5 block">{p.cricbuzzRole || p.role}</span>
+                          </div>
+
+                          <div className="text-right shrink-0">
+                            <div className="text-[10px] text-slate-300">
+                              {p.battingStyle ? p.battingStyle.replace('-hand bat', 'HB') : 'Bat'}
+                            </div>
+                            <div className="text-[9px] text-slate-400 truncate max-w-[110px]">
+                              {p.bowlingStyle ? p.bowlingStyle.replace('Right-arm ', 'RA ').replace('Left-arm ', 'LA ') : '—'}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-xs text-slate-400 text-center py-3 bg-slate-950 rounded-xl">
+                        Squad syncing for this team.
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Action link */}
               <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs">
                 <span className="text-slate-400 flex items-center gap-1.5">
                   <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Win/Loss Trend & Squad</span>
+                  <span>Win/Loss Trend & Feeds</span>
                 </span>
-                <span className="text-amber-400 font-bold group-hover:translate-x-1 transition-transform inline-flex items-center gap-1">
-                  Explore →
-                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onNavigateTeam) {
+                      onNavigateTeam(t.id);
+                    } else {
+                      setSelectedTeamModal(t);
+                    }
+                  }}
+                  className="text-amber-400 font-bold hover:text-amber-300 inline-flex items-center gap-1 transition-colors"
+                >
+                  Explore Franchise Page →
+                </button>
               </div>
-            </a>
+            </div>
           );
         })}
       </div>
@@ -954,6 +1017,15 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
         teams={teams}
         matches={matches}
       />
+
+      {/* Direct Player Career Stats Modal from grid */}
+      {inspectingPlayer && (
+        <PlayerDetailModal
+          player={inspectingPlayer.player}
+          team={inspectingPlayer.team}
+          onClose={() => setInspectingPlayer(null)}
+        />
+      )}
     </div>
   );
 };

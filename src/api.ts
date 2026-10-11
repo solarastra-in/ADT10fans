@@ -1,4 +1,4 @@
-import { PublicConfig, User, Team, SocialHandle, FeedItem, Match, Contest, PrizeDraw, SystemSettings, AchievementBadge, UserStats, ForumThread, ForumComment, NotificationItem, FCMDeviceToken, AdminUserRecord, AdminRole, AdminPermission } from './types';
+import { PublicConfig, User, Team, Player, SocialHandle, FeedItem, Match, Contest, PrizeDraw, SystemSettings, AchievementBadge, UserStats, ForumThread, ForumComment, NotificationItem, FCMDeviceToken, AdminUserRecord, AdminRole, AdminPermission, EnvVariableInfo, CricketSyncResult } from './types';
 
 const TOKEN_KEY = 't10_auth_token';
 
@@ -99,6 +99,12 @@ export const api = {
     fetchJson<{ success: boolean; teams: Team[] }>('/api/teams', {
       method: 'POST',
       body: JSON.stringify(team),
+    }),
+  /** Admin: save nested squad array for a franchise */
+  saveSquad: (teamId: string, squad: Player[]) =>
+    fetchJson<{ success: boolean; team: Team; teams: Team[] }>(`/api/teams/${teamId}/squad`, {
+      method: 'POST',
+      body: JSON.stringify({ squad }),
     }),
   deleteTeam: (id: string) =>
     fetchJson<{ success: boolean; teams: Team[] }>(`/api/teams/${id}`, {
@@ -439,5 +445,26 @@ export const api = {
   resetProposalSettings: () =>
     fetchJson<{ success: boolean; proposalSettings: any }>('/api/admin/proposal/reset', {
       method: 'POST',
+    }),
+
+  // Cricket Data Provider Tool & Automation
+  testCricketProvider: (options: { provider?: string; seriesId?: string; apiUrl?: string; apiKey?: string } = {}) =>
+    fetchJson<{ success: boolean; provider: string; latencyMs: number; message: string; error?: string }>('/api/admin/cricket/test-connection', {
+      method: 'POST',
+      body: JSON.stringify(options),
+    }),
+  fetchAndPersistCricketSquads: (options: { provider?: string; seriesId?: string; apiUrl?: string; apiKey?: string; overwrite?: boolean } = {}) =>
+    fetchJson<CricketSyncResult>('/api/admin/cricket/fetch-squads', {
+      method: 'POST',
+      body: JSON.stringify(options),
+    }),
+
+  // Environment Variables & Configuration
+  getEnvVariables: () =>
+    fetchJson<{ variables: EnvVariableInfo[] }>('/api/admin/env'),
+  saveEnvVariables: (overrides: Record<string, string>) =>
+    fetchJson<{ success: boolean; updatedKeys: string[]; requiresRestartKeys: string[]; hasRestartRequired: boolean; message: string }>('/api/admin/env', {
+      method: 'POST',
+      body: JSON.stringify({ overrides }),
     }),
 };

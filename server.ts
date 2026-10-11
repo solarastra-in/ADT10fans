@@ -14,6 +14,8 @@ import { pushServerConfigured, sendFcm } from './server/push';
 import { runDiscoveryAgent, runSocialAgent, runNewsAgent, runScoresAgent, runContentAgent, runOpsAgent } from './server/agents';
 import { computeUserBadges } from './server/badges';
 import { geminiConfigured, chatWithGemini, searchGroundingCricket, generateMarketingContent, transcribeAudioVoice } from './server/gemini';
+import { testCricketProviderConnection, fetchAndPersistOfficialSquads } from './server/cricketProvider';
+import { getAllEnvVariables, saveEnvOverrides } from './server/envConfig';
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -222,7 +224,99 @@ app.post('/api/admin/teams/seed-official', requireAdmin, (req, res) => {
   res.json({ success: true, ...seedOfficialTeams(Boolean(req.body?.overwrite)) });
 });
 
+// ---------- Cricket Provider & Automated Squad Fetch Tool ----------
+app.post('/api/admin/cricket/test-connection', requireAdmin, wrap(async (req, res) => {
+  const result = await testCricketProviderConnection(req.body || {});
+  res.json(result);
+}));
+
+app.post('/api/admin/cricket/fetch-squads', requireAdmin, wrap(async (req, res) => {
+  const result = await fetchAndPersistOfficialSquads(req.body || {});
+  res.json(result);
+}));
+
+// ---------- Environment Variables Management ----------
+app.get('/api/admin/env', requireAdmin, (_req, res) => {
+  res.json({ variables: getAllEnvVariables() });
+});
+
+app.post('/api/admin/env', requireAdmin, (req, res) => {
+  const overrides = req.body?.overrides || {};
+  const result = saveEnvOverrides(overrides);
+  res.json(result);
+});
+
 const ROLES: Player['role'][] = ['batter', 'bowler', 'allrounder', 'wicketkeeper'];
+
+function formatPlayerSquad(rawPlayers: any[], teamId: string): Player[] {
+  return (Array.isArray(rawPlayers) ? rawPlayers : [])
+    .map((p: any) => ({
+      id: str(p.id, 80) || `${teamId}-${str(p.name, 60).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+      teamId,
+      name: str(p.name, 60),
+      role: (ROLES.includes(p.role) ? p.role : 'batter') as Player['role'],
+      category: str(p.category, 30) || undefined,
+      credits: Math.min(15, Math.max(0, num(p.credits, 8))),
+      isIcon: Boolean(p.isIcon) || str(p.category, 30).toLowerCase() === 'icon',
+      battingStyle: str(p.battingStyle, 60) || undefined,
+      bowlingStyle: str(p.bowlingStyle, 60) || undefined,
+      cricbuzzRole: str(p.cricbuzzRole, 60) || undefined,
+      cricbuzzId: str(p.cricbuzzId, 40) || undefined,
+      cricbuzzProfileUrl: optionalUrl(p.cricbuzzProfileUrl) || undefined,
+      photoUrl: optionalUrl(p.photoUrl) || undefined,
+      nationality: str(p.nationality, 60) || undefined,
+      isCaptain: Boolean(p.isCaptain),
+      isKeeper: Boolean(p.isKeeper),
+      imageId: num(p.imageId, 0) || undefined,
+      stats: p.stats && typeof p.stats === 'object' ? p.stats : undefined,
+    }))
+    .filter((p: Player) => p.name);
+}
+
+// Dedicated Save Squad endpoint for Admin Portal
+app.post('/api/teams/:id/squad', requireAdmin, (req, res) => {
+  const store = db.get();
+  const id = req.params.id;
+  const team = store.teams.find(t => t.id === id);
+  if (!team) return bad(res, `Team "${id}" not found`, 404);
+
+  const squadRaw = req.body?.squad;
+  if (!Array.isArray(squadRaw)) return bad(res, 'Squad must be an array of player objects');
+
+  const formattedSquad = formatPlayerSquad(squadRaw, id);
+  team.squad = formattedSquad;
+  team.updatedAt = new Date().toISOString();
+
+  // If icon player not set, sync with first icon
+  if (!team.iconPlayer && formattedSquad.some(p => p.isIcon)) {
+    team.iconPlayer = formattedSquad.find(p => p.isIcon)?.name || '';
+  }
+
+  db.save();
+  res.json({ success: true, team, teams: store.teams });
+});
+
+app.put('/api/teams/:id/squad', requireAdmin, (req, res) => {
+  const store = db.get();
+  const id = req.params.id;
+  const team = store.teams.find(t => t.id === id);
+  if (!team) return bad(res, `Team "${id}" not found`, 404);
+
+  const squadRaw = req.body?.squad;
+  if (!Array.isArray(squadRaw)) return bad(res, 'Squad must be an array of player objects');
+
+  const formattedSquad = formatPlayerSquad(squadRaw, id);
+  team.squad = formattedSquad;
+  team.updatedAt = new Date().toISOString();
+
+  if (!team.iconPlayer && formattedSquad.some(p => p.isIcon)) {
+    team.iconPlayer = formattedSquad.find(p => p.isIcon)?.name || '';
+  }
+
+  db.save();
+  res.json({ success: true, team, teams: store.teams });
+});
+
 app.post('/api/teams', requireAdmin, (req, res) => {
   const b = req.body || {};
   const store = db.get();
@@ -235,17 +329,7 @@ app.post('/api/teams', requireAdmin, (req, res) => {
   if (logo === null) return bad(res, 'Logo must be an https:// image link');
   const color = /^#[0-9a-f]{6}$/i.test(str(b.color, 7)) ? str(b.color, 7) : '#D9A92E';
   const secondaryColor = /^#[0-9a-f]{6}$/i.test(str(b.secondaryColor, 7)) ? str(b.secondaryColor, 7) : '#0F172A';
-  const squad: Player[] = (Array.isArray(b.squad) ? b.squad : [])
-    .map((p: any) => ({
-      id: str(p.id, 80) || `${id}-${str(p.name, 60).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
-      teamId: id,
-      name: str(p.name, 60),
-      role: ROLES.includes(p.role) ? p.role : 'batter',
-      category: str(p.category, 30) || undefined,
-      credits: Math.min(15, Math.max(0, num(p.credits, 8))),
-      isIcon: Boolean(p.isIcon) || str(p.category, 30).toLowerCase() === 'icon',
-    }))
-    .filter((p: Player) => p.name);
+  const squad = formatPlayerSquad(b.squad, id);
   const existingIdx = store.teams.findIndex(t => t.id === id);
   const now = new Date().toISOString();
   const team: Team = {
