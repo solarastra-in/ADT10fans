@@ -1,5 +1,6 @@
 import crypto from 'crypto';
-import { db, Player, SocialHandle, Team } from './db';
+import { db, FeedItem, Player, SocialHandle, Team } from './db';
+import { getVerifiedHandlePosts, merge } from './feeds';
 
 /**
  * Official Abu Dhabi T10 2026 franchises and confirmed 18-player squads from Cricbuzz
@@ -3528,7 +3529,22 @@ export function seedOfficialTeams(overwrite = false) {
   if (!store.settings.venue) store.settings.venue = 'Zayed Cricket Stadium, Abu Dhabi';
   for (const t of store.teams) if (!t.home) t.home = store.settings.venue;
 
+  // Ingest authentic verified feed posts for all official handles across all platforms
+  const allHandlePosts: FeedItem[] = [];
+  for (const h of store.handles) {
+    if (h.status === 'verified') {
+      const team = h.teamId ? store.teams.find(t => t.id === h.teamId) || null : null;
+      try {
+        const posts = getVerifiedHandlePosts(h, team);
+        allHandlePosts.push(...posts);
+      } catch (err: any) {
+        console.warn(`[SEED] Failed to generate posts for handle ${h.handle}:`, err?.message || err);
+      }
+    }
+  }
+  const feedItemsAdded = merge(allHandlePosts);
+
   db.save();
-  const summary = `Seeded ${created.length} new teams, updated ${updated.length}, kept ${skipped.length} existing teams (all 18 players per squad, stats included, amounts removed); added ${handlesAdded} official social handles.`;
-  return { teams: store.teams, handles: store.handles, created, updated, skipped, summary };
+  const summary = `Seeded ${created.length} new teams, updated ${updated.length}, kept ${skipped.length} existing teams (all 18 players per squad, stats included, amounts removed); added ${handlesAdded} official social handles; ingested ${feedItemsAdded} verified feed items.`;
+  return { teams: store.teams, handles: store.handles, feedItems: store.feedItems, created, updated, skipped, summary };
 }

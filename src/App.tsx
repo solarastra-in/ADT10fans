@@ -38,6 +38,9 @@ import { ADT10Logo, ArabianAcesAttribution } from './components/Branding';
 import { updatePageSeo, ROUTE_SEO } from './utils/seo';
 import { parsePath, getPathForTab } from './utils/navigation';
 import { requestFCMToken, registerForegroundPushListener } from './firebase';
+import { OFFICIAL_2026_TEAMS } from './data/officialTeams';
+import { FALLBACK_HANDLES } from './data/officialHandles';
+import { OFFICIAL_FEED_ITEMS } from './data/officialFeeds';
 import { 
   getScheduledReminders, 
   toggleMatchReminder, 
@@ -89,9 +92,9 @@ function playNotificationChime() {
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [handles, setHandles] = useState<SocialHandle[]>([]);
-  const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
+  const [teams, setTeams] = useState<Team[]>(OFFICIAL_2026_TEAMS);
+  const [handles, setHandles] = useState<SocialHandle[]>(FALLBACK_HANDLES);
+  const [feedItems, setFeedItems] = useState<FeedItem[]>(OFFICIAL_FEED_ITEMS);
   const [matches, setMatches] = useState<Match[]>([]);
   const [contests, setContests] = useState<Contest[]>([]);
   const [draws, setDraws] = useState<PrizeDraw[]>([]);
@@ -476,9 +479,16 @@ export default function App() {
 
       setUser(meRes.user);
       if (configRes && configRes.config) setConfig(configRes.config);
-      setTeams(teamsRes.teams);
-      setHandles(handlesRes.handles);
-      setFeedItems(feedsRes.allItemsRaw || feedsRes.items || []);
+      if (teamsRes.teams && teamsRes.teams.length > 0) {
+        setTeams(teamsRes.teams);
+      }
+      if (handlesRes.handles && handlesRes.handles.length > 0) {
+        setHandles(handlesRes.handles);
+      }
+      const rawFeeds = (feedsRes.allItemsRaw && feedsRes.allItemsRaw.length > 0) ? feedsRes.allItemsRaw : (feedsRes.items && feedsRes.items.length > 0 ? feedsRes.items : null);
+      if (rawFeeds && rawFeeds.length > 0) {
+        setFeedItems(rawFeeds);
+      }
       setMatches(matchesRes.matches);
       setContests(contestsRes.contests);
       setDraws(drawsRes.draws);

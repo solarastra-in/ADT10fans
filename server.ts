@@ -366,8 +366,8 @@ app.get('/api/feeds', wrap(async (req, res) => {
   const viewer = getAuthUser(req);
   const store = db.get();
 
-  // If cold-start or empty, ensure feeds are populated first
-  if (!store.feedItems || store.feedItems.length === 0) {
+  // If cold-start, empty or low count, ensure feeds are populated first
+  if (!store.feedItems || store.feedItems.length < 50) {
     try {
       await ensureFeedsPopulated();
     } catch {
@@ -1815,7 +1815,8 @@ async function startServer() {
   const currentStore = db.get();
   const needsSquadUpgrade = !currentStore.teams || currentStore.teams.length === 0 ||
     currentStore.teams.some(t => !t.squad || t.squad.length < 18 || t.squad.some(p => p.credits !== undefined)) ||
-    !currentStore.handles || currentStore.handles.length < 30;
+    !currentStore.handles || currentStore.handles.length < 30 ||
+    !currentStore.feedItems || currentStore.feedItems.length < 50;
 
   if (needsSquadUpgrade) {
     console.log('[SETUP] Seeding/upgrading official 2026 Cricbuzz franchises & confirmed squads and all team handles...');
@@ -1823,7 +1824,11 @@ async function startServer() {
   }
 
   // Ensure verified team social media handles have feeds populated across all teams
-  ensureFeedsPopulated().catch(e => console.warn('[FEEDS] Initial populate failed:', e?.message));
+  try {
+    await ensureFeedsPopulated();
+  } catch (e: any) {
+    console.warn('[FEEDS] Initial populate failed:', e?.message);
+  }
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`ADT10 Fans running on http://0.0.0.0:${PORT} (${IS_PROD ? 'production' : 'development'})`);
