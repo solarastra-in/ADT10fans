@@ -5,7 +5,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { db, Contest, Match, NotificationItem, PrizeDraw, Team, Player, FeedItem, SocialHandle, User, defaultSettings, SUPER_ADMIN_EMAIL } from './server/db';
 import {
-  IS_PROD, FIREBASE_PROJECT_ID, getAuthUser, requireAdmin, requireUser, upsertUser, createSession, revokeSession,
+  IS_PROD, FIREBASE_PROJECT_ID, getAuthUser, requireAdmin, requireSuperAdmin, requireUser, upsertUser, createSession, revokeSession,
   verifyFirebaseIdToken, rateLimit, emailOtpAvailable, sendOtpEmail, hashOtp, timingSafeEqualHex, publicUser, adminEmails,
 } from './server/auth';
 import { seedOfficialTeams } from './server/seedOfficial';
@@ -16,6 +16,7 @@ import { computeUserBadges } from './server/badges';
 import { geminiConfigured, chatWithGemini, searchGroundingCricket, generateMarketingContent, transcribeAudioVoice } from './server/gemini';
 import { testCricketProviderConnection, fetchAndPersistOfficialSquads } from './server/cricketProvider';
 import { getAllEnvVariables, saveEnvOverrides } from './server/envConfig';
+import { getCuratorConfig, fetchLiveCuratorFeed } from './server/curator';
 
 export const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -23,10 +24,30 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 app.set('trust proxy', true);
 app.disable('x-powered-by');
 app.use(express.json({ limit: '8mb' }));
+
+// ---------- Production CORS & Security Headers ----------
 app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  // Allow all origins or mirror back requesting origin (adt10fans.com, vercel, previews)
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Max-Age', '86400');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'camera=(), geolocation=(), microphone=(self)');
+
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+
   if (req.path.startsWith('/api/')) res.setHeader('Cache-Control', 'no-store');
   next();
 });
@@ -68,9 +89,13 @@ function brand() {
 // ---------- public config ----------
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
-app.get('/api/config', (_req, res) => {
+app.get('/api/config', (req, res) => {
+  const viewer = getAuthUser(req);
+  const isSuperAdmin = viewer ? (viewer.isSuperAdmin || viewer.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase()) : false;
   const s = db.get();
   const st = s.settings;
+  const curatorConfig = getCuratorConfig();
+
   res.json({
     config: {
       brandName: st.brandName || 'ADT10 Fans',
@@ -81,8 +106,10 @@ app.get('/api/config', (_req, res) => {
       seasonEnd: st.seasonEnd,
       venue: st.venue,
       tickerText: st.tickerText,
-      curatorFeedId: st.curatorFeedId,
-      curatorContainerId: st.curatorContainerId,
+      // Curator feed ID and live container are strictly available to Super Admin only, never exposed to normal fans
+      curatorFeedId: isSuperAdmin ? curatorConfig.feedId : '',
+      curatorContainerId: isSuperAdmin ? curatorConfig.containerId : '',
+      isSuperAdmin,
       maxSocialPerPlatform: st.maxSocialPerPlatform || 5,
       features: {
         googleSignIn: Boolean(FIREBASE_PROJECT_ID),
@@ -102,6 +129,30 @@ app.get('/api/config', (_req, res) => {
     },
   });
 });
+
+// ---------- Curator Feeds (Super Admin Only) ----------
+app.get('/api/curator/config', requireSuperAdmin, (_req, res) => {
+  const cfg = getCuratorConfig();
+  res.json({
+    success: true,
+    feedId: cfg.feedId,
+    feedIdSource: cfg.feedIdSource,
+    hasApiKey: cfg.hasApiKey,
+    apiKeySource: cfg.apiKeySource,
+    containerId: cfg.containerId,
+    isConfigured: cfg.isConfigured,
+  });
+});
+
+app.get('/api/curator/feed', requireSuperAdmin, wrap(async (_req, res) => {
+  const result = await fetchLiveCuratorFeed();
+  res.json(result);
+}));
+
+app.post('/api/curator/sync', requireSuperAdmin, wrap(async (_req, res) => {
+  const result = await fetchLiveCuratorFeed();
+  res.json(result);
+}));
 
 // ---------- auth & profile ----------
 app.get('/api/me', (req, res) => res.json({ user: getAuthUser(req) }));

@@ -163,6 +163,15 @@ export const api = {
     fetchJson<{ success: boolean; syncedCount: number; added: number; feedItems: FeedItem[]; summary: string; errors: string[] }>('/api/social/sync-real', {
       method: 'POST',
     }),
+  // Super Admin Curator Feed Tools
+  getCuratorConfig: () =>
+    fetchJson<{ success: boolean; feedId: string; feedIdSource: string; hasApiKey: boolean; apiKeySource: string; containerId: string; isConfigured: boolean }>('/api/curator/config'),
+  fetchCuratorFeed: () =>
+    fetchJson<{ success: boolean; feedId: string; source: string; posts: FeedItem[]; rawCount: number; message: string; errors?: string[] }>('/api/curator/feed'),
+  syncCuratorFeed: () =>
+    fetchJson<{ success: boolean; feedId: string; source: string; posts: FeedItem[]; rawCount: number; message: string; errors?: string[] }>('/api/curator/sync', {
+      method: 'POST',
+    }),
 
   // Matches
   getMatches: () => fetchJson<{ matches: Match[] }>('/api/matches'),

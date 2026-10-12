@@ -269,6 +269,17 @@ export function requireAdmin(
   };
 }
 
+export function requireSuperAdmin(req: Request, res: Response, next: NextFunction) {
+  const user = getAuthUser(req);
+  if (!user) return res.status(401).json({ error: 'Please sign in first' });
+  const isSuper = user.isSuperAdmin || isSuperAdminEmail(user.email);
+  if (!isSuper) {
+    return res.status(403).json({ error: 'This feature is restricted to Super Admin only' });
+  }
+  (req as any).user = user;
+  next();
+}
+
 /** Returns the user stripped of anything we don't want to send to other fans. */
 export function publicUser(u: User) {
   return { id: u.id, name: u.name, avatar: u.avatar, teamId: u.teamId, points: u.points, badges: u.badges, streak: u.streak };
