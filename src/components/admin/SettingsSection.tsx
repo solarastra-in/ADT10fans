@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Save } from 'lucide-react';
+import { Save, Info, Sparkles, CheckCircle2, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { SystemSettings } from '../../types';
 import { api } from '../../api';
 import { Button, Card, Checkbox, Errors, Field, Notice, SectionHeader, TextArea, TextInput, splitList, toDateInput, toNumber, useRunner } from './ui';
@@ -157,85 +157,293 @@ export const SettingsSection: React.FC<{ settings: SystemSettings; onRefreshAll:
     <form onSubmit={save} className="space-y-5" noValidate>
       <SectionHeader title="Settings" description="Brand text, season details, integrations and email." />
 
-      <Card className="space-y-3">
-        <h3 className="font-extrabold text-white">Brand & season</h3>
+      <Card className="space-y-4">
+        <div>
+          <h3 className="font-extrabold text-white text-base">Brand & season</h3>
+          <p className="text-xs text-slate-400 mt-0.5">Core visual identifiers, stadium venue and tournament calendar.</p>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Site name" hint="Blank uses “ADT10 Fans”">
+          <Field 
+            label="Site name" 
+            hint={
+              <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                <span className="text-emerald-400 font-semibold font-mono">⚡ Live without restart:</span> Updates app header title immediately (Default: “ADT10 Fans”).
+              </span>
+            }
+          >
             <TextInput value={draft.brandName} onChange={e => set({ brandName: e.target.value })} />
           </Field>
-          <Field label="Copyright holder" hint="Blank uses “Azlir Sports”">
+
+          <Field 
+            label="Copyright holder" 
+            hint={
+              <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                <span className="text-emerald-400 font-semibold font-mono">⚡ Live without restart:</span> Displayed in footer (Default: “Azlir Sports”).
+              </span>
+            }
+          >
             <TextInput value={draft.copyrightHolder} onChange={e => set({ copyrightHolder: e.target.value })} />
           </Field>
-          <Field label="Tagline" className="sm:col-span-2">
+
+          <Field 
+            label="Tagline" 
+            className="sm:col-span-2"
+            hint={
+              <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                <span className="text-emerald-400 font-semibold font-mono">⚡ Live without restart:</span> Subtitle under site brand banner.
+              </span>
+            }
+          >
             <TextInput value={draft.tagline} onChange={e => set({ tagline: e.target.value })} />
           </Field>
-          <Field label="Season label" hint="e.g. Abu Dhabi T10 2026">
+
+          <Field 
+            label="Season label" 
+            hint={
+              <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                <span className="text-emerald-400 font-semibold font-mono">⚡ Live without restart:</span> e.g. Abu Dhabi T10 2026.
+              </span>
+            }
+          >
             <TextInput value={draft.seasonLabel} onChange={e => set({ seasonLabel: e.target.value })} />
           </Field>
-          <Field label="Default venue" hint="Pre-fills new fixtures">
+
+          <Field 
+            label="Default venue" 
+            hint={
+              <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                <span className="text-emerald-400 font-semibold font-mono">⚡ Live without restart:</span> Pre-fills default ground for new fixtures.
+              </span>
+            }
+          >
             <TextInput value={draft.venue} onChange={e => set({ venue: e.target.value })} />
           </Field>
-          <Field label="Season starts">
+
+          <Field 
+            label="Season starts"
+            hint={
+              <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                <span className="text-emerald-400 font-semibold font-mono">⚡ Live without restart:</span> Tournament launch day filter.
+              </span>
+            }
+          >
             <TextInput type="date" value={draft.seasonStart} onChange={e => set({ seasonStart: e.target.value })} />
           </Field>
-          <Field label="Season ends" error={errors.seasonEnd}>
+
+          <Field 
+            label="Season ends" 
+            error={errors.seasonEnd}
+            hint={
+              <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                <span className="text-emerald-400 font-semibold font-mono">⚡ Live without restart:</span> Championship final match cutoff.
+              </span>
+            }
+          >
             <TextInput type="date" value={draft.seasonEnd} onChange={e => set({ seasonEnd: e.target.value })} error={!!errors.seasonEnd} />
           </Field>
-          <Field label="Ticker text" className="sm:col-span-2" hint="Scrolling banner at the top of the site. Leave blank to hide it.">
+
+          <Field 
+            label="Ticker text" 
+            className="sm:col-span-2" 
+            hint={
+              <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                <span className="text-emerald-400 font-semibold font-mono">⚡ Live without restart:</span> Scrolling marquee header banner. Leave blank to hide.
+              </span>
+            }
+          >
             <TextArea rows={2} value={draft.tickerText} onChange={e => set({ tickerText: e.target.value })} />
           </Field>
         </div>
       </Card>
 
       <Card className="space-y-3">
-        <h3 className="font-extrabold text-white">Access</h3>
-        <Field label="Admin emails" required error={errors.adminEmails} hint="Comma-separated. These accounts get the Admin Console.">
+        <div>
+          <h3 className="font-extrabold text-white text-base">Access & Super Admins</h3>
+          <p className="text-xs text-slate-400 mt-0.5">Accounts granted complete administrative privileges.</p>
+        </div>
+        <Field 
+          label="Admin emails" 
+          required 
+          error={errors.adminEmails} 
+          hint={
+            <span className="flex items-center gap-1 text-[11px] text-slate-400">
+              <span className="text-emerald-400 font-semibold font-mono">⚡ Live without restart:</span> Evaluated dynamically on every request. Comma-separated Google login emails.
+            </span>
+          }
+        >
           <TextArea rows={2} value={draft.adminEmails} onChange={e => set({ adminEmails: e.target.value })} error={!!errors.adminEmails} autoCapitalize="none" autoCorrect="off" spellCheck={false} />
         </Field>
       </Card>
 
-      <Card className="space-y-3">
-        <h3 className="font-extrabold text-white">Social wall & news</h3>
+      <Card className="space-y-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-amber-400" />
+            <h3 className="font-extrabold text-white text-base">Social Wall & News (Curator.io Integration)</h3>
+          </div>
+          <p className="text-xs text-slate-400 mt-0.5">Manage Curator.io multi-channel social feed parameters or keep empty to use built-in official feeds.</p>
+        </div>
+
+        {/* Informational Box explaining CURATOR_FEED_ID and CURATOR_API_KEY */}
+        <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-xs space-y-2">
+          <div className="flex items-center gap-2 text-amber-300 font-bold">
+            <Info className="w-4 h-4 shrink-0 text-amber-400" />
+            <span>Understanding Curator.io Properties & Production Setup</span>
+          </div>
+          <p className="text-slate-300 leading-relaxed">
+            <strong className="text-white">Curator.io</strong> is an external social aggregation service that crawls public posts from X, Instagram, YouTube, TikTok, and Facebook into a single feed stream.
+          </p>
+          <ul className="space-y-1 pl-4 list-disc text-slate-300 text-[11px]">
+            <li>
+              <strong className="text-amber-200 font-mono">Curator Feed ID:</strong> The published feed identifier or UUID assigned in your Curator.io account dashboard.
+            </li>
+            <li>
+              <strong className="text-amber-200 font-mono">Curator API Key:</strong> The optional private REST API key from Curator.io used for automated server-to-server post syncing.
+            </li>
+            <li>
+              <strong className="text-emerald-300 font-semibold">Production Default:</strong> You do <span className="underline">not</span> need environment variables for Curator. If you don't have a Curator.io subscription, simply <strong>keep these fields empty</strong>. The platform will automatically run in production using 100% verified native team social handles (YouTube video highlights, X updates, Instagram posts, and Cricbuzz news) with zero external setup required!
+            </li>
+            <li>
+              <strong className="text-emerald-300 font-mono">⚡ Lifecycle:</strong> All Curator properties take effect <strong>live without restart</strong>.
+            </li>
+          </ul>
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Curator feed ID">
-            <TextInput value={draft.curatorFeedId} onChange={e => set({ curatorFeedId: e.target.value })} autoComplete="off" />
+          <Field 
+            label="Curator feed ID"
+            hint={
+              <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                <span className="text-emerald-400 font-semibold font-mono">⚡ Live without restart:</span> Curator published stream ID (e.g. 1a2b3c4d-...). Keep empty if not using Curator.
+              </span>
+            }
+          >
+            <TextInput placeholder="Empty (uses built-in feeds)" value={draft.curatorFeedId} onChange={e => set({ curatorFeedId: e.target.value })} autoComplete="off" />
           </Field>
-          <Field label="Curator container ID">
+
+          <Field 
+            label="Curator API key"
+            hint={
+              <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                <span className="text-emerald-400 font-semibold font-mono">⚡ Live without restart:</span> Private REST API key from Curator dashboard. Keep empty if not using Curator API.
+              </span>
+            }
+          >
+            <TextInput type="password" placeholder="Empty (optional)" value={draft.curatorApiKey} onChange={e => set({ curatorApiKey: e.target.value })} autoComplete="new-password" />
+          </Field>
+
+          <Field 
+            label="Curator container ID"
+            hint={
+              <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                <span className="text-emerald-400 font-semibold font-mono">⚡ Live without restart:</span> HTML widget mount container (Default: curator-feed-default-feed-layout).
+              </span>
+            }
+          >
             <TextInput value={draft.curatorContainerId} onChange={e => set({ curatorContainerId: e.target.value })} autoComplete="off" />
           </Field>
-          <Field label="Curator feed UUID">
-            <TextInput value={draft.curatorFeedUuid} onChange={e => set({ curatorFeedUuid: e.target.value })} autoComplete="off" />
+
+          <Field 
+            label="Curator feed UUID"
+            hint={
+              <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                <span className="text-emerald-400 font-semibold font-mono">⚡ Live without restart:</span> Optional secondary feed UUID if provided by Curator. Keep empty if unused.
+              </span>
+            }
+          >
+            <TextInput placeholder="Empty (optional)" value={draft.curatorFeedUuid} onChange={e => set({ curatorFeedUuid: e.target.value })} autoComplete="off" />
           </Field>
-          <Field label="Curator API key">
-            <TextInput type="password" value={draft.curatorApiKey} onChange={e => set({ curatorApiKey: e.target.value })} autoComplete="new-password" />
-          </Field>
-          <Field label="Curator hashtags" hint="e.g. #AbuDhabiT10">
+
+          <Field 
+            label="Curator hashtags" 
+            hint={
+              <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                <span className="text-emerald-400 font-semibold font-mono">⚡ Live without restart:</span> Comma-separated social discovery tags (e.g. AbuDhabiT10, ArabianAces).
+              </span>
+            }
+          >
             <TextInput value={draft.curatorHashtags} onChange={e => set({ curatorHashtags: e.target.value })} />
           </Field>
-          <Field label="Max posts per platform" required error={errors.maxSocialPerPlatform}>
+
+          <Field 
+            label="Max posts per platform" 
+            required 
+            error={errors.maxSocialPerPlatform}
+            hint={
+              <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                <span className="text-emerald-400 font-semibold font-mono">⚡ Live without restart:</span> Caps per platform (YouTube, X, Instagram, etc.) to keep feeds balanced.
+              </span>
+            }
+          >
             <TextInput type="number" inputMode="numeric" min={1} max={50} value={draft.maxSocialPerPlatform} onChange={e => set({ maxSocialPerPlatform: e.target.value })} error={!!errors.maxSocialPerPlatform} />
           </Field>
-          <Field label="News queries" className="sm:col-span-2" hint="One Google News query per line. Blank lines are ignored.">
-            <TextArea rows={4} value={draft.newsQueries} onChange={e => set({ newsQueries: e.target.value })} />
+
+          <Field 
+            label="News queries" 
+            className="sm:col-span-2" 
+            hint={
+              <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                <span className="text-emerald-400 font-semibold font-mono">⚡ Live without restart:</span> Google News queries (one per line). Blank lines ignored.
+              </span>
+            }
+          >
+            <TextArea rows={3} value={draft.newsQueries} onChange={e => set({ newsQueries: e.target.value })} />
           </Field>
         </div>
       </Card>
 
       <Card className="space-y-3">
-        <h3 className="font-extrabold text-white">Email (SMTP)</h3>
-        <p className="text-sm text-slate-400">Used for sign-in codes and notifications.</p>
+        <div>
+          <h3 className="font-extrabold text-white text-base">Email Delivery (SMTP)</h3>
+          <p className="text-xs text-slate-400 mt-0.5">Used for passwordless one-time passcodes (OTP) and notifications.</p>
+        </div>
         <Checkbox label="Send email through this SMTP server" checked={draft.smtpEnabled} onChange={v => set({ smtpEnabled: v })} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Host" required={draft.smtpEnabled} error={errors.smtpHost}>
+          <Field 
+            label="Host" 
+            required={draft.smtpEnabled} 
+            error={errors.smtpHost}
+            hint={
+              <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                <span className="text-emerald-400 font-semibold font-mono">⚡ Live without restart:</span> Mail server host.
+              </span>
+            }
+          >
             <TextInput value={draft.smtpHost} onChange={e => set({ smtpHost: e.target.value })} error={!!errors.smtpHost} autoCapitalize="none" />
           </Field>
-          <Field label="Port" required={draft.smtpEnabled} error={errors.smtpPort} hint="Usually 587 or 465">
+
+          <Field 
+            label="Port" 
+            required={draft.smtpEnabled} 
+            error={errors.smtpPort} 
+            hint={
+              <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                <span className="text-emerald-400 font-semibold font-mono">⚡ Live without restart:</span> Usually 587 (TLS) or 465 (SSL).
+              </span>
+            }
+          >
             <TextInput type="number" inputMode="numeric" value={draft.smtpPort} onChange={e => set({ smtpPort: e.target.value })} error={!!errors.smtpPort} />
           </Field>
-          <Field label="Username">
+
+          <Field 
+            label="Username"
+            hint={
+              <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                <span className="text-emerald-400 font-semibold font-mono">⚡ Live without restart:</span> SMTP authentication username.
+              </span>
+            }
+          >
             <TextInput value={draft.smtpUser} onChange={e => set({ smtpUser: e.target.value })} autoCapitalize="none" autoComplete="off" />
           </Field>
-          <Field label="Password" hint={passIsSet ? 'A password is saved. Leave blank to keep it.' : 'Not set.'}>
+
+          <Field 
+            label="Password" 
+            hint={
+              <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                <span className="text-emerald-400 font-semibold font-mono">⚡ Live without restart:</span> {passIsSet ? 'A password is saved. Leave blank to keep it.' : 'Not set.'}
+              </span>
+            }
+          >
             <TextInput
               type="password"
               value={newPass}
@@ -247,7 +455,18 @@ export const SettingsSection: React.FC<{ settings: SystemSettings; onRefreshAll:
               autoComplete="new-password"
             />
           </Field>
-          <Field label="From address" required={draft.smtpEnabled} error={errors.smtpFrom} className="sm:col-span-2" hint='e.g. ADT10 Fans <no-reply@example.com>'>
+
+          <Field 
+            label="From address" 
+            required={draft.smtpEnabled} 
+            error={errors.smtpFrom} 
+            className="sm:col-span-2" 
+            hint={
+              <span className="flex items-center gap-1 text-[11px] text-slate-400">
+                <span className="text-emerald-400 font-semibold font-mono">⚡ Live without restart:</span> Sender header (e.g. ADT10 Fans &lt;no-reply@adt10fans.com&gt;).
+              </span>
+            }
+          >
             <TextInput value={draft.smtpFrom} onChange={e => set({ smtpFrom: e.target.value })} error={!!errors.smtpFrom} autoCapitalize="none" />
           </Field>
         </div>

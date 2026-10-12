@@ -23,7 +23,14 @@ export function getCuratorConfig(): CuratorConfigResolution {
   let feedId = '';
   let feedIdSource: CuratorConfigResolution['feedIdSource'] = 'none';
 
-  if (process.env.CURATOR_FEED_ID?.trim()) {
+  // Check Admin Console settings first (Admin Console takes priority over environment variables)
+  if (settings?.curatorFeedId?.trim()) {
+    feedId = settings.curatorFeedId.trim();
+    feedIdSource = 'db:settings';
+  } else if (settings?.curatorFeedUuid?.trim()) {
+    feedId = settings.curatorFeedUuid.trim();
+    feedIdSource = 'db:settings';
+  } else if (process.env.CURATOR_FEED_ID?.trim()) {
     feedId = process.env.CURATOR_FEED_ID.trim();
     feedIdSource = 'env:CURATOR_FEED_ID';
   } else if (process.env.VITE_CURATOR_FEED_ID?.trim()) {
@@ -32,12 +39,6 @@ export function getCuratorConfig(): CuratorConfigResolution {
   } else if (process.env.CURATOR_FEED_UUID?.trim()) {
     feedId = process.env.CURATOR_FEED_UUID.trim();
     feedIdSource = 'env:CURATOR_FEED_UUID';
-  } else if (settings?.curatorFeedId?.trim()) {
-    feedId = settings.curatorFeedId.trim();
-    feedIdSource = 'db:settings';
-  } else if (settings?.curatorFeedUuid?.trim()) {
-    feedId = settings.curatorFeedUuid.trim();
-    feedIdSource = 'db:settings';
   }
 
   // Clean feedId if user accidentally pasted full URL or script tag
@@ -47,11 +48,14 @@ export function getCuratorConfig(): CuratorConfigResolution {
   }
   feedId = feedId.replace(/\.js$/, '').replace(/^#/, '').trim();
 
-  // Resolve API Key across all known variants
+  // Resolve API Key: Admin Console settings takes priority over environment variables
   let apiKey = '';
   let apiKeySource: CuratorConfigResolution['apiKeySource'] = 'none';
 
-  if (process.env.CURATOR_API_KEY?.trim()) {
+  if (settings?.curatorApiKey?.trim()) {
+    apiKey = settings.curatorApiKey.trim();
+    apiKeySource = 'db:settings';
+  } else if (process.env.CURATOR_API_KEY?.trim()) {
     apiKey = process.env.CURATOR_API_KEY.trim();
     apiKeySource = 'env:CURATOR_API_KEY';
   } else if (process.env.VITE_CURATOR_API_KEY?.trim()) {
@@ -60,9 +64,6 @@ export function getCuratorConfig(): CuratorConfigResolution {
   } else if (process.env.CURATOR_KEY?.trim()) {
     apiKey = process.env.CURATOR_KEY.trim();
     apiKeySource = 'env:CURATOR_KEY';
-  } else if (settings?.curatorApiKey?.trim()) {
-    apiKey = settings.curatorApiKey.trim();
-    apiKeySource = 'db:settings';
   }
 
   const containerId = settings?.curatorContainerId?.trim() || 'curator-feed-default-feed-layout';
