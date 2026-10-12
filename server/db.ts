@@ -1,9 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import { generateInitialProposalSettings } from './proposalDefaults';
-import { OFFICIAL_2026_TEAMS } from '../src/data/officialTeams';
-import { FALLBACK_HANDLES } from '../src/data/officialHandles';
-import { OFFICIAL_FEED_ITEMS } from '../src/data/officialFeeds';
+import { OFFICIAL_2026_TEAMS } from '../src/constants/officialTeams';
+import { FALLBACK_HANDLES } from '../src/constants/officialHandles';
+import { OFFICIAL_FEED_ITEMS } from '../src/constants/officialFeeds';
 
 export const SUPER_ADMIN_EMAIL = 'solarastra.in@gmail.com';
 

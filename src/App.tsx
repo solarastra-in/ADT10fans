@@ -39,9 +39,9 @@ import { updatePageSeo, ROUTE_SEO } from './utils/seo';
 import { parsePath, getPathForTab } from './utils/navigation';
 import { auth, requestFCMToken, registerForegroundPushListener, fetchTeamsFromFirestore, fetchFeedItemsFromFirestore } from './firebase';
 import { getRedirectResult } from 'firebase/auth';
-import { OFFICIAL_2026_TEAMS } from './data/officialTeams';
-import { FALLBACK_HANDLES } from './data/officialHandles';
-import { OFFICIAL_FEED_ITEMS } from './data/officialFeeds';
+import { OFFICIAL_2026_TEAMS } from './constants/officialTeams';
+import { FALLBACK_HANDLES } from './constants/officialHandles';
+import { OFFICIAL_FEED_ITEMS } from './constants/officialFeeds';
 import { 
   getScheduledReminders, 
   toggleMatchReminder, 

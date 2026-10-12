@@ -1,9 +1,9 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, setDoc, writeBatch } from 'firebase/firestore';
 import cfg from '../firebase-applet-config.json' with { type: 'json' };
-import { OFFICIAL_2026_TEAMS } from '../src/data/officialTeams';
-import { OFFICIAL_FEED_ITEMS } from '../src/data/officialFeeds';
-import { FALLBACK_HANDLES } from '../src/data/officialHandles';
+import { OFFICIAL_2026_TEAMS } from '../src/constants/officialTeams';
+import { OFFICIAL_FEED_ITEMS } from '../src/constants/officialFeeds';
+import { FALLBACK_HANDLES } from '../src/constants/officialHandles';
 
 const app = initializeApp(cfg);
 const db = getFirestore(app, cfg.firestoreDatabaseId);
