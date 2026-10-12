@@ -19,7 +19,7 @@ import { getAllEnvVariables, saveEnvOverrides } from './server/envConfig';
 import { getCuratorConfig, fetchLiveCuratorFeed } from './server/curator';
 
 export const app = express();
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+const PORT = 3000;
 
 app.set('trust proxy', true);
 app.disable('x-powered-by');
@@ -42,6 +42,7 @@ app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'camera=(), geolocation=(), microphone=(self)');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
 
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {

@@ -16,7 +16,7 @@ import {
 } from './types';
 import { api, clearStoredToken } from './api';
 import { Header } from './components/Header';
-import { AuthModal } from './components/AuthModal';
+import { AuthModal, completeGoogleLogin } from './components/AuthModal';
 import { TeamPickerModal } from './components/TeamPickerModal';
 import { LiveMatchTicker } from './components/LiveMatchTicker';
 import { SocialCuratorWall } from './components/SocialCuratorWall';
@@ -37,7 +37,8 @@ import { MatchOverviewModal } from './components/MatchOverviewModal';
 import { ADT10Logo, ArabianAcesAttribution } from './components/Branding';
 import { updatePageSeo, ROUTE_SEO } from './utils/seo';
 import { parsePath, getPathForTab } from './utils/navigation';
-import { requestFCMToken, registerForegroundPushListener, fetchTeamsFromFirestore, fetchFeedItemsFromFirestore } from './firebase';
+import { auth, requestFCMToken, registerForegroundPushListener, fetchTeamsFromFirestore, fetchFeedItemsFromFirestore } from './firebase';
+import { getRedirectResult } from 'firebase/auth';
 import { OFFICIAL_2026_TEAMS } from './data/officialTeams';
 import { FALLBACK_HANDLES } from './data/officialHandles';
 import { OFFICIAL_FEED_ITEMS } from './data/officialFeeds';
@@ -270,6 +271,19 @@ export default function App() {
     } else {
       setFcmStatus('unsupported');
     }
+  }, []);
+
+  // Handle return from Firebase signInWithRedirect
+  useEffect(() => {
+    getRedirectResult(auth).then(async (result) => {
+      if (result && result.user) {
+        console.log('[AUTH] Handling redirect login result for:', result.user.email);
+        const loggedUser = await completeGoogleLogin(result.user);
+        setUser(loggedUser);
+      }
+    }).catch(err => {
+      console.warn('[AUTH] getRedirectResult error:', err);
+    });
   }, []);
 
   // Setup Firebase Cloud Messaging Foreground Listener
