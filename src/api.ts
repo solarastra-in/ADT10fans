@@ -19,6 +19,18 @@ export const clearStoredToken = () => {
   }
 };
 
+function toQueryString(params?: Record<string, any>): string {
+  if (!params) return '';
+  const search = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== '') {
+      search.set(k, String(v));
+    }
+  }
+  const s = search.toString();
+  return s ? `?${s}` : '';
+}
+
 async function fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> {
   const token = getStoredToken();
   const headers = new Headers(options.headers || {});
@@ -125,8 +137,7 @@ export const api = {
       method: 'DELETE',
     }),
   getHandles: (params?: { teamId?: string; platform?: string; status?: string }) => {
-    const search = new URLSearchParams(params as any).toString();
-    return fetchJson<{ handles: SocialHandle[] }>(`/api/handles?${search}`);
+    return fetchJson<{ handles: SocialHandle[] }>(`/api/handles${toQueryString(params)}`);
   },
   saveHandle: (handle: Partial<SocialHandle>) =>
     fetchJson<{ success: boolean; handles: SocialHandle[] }>('/api/handles', {
@@ -140,7 +151,6 @@ export const api = {
 
   // Feeds (Curator style)
   getFeeds: (params?: { teamId?: string; platform?: string; category?: string; status?: string }) => {
-    const search = new URLSearchParams(params as any).toString();
     return fetchJson<{
       items: FeedItem[];
       allItemsRaw?: FeedItem[];
@@ -148,7 +158,7 @@ export const api = {
       limitPerPlatform: number;
       totalCurated: number;
       totalAvailable: number;
-    }>(`/api/feeds?${search}`);
+    }>(`/api/feeds${toQueryString(params)}`);
   },
   saveFeedItem: (item: Partial<FeedItem>) =>
     fetchJson<{ success: boolean; item: FeedItem }>('/api/feeds', {
@@ -227,8 +237,7 @@ export const api = {
 
   // Discussion Forum
   getForumThreads: (params?: { category?: string; teamId?: string; search?: string }) => {
-    const search = new URLSearchParams(params as any).toString();
-    return fetchJson<{ threads: ForumThread[] }>(`/api/forum/threads?${search}`);
+    return fetchJson<{ threads: ForumThread[] }>(`/api/forum/threads${toQueryString(params)}`);
   },
   getForumThreadDetail: (id: string) =>
     fetchJson<{ thread: ForumThread; comments: ForumComment[] }>(`/api/forum/threads/${id}`),
@@ -293,13 +302,12 @@ export const api = {
 
   // Notifications & FCM Real-Time Alerts
   getNotifications: (params?: { category?: string }) => {
-    const search = new URLSearchParams(params as any).toString();
     return fetchJson<{
       notifications: NotificationItem[];
       unreadCount: number;
       total: number;
       fcmSubscribed: boolean;
-    }>(`/api/notifications?${search}`);
+    }>(`/api/notifications${toQueryString(params)}`);
   },
   getNotificationDetails: (id: string) =>
     fetchJson<{

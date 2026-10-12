@@ -37,7 +37,7 @@ import { MatchOverviewModal } from './components/MatchOverviewModal';
 import { ADT10Logo, ArabianAcesAttribution } from './components/Branding';
 import { updatePageSeo, ROUTE_SEO } from './utils/seo';
 import { parsePath, getPathForTab } from './utils/navigation';
-import { requestFCMToken, registerForegroundPushListener } from './firebase';
+import { requestFCMToken, registerForegroundPushListener, fetchTeamsFromFirestore, fetchFeedItemsFromFirestore } from './firebase';
 import { OFFICIAL_2026_TEAMS } from './data/officialTeams';
 import { FALLBACK_HANDLES } from './data/officialHandles';
 import { OFFICIAL_FEED_ITEMS } from './data/officialFeeds';
@@ -490,8 +490,21 @@ export default function App() {
         // ignore
       }
 
-      const rawTeams = (teamsRes.teams && teamsRes.teams.length > 0) ? teamsRes.teams : OFFICIAL_2026_TEAMS;
-      const mergedTeams = rawTeams.map(t => {
+      // Resolve teams: API -> Firestore -> Bundled 2026 Official Franchises
+      let resolvedTeams = (teamsRes.teams && teamsRes.teams.length > 0) ? teamsRes.teams : [];
+      if (resolvedTeams.length === 0) {
+        try {
+          const fsTeams = await fetchTeamsFromFirestore();
+          if (fsTeams && fsTeams.length > 0) resolvedTeams = fsTeams;
+        } catch {
+          // ignore
+        }
+      }
+      if (resolvedTeams.length === 0) {
+        resolvedTeams = OFFICIAL_2026_TEAMS;
+      }
+
+      const mergedTeams = resolvedTeams.map(t => {
         const defaultTeam = OFFICIAL_2026_TEAMS.find(dt => dt.id === t.id);
         const customSquad = squadOverrides[t.id];
         const serverSquad = Array.isArray(t.squad) && t.squad.length > 0 ? t.squad : null;
@@ -511,7 +524,15 @@ export default function App() {
         setHandles(FALLBACK_HANDLES);
       }
 
-      const rawFeeds = (feedsRes.allItemsRaw && feedsRes.allItemsRaw.length > 0) ? feedsRes.allItemsRaw : (feedsRes.items && feedsRes.items.length > 0 ? feedsRes.items : null);
+      let rawFeeds = (feedsRes.allItemsRaw && feedsRes.allItemsRaw.length > 0) ? feedsRes.allItemsRaw : (feedsRes.items && feedsRes.items.length > 0 ? feedsRes.items : null);
+      if (!rawFeeds || rawFeeds.length === 0) {
+        try {
+          const fsFeeds = await fetchFeedItemsFromFirestore();
+          if (fsFeeds && fsFeeds.length > 0) rawFeeds = fsFeeds;
+        } catch {
+          // ignore
+        }
+      }
       if (rawFeeds && rawFeeds.length > 0) {
         setFeedItems(rawFeeds);
       } else {

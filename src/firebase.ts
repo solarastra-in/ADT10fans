@@ -1,8 +1,9 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { getFirestore, doc, getDocFromServer, collection, getDocs } from 'firebase/firestore';
 import { getMessaging, getToken, onMessage, isSupported, Messaging } from 'firebase/messaging';
 import firebaseConfig from '../firebase-applet-config.json';
+import type { Team, FeedItem, NotificationItem } from './types';
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
@@ -109,3 +110,38 @@ export async function registerForegroundPushListener(
     return null;
   }
 }
+
+/** Fetch teams directly from Firebase Firestore with fallback to local */
+export async function fetchTeamsFromFirestore(): Promise<Team[]> {
+  try {
+    const snap = await getDocs(collection(firestoreDb, 'teams'));
+    if (!snap.empty) {
+      const teams: Team[] = [];
+      snap.forEach(d => {
+        teams.push({ id: d.id, ...d.data() } as Team);
+      });
+      return teams;
+    }
+  } catch (err) {
+    console.warn('[Firestore] Could not fetch teams from Firestore:', err);
+  }
+  return [];
+}
+
+/** Fetch social feed items directly from Firebase Firestore */
+export async function fetchFeedItemsFromFirestore(): Promise<FeedItem[]> {
+  try {
+    const snap = await getDocs(collection(firestoreDb, 'feed_items'));
+    if (!snap.empty) {
+      const items: FeedItem[] = [];
+      snap.forEach(d => {
+        items.push({ id: d.id, ...d.data() } as FeedItem);
+      });
+      return items;
+    }
+  } catch (err) {
+    console.warn('[Firestore] Could not fetch feed items from Firestore:', err);
+  }
+  return [];
+}
+

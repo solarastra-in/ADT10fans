@@ -1926,6 +1926,22 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   res.status(err?.status || 500).json({ error: IS_PROD ? 'Something went wrong' : err?.message || 'Server error' });
 });
 
+export function ensureAppInitialized() {
+  const currentStore = db.get();
+  const needsSquadUpgrade = !currentStore.teams || currentStore.teams.length === 0 ||
+    currentStore.teams.some(t => !t.squad || t.squad.length < 18 || t.squad.some(p => p.credits !== undefined)) ||
+    !currentStore.handles || currentStore.handles.length < 30 ||
+    !currentStore.feedItems || currentStore.feedItems.length < 50;
+
+  if (needsSquadUpgrade) {
+    console.log('[SETUP] Seeding/upgrading official 2026 Cricbuzz franchises & confirmed squads and all team handles...');
+    seedOfficialTeams(false);
+  }
+}
+
+// Ensure database has official 2026 teams, confirmed squads, handles, and feeds pre-populated
+ensureAppInitialized();
+
 // ---------- static / Vite ----------
 async function startServer() {
   if (!IS_PROD) {
@@ -1946,17 +1962,7 @@ async function startServer() {
     });
   }
 
-  // Ensure official 2026 Cricbuzz franchises, confirmed squads, and comprehensive social handles are seeded
-  const currentStore = db.get();
-  const needsSquadUpgrade = !currentStore.teams || currentStore.teams.length === 0 ||
-    currentStore.teams.some(t => !t.squad || t.squad.length < 18 || t.squad.some(p => p.credits !== undefined)) ||
-    !currentStore.handles || currentStore.handles.length < 30 ||
-    !currentStore.feedItems || currentStore.feedItems.length < 50;
-
-  if (needsSquadUpgrade) {
-    console.log('[SETUP] Seeding/upgrading official 2026 Cricbuzz franchises & confirmed squads and all team handles...');
-    seedOfficialTeams(false);
-  }
+  ensureAppInitialized();
 
   // Ensure verified team social media handles have feeds populated across all teams
   try {
