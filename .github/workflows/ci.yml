@@ -24,6 +24,8 @@ jobs:
           export CHROMIUM_PATH=$(ls -d ~/.cache/ms-playwright/chromium-*/chrome-linux/chrome | head -1)
           npm run test:all 2>&1 | tee e2e.log
           exit ${PIPESTATUS[0]}
+      - name: Vercel function starts and serves pages
+        run: npm run test:vercel
       - name: Report failures
         if: failure()
         run: |

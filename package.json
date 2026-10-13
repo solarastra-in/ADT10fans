@@ -15,7 +15,8 @@
     "test:browser": "bash tests/run-e2e.sh browser",
     "test:prod": "bash tests/run-e2e.sh prod",
     "test:all": "bash tests/run-e2e.sh all",
-    "clean": "rm -rf dist dist-server"
+    "clean": "rm -rf dist dist-server",
+    "test:vercel": "node tests/vercel-function.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
