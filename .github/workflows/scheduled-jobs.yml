@@ -1,0 +1,22 @@
+# Calls the site's scheduled jobs (Dream XI lock reminders, live scores, feed pulls) every 10 minutes.
+# Use this when the host has no cron of its own (Vercel Hobby only allows daily cron jobs).
+# Repository settings > Secrets and variables > Actions:
+#   secret   CRON_SECRET  same value as the site's CRON_SECRET
+#   variable APP_URL      e.g. https://fans.example.com
+name: Scheduled jobs
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Run scheduled jobs
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          test -n "$APP_URL" && test -n "$CRON_SECRET" || { echo "Set the APP_URL variable and CRON_SECRET secret"; exit 1; }
+          curl -fsS --max-time 120 -X POST -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/run"

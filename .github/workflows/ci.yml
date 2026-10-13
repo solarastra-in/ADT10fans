@@ -1,0 +1,25 @@
+# Type-checks and runs every end-to-end suite (API journeys, shared storage, production build,
+# phone-width browser journeys) on each push and pull request.
+name: CI
+on:
+  push:
+    branches: [main, fan-platform-v2]
+  pull_request: {}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - name: Install Chromium for the browser tests
+        run: npx -y playwright@1.50.1 install --with-deps chromium
+      - name: End-to-end tests
+        run: |
+          export CHROMIUM_PATH=$(ls -d ~/.cache/ms-playwright/chromium-*/chrome-linux/chrome | head -1)
+          npm run test:all

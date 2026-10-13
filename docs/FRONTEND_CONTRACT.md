@@ -1,4 +1,4 @@
-# Frontend ↔ server contract (production pass, Sept 2026)
+# Frontend ↔ server contract (updated October 2026)
 
 This is the contract every component must follow. `src/api.ts` and `src/types.ts` already implement it — use them, do not add ad‑hoc `fetch` calls.
 
@@ -7,7 +7,7 @@ This is the contract every component must follow. `src/api.ts` and `src/types.ts
 1. **No invented data.** Never hardcode teams, players, scores, fixtures, follower/view/listener counts, fan counts, subscriber counts, prices, venues, schools, creators, quotes, testimonials, ROI numbers or social posts in components. Everything fans see comes from the API, which an admin fills in through the Admin Console.
 2. **No fake links.** Only render a link when the URL came from the API. Never build profile URLs from team names. Never fall back to `https://youtube.com`, `https://arabianaces.com`, Unsplash or DiceBear images. If an image URL is missing, render a neutral initials/icon placeholder (CSS only).
 3. **Empty states, not filler.** When a list is empty, show a short friendly empty state ("Fixtures will appear here once they're announced.") and, when `user?.role === 'admin'`, a button that takes the admin to the relevant Admin Console tab. Never show "demo", "simulated", "mock" wording to fans.
-4. **No fabricated verification.** Only show a "verified" badge on a handle when `handle.status === 'verified'`, and on a feed item only when `item.verifiedReal === true`.
+4. **No fabricated verification.** Only list a handle when `handle.status === 'verified'` (the public API returns nothing else). Feed items are real by construction: they come from a pull of a verified source, an admin, or the approval queue.
 5. **Numbers must be real.** Counts shown to fans (fans, entries, bookings, interest registrations) come from the server. Never add a base offset.
 6. **Don't promise what doesn't exist.** No "SHA-256 provably fair" hype unless the draw has `seed`/`entrantsHash` (show them after it is drawn). No "15% off tickets" unless the tier says so. No "AI-generated live commentary".
 7. **Brand text** (site name, tagline, copyright holder, season label/dates, venue, ticker) comes from `PublicConfig` (`api.getConfig()`), loaded once in `App.tsx` and passed down as `config`. Fallbacks when a field is blank: brandName `ADT10 Fans`, copyright holder `Azlir Sports`.
