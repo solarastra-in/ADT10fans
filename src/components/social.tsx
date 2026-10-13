@@ -154,7 +154,15 @@ function XTimeline({ screenName }: { screenName: string }) {
       cancelled = true;
     };
   }, [screenName]);
-  if (failed) return <p className="text-xs text-slate-400 p-3">{t('The X timeline could not load here. Open the profile on X instead.')}</p>;
+  if (failed)
+    return (
+      <p className="text-xs text-slate-400 p-3" data-testid="x-timeline-failed">
+        {t('The X timeline could not load here.')}{' '}
+        <a className="text-amber-300 underline" href={`https://x.com/${screenName}`} target="_blank" rel="noopener noreferrer">
+          {t('Open @{name} on X', { name: screenName })}
+        </a>
+      </p>
+    );
   return (
     <div ref={ref} className="rounded-xl overflow-hidden bg-slate-950 min-h-[200px]" data-testid="x-timeline">
       <a className="twitter-timeline" data-theme="dark" data-height="560" data-dnt="true" href={`https://twitter.com/${screenName}`}>

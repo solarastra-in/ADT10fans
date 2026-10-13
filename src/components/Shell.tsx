@@ -70,7 +70,10 @@ export function Header({ route }: { route: Route }) {
           ))}
         </nav>
         <div className="ms-auto flex items-center gap-1.5">
-          <LanguagePicker className="hidden sm:inline-flex" />
+          {/* On phones the language picker lives in the "More" sheet. */}
+          <div className="hidden sm:block">
+            <LanguagePicker />
+          </div>
           <NotificationCenter />
           {user?.role === 'admin' && (
             <Link to="/admin" className="hidden sm:inline-flex w-11 h-11 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 items-center justify-center" aria-label={t('Admin console')}>
