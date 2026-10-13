@@ -1,12 +1,31 @@
 import { db, Player, Team } from './db';
-import { OFFICIAL_2026_TEAMS } from './seedOfficial';
+import { fetchText } from './feeds';
+import { normName } from './fantasy';
+import { OFFICIAL_2026_TEAMS } from './data/officialTeams';
 
+/**
+ * Squad refresh from a cricket data provider.
+ *
+ *  cricbuzz     Reads the public squads page for the series and cross-checks each player's
+ *               Cricbuzz profile id and link against the squads on the site. Players listed on
+ *               Cricbuzz but missing here are added (role from Cricbuzz). Nothing is invented: when
+ *               the page cannot be read, the squads are left as they are and the reason is shown.
+ *  cricketdata  CricketData.org series_squad API (needs CRICKET_API_KEY).
+ *  custom       Any https URL returning { teams: [{ name, players: [{ name, role, ... }] }] }
+ *               or CricketData's shape.
+ *
+ * Admin-set fantasy credits and notes are always kept for players who stay in a squad.
+ */
 export interface CricketSyncOptions {
   provider?: 'cricbuzz' | 'cricketdata' | 'custom';
-  seriesId?: string; // default: '13307' (Abu Dhabi T10 2026)
+  seriesId?: string;
   apiUrl?: string;
   apiKey?: string;
+  /** Replace each squad with the provider's list (players not listed by the provider are removed). */
   overwrite?: boolean;
+  /** Preview only: report what would change without saving. */
+  dryRun?: boolean;
+  teamId?: string;
 }
 
 export interface CricketSyncLogEntry {
@@ -22,335 +41,234 @@ export interface CricketSyncResult {
   teamsCount: number;
   playersCount: number;
   teamsUpdated: string[];
+  added: string[];
+  removed: string[];
+  linked: number;
   executionTimeMs: number;
   timestamp: string;
   logs: CricketSyncLogEntry[];
   error?: string;
+  dryRun: boolean;
 }
 
-/**
- * Standardize cricket role to our app's Player['role'] union
- */
-function normalizeRole(cricRole?: string, battingStyle?: string, bowlingStyle?: string): Player['role'] {
-  const r = (cricRole || '').toLowerCase();
-  if (r.includes('keeper') || r.includes('wk')) return 'wicketkeeper';
-  if (r.includes('allrounder') || r.includes('all-rounder') || (battingStyle && bowlingStyle && !r.includes('bowler') && !r.includes('batter'))) return 'allrounder';
-  if (r.includes('bowler')) return 'bowler';
+interface ProviderPlayer {
+  name: string;
+  role?: string;
+  battingStyle?: string;
+  bowlingStyle?: string;
+  country?: string;
+  cricbuzzId?: string;
+  profileUrl?: string;
+  photoUrl?: string;
+}
+interface ProviderTeam {
+  name: string;
+  players: ProviderPlayer[];
+}
+
+const DEFAULT_SERIES = process.env.CRICBUZZ_SERIES_ID || '13307';
+const CRICBUZZ_SLUG = process.env.CRICBUZZ_SERIES_SLUG || 'abu-dhabi-t10-league-2026';
+
+export function normalizeRole(raw?: string): Player['role'] {
+  const r = (raw || '').toLowerCase();
+  if (r.includes('wk') || r.includes('keeper')) return 'wicketkeeper';
+  if (r.includes('allrounder') || r.includes('all-rounder') || r.includes('all rounder')) return 'allrounder';
+  if (r.includes('bowl')) return 'bowler';
   return 'batter';
 }
 
-/**
- * Test connectivity to a cricket data provider
- */
-export async function testCricketProviderConnection(options: CricketSyncOptions = {}) {
-  const provider = options.provider || 'cricbuzz';
-  const seriesId = options.seriesId || process.env.CRICBUZZ_SERIES_ID || '13307';
-  const start = Date.now();
+const slug = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
-  try {
-    if (provider === 'cricbuzz') {
-      const url = `https://www.cricbuzz.com/cricket-series/${seriesId}/abu-dhabi-t10-league-2026/squads`;
-      const res = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        },
-      });
-
-      return {
-        success: true,
-        provider: 'Cricbuzz Official Series API',
-        endpoint: url,
-        status: res.status,
-        statusText: res.statusText,
-        latencyMs: Date.now() - start,
-        message: `Successfully connected to Cricbuzz Series ${seriesId} (HTTP ${res.status}).`,
-      };
-    } else if (provider === 'cricketdata') {
-      const apiKey = options.apiKey || process.env.CRICKET_API_KEY || '';
-      const url = options.apiUrl || `https://api.cricapi.com/v1/series_squad?apikey=${apiKey}&id=${seriesId}`;
-      const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
-      const data = await res.json().catch(() => ({}));
-
-      return {
-        success: res.ok,
-        provider: 'CricketData API',
-        endpoint: url.replace(apiKey, 'REDACTED'),
-        status: res.status,
-        statusText: res.statusText,
-        latencyMs: Date.now() - start,
-        message: res.ok ? `Connected to CricketData API successfully.` : `Provider response: ${JSON.stringify(data)}`,
-      };
-    } else {
-      const url = options.apiUrl || '';
-      if (!url) throw new Error('API URL is required for custom cricket provider');
-      const res = await fetch(url);
-      return {
-        success: res.ok,
-        provider: 'Custom Cricket Provider',
-        endpoint: url,
-        status: res.status,
-        statusText: res.statusText,
-        latencyMs: Date.now() - start,
-        message: `Connected to custom provider (HTTP ${res.status}).`,
-      };
+/** Parses the Cricbuzz squads page: team headings followed by /profiles/<id>/<slug> links. */
+export function parseCricbuzzSquads(html: string, teamNames: string[]): ProviderTeam[] {
+  const lower = html.toLowerCase();
+  const positions = teamNames
+    .map(name => {
+      const n = name.toLowerCase();
+      // Prefer the squad section heading (e.g. "UAE Bulls Squad"), else the first mention.
+      let at = lower.indexOf(`${n} squad`);
+      if (at < 0) at = lower.indexOf(`>${n}<`);
+      if (at < 0) at = lower.indexOf(n);
+      return { name, at };
+    })
+    .filter(p => p.at >= 0)
+    .sort((a, b) => a.at - b.at);
+  const teams: ProviderTeam[] = [];
+  positions.forEach((p, i) => {
+    const end = i + 1 < positions.length ? positions[i + 1].at : html.length;
+    const section = html.slice(p.at, end);
+    const seen = new Set<string>();
+    const players: ProviderPlayer[] = [];
+    const re = /href="(?:https:\/\/www\.cricbuzz\.com)?\/profiles\/(\d+)\/([a-z0-9-]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(section))) {
+      const id = m[1];
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const inner = m[3].replace(/<[^>]+>/g, '\n').split('\n').map(s => s.trim()).filter(Boolean);
+      const name = inner[0] || m[2].split('-').map(w => w[0].toUpperCase() + w.slice(1)).join(' ');
+      const role = inner.find(s => /bat|bowl|keeper|wk|allrounder/i.test(s));
+      const img = m[0].match(/src="(https:\/\/static\.cricbuzz\.com\/a\/img\/v1\/[^"]+)"/);
+      players.push({ name: name.replace(/\s*\((c|wk|c & wk)\)\s*$/i, ''), role, cricbuzzId: id, profileUrl: `https://www.cricbuzz.com/profiles/${id}/${m[2]}`, photoUrl: img?.[1] });
     }
-  } catch (err: any) {
+    if (players.length) teams.push({ name: p.name, players });
+  });
+  return teams;
+}
+
+export function parseCricketDataSquads(json: any): ProviderTeam[] {
+  const list = json?.data || json?.teams || [];
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((t: any) => ({
+      name: String(t.teamName || t.name || ''),
+      players: (Array.isArray(t.players) ? t.players : []).map((p: any) => ({
+        name: String(p.name || ''),
+        role: p.role || p.playingRole,
+        battingStyle: p.battingStyle,
+        bowlingStyle: p.bowlingStyle,
+        country: p.country,
+        photoUrl: typeof p.playerImg === 'string' && /^https:\/\//.test(p.playerImg) && !/icon512|default/i.test(p.playerImg) ? p.playerImg : undefined,
+      })).filter((p: ProviderPlayer) => p.name),
+    }))
+    .filter((t: ProviderTeam) => t.name && t.players.length);
+}
+
+function matchTeam(teams: Team[], providerName: string): Team | undefined {
+  const n = normName(providerName);
+  return teams.find(t => normName(t.name) === n) || teams.find(t => n.includes(normName(t.name)) || normName(t.name).includes(n)) || teams.find(t => normName(t.short) === n);
+}
+
+async function loadProvider(opts: CricketSyncOptions, teamNames: string[]): Promise<{ teams: ProviderTeam[]; label: string }> {
+  const provider = opts.provider || 'cricbuzz';
+  const seriesId = (opts.seriesId || DEFAULT_SERIES).replace(/\D/g, '') || DEFAULT_SERIES;
+  if (provider === 'cricbuzz') {
+    const url = `https://www.cricbuzz.com/cricket-series/${seriesId}/${CRICBUZZ_SLUG}/squads`;
+    const html = await fetchText(url, 12000);
+    return { teams: parseCricbuzzSquads(html, teamNames), label: `Cricbuzz series ${seriesId}` };
+  }
+  if (provider === 'cricketdata') {
+    const key = opts.apiKey || process.env.CRICKET_API_KEY || '';
+    if (!key) throw new Error('Set CRICKET_API_KEY (CricketData.org) first');
+    const id = opts.seriesId || process.env.CRICKETDATA_SERIES_ID || '';
+    if (!id) throw new Error('Enter the CricketData.org series id');
+    const json = JSON.parse(await fetchText(`https://api.cricapi.com/v1/series_squad?apikey=${encodeURIComponent(key)}&id=${encodeURIComponent(id)}`, 12000));
+    if (json.status && json.status !== 'success') throw new Error(`CricketData: ${json.reason || json.status}`);
+    return { teams: parseCricketDataSquads(json), label: 'CricketData.org' };
+  }
+  const url = opts.apiUrl || '';
+  if (!/^https:\/\//.test(url)) throw new Error('Enter an https:// URL for the custom provider');
+  const json = JSON.parse(await fetchText(url, 12000));
+  return { teams: parseCricketDataSquads(json), label: 'Custom provider' };
+}
+
+export async function testCricketProviderConnection(options: CricketSyncOptions = {}) {
+  const start = Date.now();
+  try {
+    const names = db.get().teams.map(t => t.name);
+    const { teams, label } = await loadProvider(options, names.length ? names : OFFICIAL_2026_TEAMS.map(t => t.name));
+    const players = teams.reduce((s, t) => s + t.players.length, 0);
     return {
-      success: false,
-      provider,
+      success: teams.length > 0,
+      provider: label,
       latencyMs: Date.now() - start,
-      error: err?.message || String(err),
-      message: `Failed to connect to ${provider}: ${err?.message || err}`,
+      teams: teams.map(t => ({ name: t.name, players: t.players.length })),
+      message: teams.length ? `${label}: read ${teams.length} team(s) and ${players} player(s).` : `${label} answered but no squads could be read from it.`,
     };
+  } catch (e: any) {
+    return { success: false, provider: options.provider || 'cricbuzz', latencyMs: Date.now() - start, error: e?.message || String(e), message: `Could not read squads: ${e?.message || e}` };
   }
 }
 
-/**
- * Automated script to fetch official team and squad data from cricket provider API,
- * format into our app's Team and Squad data structures, and persist in the database.
- */
 export async function fetchAndPersistOfficialSquads(options: CricketSyncOptions = {}): Promise<CricketSyncResult> {
-  const startTime = Date.now();
+  const started = Date.now();
   const logs: CricketSyncLogEntry[] = [];
-  const addLog = (level: CricketSyncLogEntry['level'], message: string) => {
-    logs.push({ timestamp: new Date().toISOString(), level, message });
-    console.log(`[CRICKET-SYNC][${level.toUpperCase()}] ${message}`);
-  };
-
+  const log = (level: CricketSyncLogEntry['level'], message: string) => logs.push({ timestamp: new Date().toISOString(), level, message });
   const provider = options.provider || 'cricbuzz';
-  const seriesId = options.seriesId || process.env.CRICBUZZ_SERIES_ID || '13307';
-  const overwrite = options.overwrite ?? true;
-
-  addLog('info', `Starting automated cricket data provider sync (Provider: ${provider.toUpperCase()}, Series ID: ${seriesId})...`);
-
+  const seriesId = options.seriesId || DEFAULT_SERIES;
+  const result: CricketSyncResult = {
+    success: false, provider, seriesId, teamsCount: 0, playersCount: 0, teamsUpdated: [], added: [], removed: [], linked: 0,
+    executionTimeMs: 0, timestamp: new Date().toISOString(), logs, dryRun: Boolean(options.dryRun),
+  };
+  let providerTeams: ProviderTeam[] = [];
   try {
-    let rawTeams: Team[] = [];
-
-    if (provider === 'cricbuzz') {
-      const cricbuzzUrl = `https://www.cricbuzz.com/cricket-series/${seriesId}/abu-dhabi-t10-league-2026/squads`;
-      addLog('info', `Fetching official squad rosters from Cricbuzz endpoint: ${cricbuzzUrl}...`);
-
-      let fetchedLive = false;
-      try {
-        const response = await fetch(cricbuzzUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Cache-Control': 'no-cache',
-          },
-        });
-
-        if (response.ok) {
-          const html = await response.text();
-          addLog('info', `Received HTTP 200 response from Cricbuzz (${(html.length / 1024).toFixed(1)} KB HTML). Parsing DOM squads...`);
-          // Note: Cricbuzz squads HTML contains team headers and player cards with cricbuzz profile links, images, and roles.
-          // We combine live HTML inspection with our verified high-fidelity Cricbuzz squad catalog for exact player metadata.
-          fetchedLive = true;
-          addLog('success', `Live Cricbuzz connection confirmed for Series ${seriesId} (Abu Dhabi T10 2026).`);
-        } else {
-          addLog('warn', `Cricbuzz returned HTTP ${response.status}. Using verified high-fidelity provider dataset.`);
-        }
-      } catch (e: any) {
-        addLog('warn', `Live provider fetch network check: ${e?.message || e}. Using verified provider dataset.`);
-      }
-
-      // Map from high-fidelity Cricbuzz Abu Dhabi T10 2026 confirmed squad database
-      rawTeams = OFFICIAL_2026_TEAMS;
-      addLog('info', `Loaded 6 official franchises with verified 18-player Cricbuzz squads.`);
-    } else if (provider === 'cricketdata') {
-      const apiKey = options.apiKey || process.env.CRICKET_API_KEY;
-      if (!apiKey) {
-        throw new Error('CricketData API Key is required. Please set CRICKET_API_KEY in Environment Variables.');
-      }
-      const url = options.apiUrl || `https://api.cricapi.com/v1/series_squad?apikey=${apiKey}&id=${seriesId}`;
-      addLog('info', `Connecting to CricketData.org API...`);
-      const res = await fetch(url);
-      const data = await res.json();
-      if (!res.ok || data.status !== 'success') {
-        throw new Error(data.message || 'CricketData API returned an error');
-      }
-      addLog('info', `Parsing CricketData series squads payload...`);
-      // Parse CricketData structure
-      if (Array.isArray(data.data)) {
-        // Format into Team & Squad
-        rawTeams = data.data.map((item: any, idx: number) => {
-          const squadName = item.squadName || item.teamName || `Team ${idx + 1}`;
-          const teamId = squadName.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30);
-          const players: Player[] = (item.players || []).map((p: any) => ({
-            id: `${teamId}-${(p.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
-            teamId,
-            name: p.name || 'Player',
-            role: normalizeRole(p.role),
-            cricbuzzRole: p.role || 'Player',
-            photoUrl: p.playerImg || 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=400&q=80',
-            isIcon: Boolean(p.isIcon),
-            isCaptain: Boolean(p.captain),
-            isKeeper: Boolean(p.keeper),
-            stats: {
-              matches: p.matches || 0,
-              runs: p.runs || 0,
-              wickets: p.wickets || 0,
-              strikeRate: p.strikeRate || 0,
-            },
-          }));
-
-          return {
-            id: teamId,
-            name: squadName,
-            short: squadName.split(/\s+/).map((w: string) => w[0]).join('').slice(0, 4).toUpperCase(),
-            color: '#FACC15',
-            secondaryColor: '#1C1917',
-            home: 'Zayed Cricket Stadium, Abu Dhabi',
-            iconPlayer: players.find(p => p.isIcon)?.name || players[0]?.name || '',
-            sort: idx + 1,
-            squad: players,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          };
-        });
-      }
-    } else {
-      // Custom provider
-      const url = options.apiUrl || '';
-      if (!url) throw new Error('API URL is required for custom provider');
-      addLog('info', `Fetching custom cricket provider endpoint: ${url}...`);
-      const res = await fetch(url);
-      const json = await res.json();
-      if (!Array.isArray(json.teams)) {
-        throw new Error('Custom API response must contain a "teams" array');
-      }
-      rawTeams = json.teams;
-    }
-
-    // Standardize, validate, and format into our app's Team and Squad data structures
-    addLog('info', `Formatting teams and squads into application data structures...`);
     const store = db.get();
-    const now = new Date().toISOString();
-    const updatedTeamNames: string[] = [];
-    let totalPlayers = 0;
+    const { teams, label } = await loadProvider(options, store.teams.map(t => t.name));
+    providerTeams = teams;
+    log('info', `${label}: ${teams.length} team(s), ${teams.reduce((s, t) => s + t.players.length, 0)} player(s) read.`);
+  } catch (e: any) {
+    result.error = e?.message || String(e);
+    log('error', `Could not read squads: ${result.error}. Squads were not changed.`);
+    result.executionTimeMs = Date.now() - started;
+    return result;
+  }
+  if (!providerTeams.length) {
+    result.error = 'No squads could be read from the provider. Squads were not changed.';
+    log('warn', result.error);
+    result.executionTimeMs = Date.now() - started;
+    return result;
+  }
 
-    for (const rawTeam of rawTeams) {
-      const teamId = rawTeam.id;
-      const formattedSquad: Player[] = (rawTeam.squad || []).map((p: any, pIdx: number) => {
-        const name = p.name ? String(p.name).trim() : `Player ${pIdx + 1}`;
-        const playerId = p.id || `${teamId}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
-        const role = normalizeRole(p.role || p.cricbuzzRole, p.battingStyle, p.bowlingStyle);
-        const stats = p.stats || {
-          matches: 0,
-          innings: 0,
-          runs: 0,
-          highestScore: '0',
-          average: 0,
-          strikeRate: 0,
-          fifties: 0,
-          hundreds: 0,
-          fours: 0,
-          sixes: 0,
-          wickets: 0,
-          economy: 0,
-          bestBowling: '-/-',
-        };
-
-        // Notice: Remove any credits/amounts field as required by user specifications
-        const formattedPlayer: Player = {
-          id: playerId,
-          teamId,
-          cricbuzzId: p.cricbuzzId ? String(p.cricbuzzId) : undefined,
-          name,
-          role,
-          cricbuzzRole: p.cricbuzzRole || (role === 'allrounder' ? 'Allrounder' : role === 'bowler' ? 'Bowler' : role === 'wicketkeeper' ? 'WK-Batsman' : 'Batter'),
-          battingStyle: p.battingStyle || 'Right-hand bat',
-          bowlingStyle: p.bowlingStyle || 'Right-arm medium',
-          imageId: typeof p.imageId === 'number' ? p.imageId : undefined,
-          photoUrl: p.photoUrl || (p.imageId ? `https://static.cricbuzz.com/a/img/v1/i1/c${p.imageId}/i.jpg` : 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=400&q=80'),
-          cricbuzzProfileUrl: p.cricbuzzProfileUrl || (p.cricbuzzId ? `https://www.cricbuzz.com/profiles/${p.cricbuzzId}/${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}` : undefined),
-          isIcon: Boolean(p.isIcon),
-          isCaptain: Boolean(p.isCaptain),
-          isKeeper: Boolean(p.isKeeper || role === 'wicketkeeper'),
-          category: p.category || (p.isIcon ? 'Icon' : pIdx < 3 ? 'Platinum' : pIdx < 7 ? 'Diamond' : pIdx < 12 ? 'Gold' : pIdx < 16 ? 'Silver' : 'Local'),
-          stats,
-        };
-
-        return formattedPlayer;
-      });
-
-      totalPlayers += formattedSquad.length;
-
-      const formattedTeam: Team = {
-        id: rawTeam.id,
-        name: rawTeam.name,
-        short: rawTeam.short.toUpperCase(),
-        color: rawTeam.color,
-        secondaryColor: rawTeam.secondaryColor || '#0F172A',
-        home: rawTeam.home || store.settings.venue || 'Zayed Cricket Stadium, Abu Dhabi',
-        iconPlayer: rawTeam.iconPlayer || formattedSquad.find(p => p.isIcon)?.name || formattedSquad[0]?.name || '',
-        headCoach: rawTeam.headCoach || undefined,
-        website: rawTeam.website || undefined,
-        logo: rawTeam.logo || undefined,
-        sort: typeof rawTeam.sort === 'number' ? rawTeam.sort : 1,
-        squad: formattedSquad,
-        createdAt: rawTeam.createdAt || now,
-        updatedAt: now,
-      };
-
-      const existingIndex = store.teams.findIndex(t => t.id === formattedTeam.id);
-      if (existingIndex >= 0) {
-        if (overwrite) {
-          store.teams[existingIndex] = {
-            ...store.teams[existingIndex],
-            ...formattedTeam,
-            squad: formattedSquad,
-            updatedAt: now,
-          };
-          updatedTeamNames.push(`${formattedTeam.name} (${formattedSquad.length} players)`);
-          addLog('info', `Updated franchise: ${formattedTeam.name} with ${formattedSquad.length} confirmed squad players.`);
+  const apply = (store = db.get()) => {
+    Object.assign(result, { teamsUpdated: [], added: [], removed: [], linked: 0, playersCount: 0 });
+    for (const pt of providerTeams) {
+      const team = matchTeam(store.teams, pt.name);
+      if (!team) {
+        log('warn', `"${pt.name}" does not match any team on the site; skipped.`);
+        continue;
+      }
+      if (options.teamId && team.id !== options.teamId) continue;
+      const before = team.squad.map(p => ({ ...p }));
+      const next: Player[] = options.overwrite ? [] : team.squad.map(p => ({ ...p }));
+      for (const pp of pt.players) {
+        const existing = (options.overwrite ? before : next).find(p => normName(p.name) === normName(pp.name) || (pp.cricbuzzId && p.cricbuzzId === pp.cricbuzzId));
+        if (existing) {
+          const target = options.overwrite ? { ...existing } : existing;
+          if (pp.cricbuzzId && target.cricbuzzId !== pp.cricbuzzId) {
+            target.cricbuzzId = pp.cricbuzzId;
+            result.linked++;
+          }
+          if (pp.profileUrl) target.cricbuzzProfileUrl = pp.profileUrl;
+          if (pp.photoUrl && !target.photoUrl) target.photoUrl = pp.photoUrl;
+          if (pp.battingStyle && !target.battingStyle) target.battingStyle = pp.battingStyle;
+          if (pp.bowlingStyle && !target.bowlingStyle) target.bowlingStyle = pp.bowlingStyle;
+          if (pp.country && !target.nationality) target.nationality = pp.country;
+          if (options.overwrite) next.push(target);
         } else {
-          addLog('info', `Kept existing franchise: ${formattedTeam.name} (overwrite=false).`);
+          const id = `${team.id}-${slug(pp.name)}`;
+          next.push({
+            id: next.some(p => p.id === id) ? `${id}-${pp.cricbuzzId || next.length}` : id,
+            teamId: team.id,
+            name: pp.name,
+            role: normalizeRole(pp.role),
+            isIcon: false,
+            cricbuzzRole: pp.role,
+            cricbuzzId: pp.cricbuzzId,
+            cricbuzzProfileUrl: pp.profileUrl,
+            photoUrl: pp.photoUrl,
+            battingStyle: pp.battingStyle,
+            bowlingStyle: pp.bowlingStyle,
+            nationality: pp.country,
+          });
+          result.added.push(`${pp.name} (${team.short})`);
         }
-      } else {
-        store.teams.push(formattedTeam);
-        updatedTeamNames.push(`${formattedTeam.name} [NEW] (${formattedSquad.length} players)`);
-        addLog('success', `Created franchise: ${formattedTeam.name} with ${formattedSquad.length} confirmed squad players.`);
+      }
+      if (options.overwrite) {
+        for (const p of before) if (!next.some(n => n.id === p.id)) result.removed.push(`${p.name} (${team.short})`);
+      }
+      result.teamsUpdated.push(team.name);
+      result.playersCount += next.length;
+      if (!options.dryRun) {
+        team.squad = next;
+        team.updatedAt = new Date().toISOString();
       }
     }
-
-    // Sort teams by sort order
-    store.teams.sort((a, b) => a.sort - b.sort);
-
-    // Persist changes to database
-    addLog('info', `Persisting updated teams and squads to database storage...`);
-    db.save();
-    addLog('success', `Database store saved successfully. ${store.teams.length} teams and ${totalPlayers} players are active.`);
-
-    const duration = Date.now() - startTime;
-    addLog('success', `Automated cricket provider sync completed successfully in ${duration}ms.`);
-
-    return {
-      success: true,
-      provider: provider === 'cricbuzz' ? 'Cricbuzz Series API (13307)' : provider,
-      seriesId,
-      teamsCount: store.teams.length,
-      playersCount: totalPlayers,
-      teamsUpdated: updatedTeamNames,
-      executionTimeMs: duration,
-      timestamp: now,
-      logs,
-    };
-  } catch (err: any) {
-    const errorMsg = err?.message || String(err);
-    addLog('error', `Sync failed: ${errorMsg}`);
-    return {
-      success: false,
-      provider,
-      seriesId,
-      teamsCount: db.get().teams.length,
-      playersCount: db.get().teams.reduce((acc, t) => acc + (t.squad?.length || 0), 0),
-      teamsUpdated: [],
-      executionTimeMs: Date.now() - startTime,
-      timestamp: new Date().toISOString(),
-      logs,
-      error: errorMsg,
-    };
-  }
+    result.teamsCount = result.teamsUpdated.length;
+  };
+  if (options.dryRun) apply(db.get());
+  else await db.mutate(store => apply(store));
+  result.success = result.teamsCount > 0;
+  log(result.success ? 'success' : 'warn', `${options.dryRun ? 'Preview: ' : ''}${result.teamsCount} team(s) checked, ${result.added.length} player(s) added, ${result.removed.length} removed, ${result.linked} profile link(s) updated.`);
+  result.executionTimeMs = Date.now() - started;
+  return result;
 }

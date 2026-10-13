@@ -1,9 +1,7 @@
-import fs from 'fs';
 import path from 'path';
+import { AsyncLocalStorage } from 'async_hooks';
 import { generateInitialProposalSettings } from './proposalDefaults';
-import { OFFICIAL_2026_TEAMS } from '../src/constants/officialTeams';
-import { FALLBACK_HANDLES } from '../src/constants/officialHandles';
-import { OFFICIAL_FEED_ITEMS } from '../src/constants/officialFeeds';
+import { ConflictError, createBackend, FileBackend, StorageBackend } from './storage';
 
 export const SUPER_ADMIN_EMAIL = 'solarastra.in@gmail.com';
 
@@ -12,24 +10,46 @@ export type AdminPermission =
   | 'leagues'
   | 'matches'
   | 'teams'
+  | 'team'
   | 'contests'
+  | 'fantasy'
+  | 'games'
   | 'winners'
   | 'draws'
+  | 'prizes'
   | 'feeds'
   | 'social'
+  | 'community'
   | 'notifications'
   | 'fanspaces'
   | 'growth'
   | 'settings'
   | 'admins';
 
-export type AdminRole = 'superadmin' | 'league_admin' | 'contest_admin' | 'winner_admin' | 'social_admin' | 'custom';
+export const ALL_PERMISSIONS: AdminPermission[] = [
+  'all', 'leagues', 'matches', 'teams', 'contests', 'fantasy', 'games', 'winners', 'draws', 'prizes',
+  'feeds', 'social', 'community', 'notifications', 'fanspaces', 'growth', 'settings', 'admins',
+];
+
+/** What a team official may do: only for their own franchise. */
+export const TEAM_OFFICIAL_PERMISSIONS: AdminPermission[] = ['team', 'social', 'community', 'notifications'];
+
+export type AdminRole =
+  | 'superadmin'
+  | 'league_admin'
+  | 'contest_admin'
+  | 'winner_admin'
+  | 'social_admin'
+  | 'team_official'
+  | 'custom';
 
 export interface AdminUserRecord {
   email: string;
   name?: string;
   role: AdminRole;
   permissions: AdminPermission[];
+  /** team_official only: the franchise they manage. */
+  teamId?: string | null;
   isSuperAdmin?: boolean;
   addedBy?: string;
   addedAt: string;
@@ -44,7 +64,10 @@ export interface User {
   provider: 'google' | 'email';
   teamId: string | null;
   teamChanges: number;
+  /** Season points: what the leaderboards rank. Never goes down when prizes are redeemed. */
   points: number;
+  /** Points already spent on prize redemptions. Spendable balance = points - pointsSpent. */
+  pointsSpent?: number;
   streak: number;
   lastCheckin?: string;
   badges: string[];
@@ -52,7 +75,17 @@ export interface User {
   isSuperAdmin?: boolean;
   adminRole?: AdminRole;
   permissions?: AdminPermission[];
+  /** Set for team officials: the one team they can manage. */
+  adminTeamId?: string | null;
+  /** Optional, self-declared; used for the Fan Base map. */
+  country?: string;
+  city?: string;
+  bio?: string;
+  referralCode?: string;
+  referredBy?: string | null;
+  referralRewardedAt?: string | null;
   createdAt: string;
+  lastActiveAt?: string;
   stats?: any;
 }
 
@@ -66,27 +99,12 @@ export interface OtpCode {
   createdAt: string;
 }
 
-export interface PlayerStats {
-  matches: number;
-  innings?: number;
-  runs: number;
-  highestScore: string | number;
-  average: number;
-  strikeRate: number;
-  fifties?: number;
-  hundreds?: number;
-  fours?: number;
-  sixes?: number;
-  wickets: number;
-  economy: number;
-  bestBowling: string;
-}
-
 export interface Player {
   id: string;
   teamId: string;
   name: string;
   role: 'batter' | 'bowler' | 'allrounder' | 'wicketkeeper';
+  /** Fantasy credits. When unset, the default for the player's category is used (see fantasy.ts). */
   credits?: number;
   isIcon: boolean;
   category?: string;
@@ -100,7 +118,8 @@ export interface Player {
   photoUrl?: string;
   cricbuzzProfileUrl?: string;
   nationality?: string;
-  stats?: PlayerStats;
+  /** Free-form note an admin can add (e.g. "replacement for X"). */
+  note?: string;
 }
 
 export interface Team {
@@ -121,17 +140,23 @@ export interface Team {
   updatedAt?: string;
 }
 
+export type SocialPlatform = 'X' | 'Instagram' | 'Threads' | 'Facebook' | 'TikTok' | 'LinkedIn' | 'YouTube' | 'RSS';
+
 export interface SocialHandle {
   id: string;
   teamId: string | null;
-  platform: 'X' | 'Instagram' | 'Threads' | 'Facebook' | 'TikTok' | 'LinkedIn' | 'YouTube' | 'RSS';
+  platform: SocialPlatform;
   handle: string;
   url: string;
   status: 'verified' | 'pending';
-  source: 'official' | 'discovery' | 'admin' | 'ai-suggestion' | 'official-preset';
+  source: 'official' | 'discovery' | 'admin' | 'ai-suggestion' | 'legacy';
   meta?: Record<string, any>;
   verifiedAt?: string;
   foundAt: string;
+  /** Result of the last automatic pull for this handle. */
+  lastSyncAt?: string;
+  lastSyncStatus?: 'ok' | 'empty' | 'error' | 'embed-only';
+  lastSyncNote?: string;
 }
 
 export interface FeedItem {
@@ -150,9 +175,9 @@ export interface FeedItem {
   createdAt: string;
   likes?: number;
   views?: string;
-  verifiedReal?: boolean;
-  channelVerified?: boolean;
-  sourceType?: 'youtube-rss' | 'news-rss' | 'admin' | 'ai' | 'social-handle' | 'social-syndication';
+  /** YouTube video id, so the video can be played inside the site. */
+  videoId?: string;
+  sourceType?: 'youtube-rss' | 'news-rss' | 'admin' | 'ai' | 'social-syndication' | 'curator' | 'rss';
   handleId?: string | null;
 }
 
@@ -191,13 +216,7 @@ export interface InningsScorecard {
   wickets: number;
   overs: string;
   runRate?: number;
-  extras?: {
-    total: number;
-    wides?: number;
-    noBalls?: number;
-    byes?: number;
-    legByes?: number;
-  };
+  extras?: { total: number; wides?: number; noBalls?: number; byes?: number; legByes?: number };
   batting: BattingScorecardEntry[];
   bowling: BowlingScorecardEntry[];
   didNotBat?: string[];
@@ -217,7 +236,7 @@ export interface Match {
   teamB: string;
   startsAt: string;
   venue: string;
-  status: 'upcoming' | 'live' | 'completed';
+  status: 'upcoming' | 'live' | 'completed' | 'abandoned';
   scoreA?: string;
   oversA?: string;
   scoreB?: string;
@@ -234,6 +253,14 @@ export interface Match {
   toss?: string;
   playerOfTheMatch?: string;
   scorecard?: MatchScorecard;
+  /** Official stream / highlights link, if the league publishes one. */
+  streamUrl?: string;
+  /** CricketData.org match id, for automatic live scores. */
+  externalId?: string;
+  scoreSource?: 'manual' | 'cricketdata';
+  liveSyncedAt?: string;
+  /** Players named in each XI (player ids). Fantasy players not in the XI score 0. */
+  playingXI?: Record<string, string[]>;
 }
 
 export interface ContestQuestion {
@@ -267,12 +294,36 @@ export interface ContestEntry {
   createdAt: string;
 }
 
+export interface FantasyBreakdownLine {
+  playerId: string;
+  name: string;
+  base: number;
+  multiplier: number;
+  total: number;
+  detail: string;
+}
+
 export interface FantasyTeam {
   userId: string;
   matchId: string;
   playerIds: string[];
   captainId: string;
+  viceCaptainId?: string;
   points?: number;
+  rank?: number;
+  breakdown?: FantasyBreakdownLine[];
+  scoredAt?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+/** Private Dream XI leagues: friends compare totals across the season. */
+export interface FantasyLeague {
+  id: string;
+  name: string;
+  code: string;
+  ownerId: string;
+  memberIds: string[];
   createdAt: string;
 }
 
@@ -285,6 +336,8 @@ export interface PrizeDraw {
   closesAt: string;
   status: 'open' | 'closed' | 'drawn';
   teamOnly?: string | null;
+  /** Minimum season points needed to enter (0 = anyone signed in). */
+  minPoints?: number;
   winnerUserId?: string;
   winnerName?: string;
   seed?: string | null;
@@ -299,6 +352,36 @@ export interface DrawEntry {
   userEmail: string;
   userName: string;
   createdAt: string;
+}
+
+/** Rewards fans can claim with their points. */
+export interface PrizeItem {
+  id: string;
+  title: string;
+  description: string;
+  image?: string;
+  pointsCost: number;
+  stock: number;
+  teamOnly?: string | null;
+  active: boolean;
+  /** How the fan receives it, shown after claiming (e.g. "Collect at the Fan Zone with your code"). */
+  fulfilment: string;
+  createdAt: string;
+}
+
+export interface PrizeRedemption {
+  id: string;
+  prizeId: string;
+  prizeTitle: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  pointsCost: number;
+  code: string;
+  status: 'pending' | 'fulfilled' | 'cancelled';
+  createdAt: string;
+  updatedAt?: string;
+  note?: string;
 }
 
 export interface Approval {
@@ -339,15 +422,15 @@ export interface SystemSettings {
   curatorHashtags: string;
   maxSocialPerPlatform: number;
   newsQueries: string;
-  smtp: {
-    host: string;
-    port: number;
-    user: string;
-    pass: string;
-    from: string;
-    enabled: boolean;
-  };
+  /** Points a fan and the friend who invited them each get once the friend takes part. */
+  referralRewardPoints: number;
+  /** Minutes before the first ball when the "lineups lock soon" reminder goes out. */
+  lockReminderMinutes: number;
+  smtp: { host: string; port: number; user: string; pass: string; from: string; enabled: boolean };
 }
+
+export type ReactionEmoji = '👏' | '🔥' | '😂' | '😮' | '💯';
+export const REACTIONS: ReactionEmoji[] = ['👏', '🔥', '😂', '😮', '💯'];
 
 export interface ForumComment {
   id: string;
@@ -360,7 +443,10 @@ export interface ForumComment {
   content: string;
   upvotes: number;
   upvotedBy: string[];
+  reactions?: Partial<Record<ReactionEmoji, string[]>>;
+  hidden?: boolean;
   createdAt: string;
+  editedAt?: string;
 }
 
 export interface ForumThread {
@@ -370,16 +456,47 @@ export interface ForumThread {
   category: 'matchday' | 'tactics' | 'franchises' | 'fantasy' | 'fanspaces' | 'giveaways' | 'general';
   tags: string[];
   teamId?: string | null;
+  matchId?: string | null;
   userId: string;
   userName: string;
   userAvatar: string;
   userBadge?: string;
   pinned: boolean;
+  locked?: boolean;
+  hidden?: boolean;
   upvotes: number;
   upvotedBy: string[];
+  reactions?: Partial<Record<ReactionEmoji, string[]>>;
   views: number;
   commentsCount: number;
   lastActivityAt: string;
+  createdAt: string;
+  editedAt?: string;
+}
+
+export interface ForumReport {
+  id: string;
+  kind: 'thread' | 'comment';
+  targetId: string;
+  threadId: string;
+  userId: string;
+  reason: string;
+  status: 'open' | 'dismissed' | 'removed';
+  createdAt: string;
+  decidedAt?: string;
+}
+
+export interface Poll {
+  id: string;
+  question: string;
+  options: { id: string; text: string }[];
+  /** userId -> option id */
+  votes: Record<string, string>;
+  teamId?: string | null;
+  matchId?: string | null;
+  closesAt?: string;
+  status: 'open' | 'closed';
+  createdBy: string;
   createdAt: string;
 }
 
@@ -387,9 +504,13 @@ export interface NotificationItem {
   id: string;
   title: string;
   body: string;
-  category: 'match_result' | 'contest_deadline' | 'announcement' | 'perk';
-  targetAudience: 'all' | 'logged_in' | 'team';
+  category: 'match_result' | 'contest_deadline' | 'announcement' | 'perk' | 'fantasy';
+  /** 'users' = only the listed userIds (personal notifications such as fantasy results). */
+  targetAudience: 'all' | 'logged_in' | 'team' | 'users';
   teamId?: string | null;
+  userIds?: string[];
+  /** Per-user text for personal notifications (userId -> body). */
+  perUser?: Record<string, { title?: string; body: string }>;
   data?: Record<string, any>;
   priority: 'normal' | 'high';
   createdAt: string;
@@ -449,6 +570,9 @@ export interface FanSpaceBooking {
   ticketsCount: number;
   passCode: string;
   createdAt: string;
+  checkedInAt?: string | null;
+  checkedInBy?: string | null;
+  cancelledAt?: string | null;
 }
 
 export interface YouthCupSchool {
@@ -483,9 +607,6 @@ export interface CommentaryAudioFeed {
   status: 'live' | 'standby';
   streamUrl: string;
   description?: string;
-  sampleAudioText?: string;
-  bitrate?: string;
-  listenersCount?: number;
 }
 
 export interface SuperfanPassportTier {
@@ -536,7 +657,7 @@ export interface ProposalSettings {
 }
 
 export interface Session {
-  id: string;          // sha256 of the bearer token
+  id: string; // sha256 of the bearer token
   userId: string;
   createdAt: string;
   expiresAt: string;
@@ -547,6 +668,19 @@ export interface PassportInterest {
   tierId: string;
   userId: string;
   createdAt: string;
+}
+
+/** One play of a daily game. Unique per (userId, game, day). */
+export interface GamePlay {
+  userId: string;
+  game: 'guess' | 'superover';
+  /** Dubai calendar day, YYYY-MM-DD. */
+  day: string;
+  state: any;
+  finished: boolean;
+  points: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface AppStore {
@@ -563,14 +697,22 @@ export interface AppStore {
   contests: Contest[];
   contestEntries: ContestEntry[];
   fantasyTeams: FantasyTeam[];
+  fantasyLeagues: FantasyLeague[];
+  gamePlays: GamePlay[];
   draws: PrizeDraw[];
   drawEntries: DrawEntry[];
+  prizes: PrizeItem[];
+  redemptions: PrizeRedemption[];
   forumThreads: ForumThread[];
   forumComments: ForumComment[];
+  forumReports: ForumReport[];
+  polls: Poll[];
   notifications: NotificationItem[];
   fcmTokens: FCMDeviceToken[];
   approvals: Approval[];
   agentRuns: AgentRun[];
+  /** Idempotency keys for scheduled jobs (e.g. "lock:<matchId>" -> ISO time it ran). */
+  jobLog: Record<string, string>;
   settings: SystemSettings;
   fanSpaces: FanSpace[];
   fanSpaceBookings: FanSpaceBooking[];
@@ -582,65 +724,45 @@ export interface AppStore {
   adminUsers: AdminUserRecord[];
 }
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
-// Where the JSON store lives. On Cloud Run / containers mount a persistent volume
-// (e.g. a Cloud Storage FUSE volume) and point DATA_DIR at it, otherwise data is lost on restart.
-const DATA_DIR = path.resolve(process.env.DATA_DIR || (process.env.VERCEL ? '/tmp/data' : path.join(process.cwd(), 'data')));
-const STORE_PATH = path.join(DATA_DIR, 't10_store.json');
-
-export function defaultAdminUsers(): AdminUserRecord[] {
-  return [
-    {
-      email: SUPER_ADMIN_EMAIL,
-      name: 'Super Admin',
-      role: 'superadmin',
-      permissions: [
-        'all',
-        'leagues',
-        'matches',
-        'teams',
-        'contests',
-        'winners',
-        'draws',
-        'feeds',
-        'social',
-        'notifications',
-        'fanspaces',
-        'growth',
-        'settings',
-        'admins',
-      ],
-      isSuperAdmin: true,
-      addedBy: 'system',
-      addedAt: '2026-11-01T00:00:00.000Z',
-    },
-  ];
+export function superAdminRecord(): AdminUserRecord {
+  return {
+    email: SUPER_ADMIN_EMAIL,
+    name: 'Super Admin',
+    role: 'superadmin',
+    permissions: ['all'],
+    isSuperAdmin: true,
+    addedBy: 'system',
+    addedAt: '2026-10-01T00:00:00.000Z',
+  };
 }
 
 export function defaultSettings(): SystemSettings {
   return {
-    adminEmails: [SUPER_ADMIN_EMAIL],
+    adminEmails: [],
     brandName: 'ADT10 Fans',
     tagline: 'The Abu Dhabi T10 fan hub',
-    copyrightHolder: '',
+    copyrightHolder: 'Azlir Sports',
     seasonLabel: 'Abu Dhabi T10 2026',
     seasonStart: '2026-11-07',
     seasonEnd: '2026-11-20',
     venue: 'Zayed Cricket Stadium, Abu Dhabi',
-    tickerText: '⚡ ABU DHABI T10 2026 LIVE · ARABIAN ACES & ALL 6 FRANCHISES HUB ⚡',
+    tickerText: '',
     curatorFeedId: process.env.CURATOR_FEED_ID || '',
-    curatorContainerId: 'curator-feed-default-feed-layout',
+    curatorContainerId: '',
     curatorFeedUuid: '',
     curatorApiKey: process.env.CURATOR_API_KEY || '',
-    curatorHashtags: 'AbuDhabiT10,ArabianAces,T10League',
-    maxSocialPerPlatform: 5,
+    curatorHashtags: '',
+    maxSocialPerPlatform: 6,
     newsQueries: '',
+    referralRewardPoints: 50,
+    lockReminderMinutes: Math.max(5, Number(process.env.LOCK_REMINDER_MINUTES) || 30),
     smtp: { host: '', port: 587, user: '', pass: '', from: '', enabled: false },
   };
 }
 
-/** Pre-seeded store with all 6 official franchises, confirmed 108 squad members, 37 handles and real feeds */
+/** A brand-new store. Teams, squads and verified handles are added by seedOfficial.initializeStore(). */
 export function emptyStore(): AppStore {
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -649,21 +771,28 @@ export function emptyStore(): AppStore {
     claimedBadges: {},
     users: [],
     otpCodes: [],
-    teams: OFFICIAL_2026_TEAMS.map(t => ({ ...t, squad: (t.squad || []).map(p => ({ ...p })) })),
-    handles: FALLBACK_HANDLES.map(h => ({ ...h })),
-    feedItems: OFFICIAL_FEED_ITEMS.map(f => ({ ...f })),
+    teams: [],
+    handles: [],
+    feedItems: [],
     matches: [],
     contests: [],
     contestEntries: [],
     fantasyTeams: [],
+    fantasyLeagues: [],
+    gamePlays: [],
     draws: [],
     drawEntries: [],
+    prizes: [],
+    redemptions: [],
     forumThreads: [],
     forumComments: [],
+    forumReports: [],
+    polls: [],
     notifications: [],
     fcmTokens: [],
     approvals: [],
     agentRuns: [],
+    jobLog: {},
     settings: defaultSettings(),
     fanSpaces: [],
     fanSpaceBookings: [],
@@ -672,169 +801,297 @@ export function emptyStore(): AppStore {
     commentaryFeeds: [],
     passportTiers: [],
     proposalSettings: generateInitialProposalSettings(),
-    adminUsers: defaultAdminUsers(),
+    adminUsers: [superAdminRecord()],
   };
 }
 
-// IDs of the demo content that older versions of this app generated automatically.
+// Demo content that older versions generated automatically.
 const LEGACY_SEED_IDS = new Set([
   'thread-proposal-1', 'thread-matchday-1', 'thread-fantasy-1', 'thread-fanspaces-1', 'thread-giveaways-1',
   ...Array.from({ length: 10 }, (_, i) => `comment-${i + 1}`),
   'user-admin',
 ]);
+const STOCK_IMAGE = /unsplash\.com|dicebear\.com|picsum\.photos|placeholder\.com/i;
 
 /**
- * Upgrade a store written by an older version. Ensures official franchises, squads,
- * handles, and feeds are never empty even after legacy migration.
+ * Feed items earlier versions invented rather than pulled from a real source: placeholder status ids,
+ * stock photos, a placeholder YouTube video, or the generator's source type.
  */
-function migrate(raw: any): AppStore {
-  const fresh = emptyStore();
-  if (raw && raw.schemaVersion >= SCHEMA_VERSION) {
-    // Fill any collections added since the store was written.
-    const merged: any = { ...fresh, ...raw };
-    merged.settings = { ...fresh.settings, ...(raw.settings || {}), smtp: { ...fresh.settings.smtp, ...(raw.settings?.smtp || {}) } };
-    if (!Array.isArray(merged.adminUsers) || merged.adminUsers.length === 0) {
-      merged.adminUsers = defaultAdminUsers();
-    } else if (!merged.adminUsers.some((a: any) => a.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase())) {
-      merged.adminUsers.unshift(defaultAdminUsers()[0]);
-    }
-    // Ensure teams with confirmed squads are preserved or restored
-    if (!Array.isArray(merged.teams) || merged.teams.length === 0) {
-      merged.teams = fresh.teams;
-    } else {
-      merged.teams = merged.teams.map((t: any) => {
-        const official = fresh.teams.find(ot => ot.id === t.id);
-        const hasSquad = Array.isArray(t.squad) && t.squad.length > 0;
-        return {
-          ...(official || {}),
-          ...t,
-          squad: hasSquad ? t.squad : (official?.squad || []),
-        };
-      });
-    }
-    // Ensure handles are preserved or restored
-    if (!Array.isArray(merged.handles) || merged.handles.length === 0) {
-      merged.handles = fresh.handles;
-    }
-    // Ensure feed items are preserved or restored
-    if (!Array.isArray(merged.feedItems) || merged.feedItems.length === 0) {
-      merged.feedItems = fresh.feedItems;
-    }
-    return merged as AppStore;
-  }
-
-  console.log('[DB] Migrating legacy store to schema v2.');
-  const out = fresh;
-  const legacySettings = raw?.settings || {};
-  out.settings = {
-    ...fresh.settings,
-    adminEmails: Array.isArray(legacySettings.adminEmails) ? legacySettings.adminEmails : [],
-    curatorFeedId: legacySettings.curatorFeedId || fresh.settings.curatorFeedId,
-    curatorContainerId: legacySettings.curatorContainerId || fresh.settings.curatorContainerId,
-    curatorFeedUuid: legacySettings.curatorFeedUuid || '',
-    curatorApiKey: legacySettings.curatorApiKey || fresh.settings.curatorApiKey,
-    maxSocialPerPlatform: Number(legacySettings.maxSocialPerPlatform) || 5,
-    smtp: { ...fresh.settings.smtp, ...(legacySettings.smtp || {}) },
-  };
-  if (out.settings.smtp.from === 'noreply@t10fanhub.com') out.settings.smtp.from = '';
-  if (out.settings.smtp.host === 'smtp.gmail.com' && !out.settings.smtp.user) out.settings.smtp.host = '';
-
-  const users: User[] = (raw?.users || []).filter((u: User) => !LEGACY_SEED_IDS.has(u.id));
-  const avatarIsStock = (a?: string) => !a || /unsplash\.com|dicebear\.com/.test(a);
-  out.users = users.map(u => ({ ...u, avatar: avatarIsStock(u.avatar) ? '' : u.avatar }));
-  const userIds = new Set(out.users.map(u => u.id));
-
-  out.forumThreads = (raw?.forumThreads || []).filter((t: ForumThread) => !LEGACY_SEED_IDS.has(t.id) && userIds.has(t.userId));
-  const threadIds = new Set(out.forumThreads.map(t => t.id));
-  out.forumComments = (raw?.forumComments || []).filter((c: ForumComment) => !LEGACY_SEED_IDS.has(c.id) && threadIds.has(c.threadId) && userIds.has(c.userId));
-  for (const t of out.forumThreads) {
-    t.commentsCount = out.forumComments.filter(c => c.threadId === t.id).length;
-    t.upvotedBy = (t.upvotedBy || []).filter(id => userIds.has(id));
-    t.upvotes = t.upvotedBy.length;
-    t.views = Math.max(0, Number(t.views) || 0);
-    t.userAvatar = avatarIsStock(t.userAvatar) ? '' : t.userAvatar;
-  }
-  for (const c of out.forumComments) {
-    c.upvotedBy = (c.upvotedBy || []).filter(id => userIds.has(id));
-    c.upvotes = c.upvotedBy.length;
-    c.userAvatar = avatarIsStock(c.userAvatar) ? '' : c.userAvatar;
-  }
-  out.fcmTokens = (raw?.fcmTokens || []).filter((t: FCMDeviceToken) => !String(t.token).startsWith('fcm_web_'));
-  if (raw?.proposalSettings) out.proposalSettings = raw.proposalSettings;
-  return out;
+export function isFabricatedFeedItem(f: any): boolean {
+  if (!f || typeof f !== 'object') return true;
+  if (f.sourceType === 'social-handle') return true;
+  if (typeof f.id === 'string' && /^(feed-(central|aces|bulls|tigers|lions|eagles|champions)-|yt-dyn-|post-dyn-)/.test(f.id)) return true;
+  const url = String(f.url || '');
+  if (/dQw4w9WgXcQ/.test(url)) return true;
+  if (/(x|twitter)\.com\/[^/]+\/status\/1[89]\d{5}$/.test(url)) return true; // 7-digit placeholder ids
+  if (f.image && STOCK_IMAGE.test(String(f.image))) return true;
+  return false;
 }
 
-class DatabaseManager {
-  private store: AppStore;
-  private saveTimer: NodeJS.Timeout | null = null;
-
-  constructor() {
-    this.store = this.load();
+/**
+ * Upgrade a store written by an older version. Real accounts, forum posts and everything an admin
+ * created are kept. Invented demo content is dropped; unconfirmed handles go to the approval queue.
+ */
+export function migrate(raw: any): AppStore {
+  const fresh = emptyStore();
+  if (!raw || typeof raw !== 'object') return fresh;
+  const out: any = { ...fresh, ...raw };
+  out.settings = { ...fresh.settings, ...(raw.settings || {}), smtp: { ...fresh.settings.smtp, ...(raw.settings?.smtp || {}) } };
+  for (const k of Object.keys(fresh) as (keyof AppStore)[]) {
+    if (Array.isArray((fresh as any)[k]) && !Array.isArray(out[k])) out[k] = [];
   }
+  if (!out.jobLog || typeof out.jobLog !== 'object') out.jobLog = {};
+  if (!out.claimedBadges || typeof out.claimedBadges !== 'object') out.claimedBadges = {};
+  if (!out.proposalSettings) out.proposalSettings = fresh.proposalSettings;
+  if (!out.adminUsers.some((a: AdminUserRecord) => a.email?.toLowerCase() === SUPER_ADMIN_EMAIL)) out.adminUsers.unshift(superAdminRecord());
 
-  private load(): AppStore {
-    try {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    } catch {
-      // Ignore directory create errors in read-only environments
+  const version = Number(raw.schemaVersion) || 1;
+  if (version < 2) {
+    // v1 stores: drop demo users/threads and stock avatars.
+    out.users = out.users.filter((u: User) => !LEGACY_SEED_IDS.has(u.id));
+    const userIds = new Set(out.users.map((u: User) => u.id));
+    out.forumThreads = out.forumThreads.filter((t: ForumThread) => !LEGACY_SEED_IDS.has(t.id) && userIds.has(t.userId));
+    const threadIds = new Set(out.forumThreads.map((t: ForumThread) => t.id));
+    out.forumComments = out.forumComments.filter((c: ForumComment) => !LEGACY_SEED_IDS.has(c.id) && threadIds.has(c.threadId) && userIds.has(c.userId));
+    out.fcmTokens = out.fcmTokens.filter((t: FCMDeviceToken) => !String(t.token).startsWith('fcm_web_'));
+    if (out.settings.smtp.from === 'noreply@t10fanhub.com') out.settings.smtp.from = '';
+    if (out.settings.smtp.host === 'smtp.gmail.com' && !out.settings.smtp.user) out.settings.smtp.host = '';
+  }
+  if (version < 3) {
+    out.feedItems = out.feedItems.filter((f: FeedItem) => !isFabricatedFeedItem(f));
+    for (const f of out.feedItems as any[]) {
+      delete f.verifiedReal;
+      delete f.channelVerified;
+      const vid = String(f.url || '').match(/[?&]v=([\w-]{11})/);
+      if (f.platform === 'YouTube' && vid) f.videoId = vid[1];
     }
-    if (fs.existsSync(STORE_PATH)) {
-      try {
-        const raw = JSON.parse(fs.readFileSync(STORE_PATH, 'utf-8'));
-        const migrated = migrate(raw);
-        if (!raw.schemaVersion || raw.schemaVersion < SCHEMA_VERSION) {
-          try {
-            fs.copyFileSync(STORE_PATH, STORE_PATH + `.v${raw.schemaVersion || 1}.bak`);
-          } catch {
-            // ignore
-          }
-          this.writeNow(migrated);
-        }
-        return migrated;
-      } catch (e) {
-        console.warn('[DB] Could not parse existing store file, initializing pre-seeded store:', e);
+    // Handles that earlier versions pre-filled without checking become suggestions for an admin to confirm.
+    for (const h of out.handles as any[]) {
+      if (h.source === 'official-preset') {
+        h.source = 'legacy';
+        h.status = 'pending';
+        h.verifiedAt = undefined;
       }
     }
-    const fresh = emptyStore();
-    this.writeNow(fresh);
-    return fresh;
+    if (out.settings.tickerText?.includes('LIVE · ARABIAN ACES')) out.settings.tickerText = '';
+    if (out.settings.curatorHashtags === 'AbuDhabiT10,ArabianAces,T10League') out.settings.curatorHashtags = '';
+    if (out.settings.curatorContainerId === 'curator-feed-default-feed-layout') out.settings.curatorContainerId = '';
+    out.settings.adminEmails = (out.settings.adminEmails || []).filter((e: string) => e.toLowerCase() !== SUPER_ADMIN_EMAIL);
+  }
+  for (const u of out.users as any[]) {
+    if (u.avatar && STOCK_IMAGE.test(u.avatar)) u.avatar = '';
+    if (typeof u.pointsSpent !== 'number') u.pointsSpent = 0;
+  }
+  for (const t of out.forumThreads as any[]) if (t.userAvatar && STOCK_IMAGE.test(t.userAvatar)) t.userAvatar = '';
+  for (const c of out.forumComments as any[]) if (c.userAvatar && STOCK_IMAGE.test(c.userAvatar)) c.userAvatar = '';
+  for (const t of out.teams as any[]) {
+    for (const p of t.squad || []) delete p.stats; // unverified stats from an earlier version
+  }
+  out.schemaVersion = SCHEMA_VERSION;
+  return out as AppStore;
+}
+
+const DATA_DIR = path.resolve(process.env.DATA_DIR || (process.env.VERCEL ? '/tmp/adt10-data' : path.join(process.cwd(), 'data')));
+export const STORE_PATH = path.join(DATA_DIR, 't10_store.json');
+
+/** Per-request context (set by storeSync) so code can tell which request is writing. */
+export const requestContext = new AsyncLocalStorage<{ id: string }>();
+
+type InitHook = (store: AppStore) => boolean | void;
+
+class DatabaseManager {
+  readonly backend: StorageBackend;
+  private store: AppStore = emptyStore();
+  private version: string | null = null;
+  private dirty = false;
+  private saveTimer: NodeJS.Timeout | null = null;
+  private readyPromise: Promise<void> | null = null;
+  private lastFreshCheck = 0;
+  private initHooks: InitHook[] = [];
+  /** Increments on every save(); storeSync compares it to tell whether a request changed anything. */
+  epoch = 0;
+
+  constructor() {
+    this.backend = createBackend(STORE_PATH);
   }
 
-  private writeNow(store: AppStore) {
-    try {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-      const tmp = STORE_PATH + '.tmp';
-      fs.writeFileSync(tmp, JSON.stringify(store), 'utf-8');
-      fs.renameSync(tmp, STORE_PATH); // atomic replace
-    } catch (err: any) {
-      // In serverless / read-only deployment, log warning rather than crashing
-      console.warn('[DB] Persistent store write bypassed:', err?.message || err);
+  get shared() {
+    return this.backend.shared;
+  }
+
+  /** Functions run on every load (seeding official data, reconciling handles). Return true if they changed the store. */
+  onLoad(hook: InitHook) {
+    this.initHooks.push(hook);
+  }
+
+  ready(): Promise<void> {
+    if (!this.readyPromise) {
+      this.readyPromise = this.reload().catch(err => {
+        this.readyPromise = null;
+        throw err;
+      });
+    }
+    return this.readyPromise;
+  }
+
+  async reload(): Promise<void> {
+    const { data, version } = await this.backend.load();
+    let raw: any = null;
+    if (data) {
+      try {
+        raw = JSON.parse(data);
+      } catch (e) {
+        console.error('[DB] Store is not valid JSON; starting from an empty store and keeping a copy of the old one.');
+        if (this.backend instanceof FileBackend) {
+          try {
+            new FileBackend(`${STORE_PATH}.corrupt-${Date.now()}`).saveSync(data);
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+    }
+    const needsMigration = !raw || (Number(raw.schemaVersion) || 1) < SCHEMA_VERSION;
+    this.store = migrate(raw);
+    this.version = version;
+    this.lastFreshCheck = Date.now();
+    let changed = needsMigration;
+    for (const hook of this.initHooks) if (hook(this.store)) changed = true;
+    if (changed) {
+      this.dirty = true;
+      this.epoch++;
+      if (!this.shared) this.scheduleWrite();
+      else {
+        try {
+          await this.commit();
+        } catch (e) {
+          if (e instanceof ConflictError) return this.reload();
+          throw e;
+        }
+      }
     }
   }
 
-  public get(): AppStore {
+  /** For the shared backend: reload when another instance has written since we last looked. */
+  async refreshIfStale(maxAgeMs = 0): Promise<void> {
+    if (!this.shared) return;
+    if (maxAgeMs && Date.now() - this.lastFreshCheck < maxAgeMs) return;
+    const current = await this.backend.currentVersion();
+    this.lastFreshCheck = Date.now();
+    if (current !== this.version) await this.reload();
+  }
+
+  get(): AppStore {
     return this.store;
   }
 
-  /** Persist soon (coalesces bursts of writes). */
-  public save() {
+  /** Marks the store as changed. File backend: written shortly after. Shared backend: written at the end of the request. */
+  save() {
+    this.dirty = true;
+    this.epoch++;
+    if (!this.shared) this.scheduleWrite();
+  }
+
+  private scheduleWrite() {
     if (this.saveTimer) return;
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
-      this.flush();
+      this.commit().catch(e => console.error('[DB] write failed:', e?.message || e));
     }, 150);
+    this.saveTimer.unref?.();
   }
 
-  public flush() {
-    if (this.saveTimer) { clearTimeout(this.saveTimer); this.saveTimer = null; }
+  /** Writes now if anything changed. Shared backend throws ConflictError when another instance wrote first. */
+  async commit(): Promise<void> {
+    if (!this.dirty) return;
+    const payload = JSON.stringify(this.store);
+    this.dirty = false;
     try {
-      this.writeNow(this.store);
+      this.version = await this.backend.save(payload, this.version);
     } catch (e) {
-      console.error('[DB] Failed to save store:', e);
+      this.dirty = true;
+      throw e;
     }
   }
 
-  public resetProposal(): ProposalSettings {
+  /** Discard unsaved changes (after a conflict) by reloading from storage. */
+  async discardAndReload() {
+    this.dirty = false;
+    await this.reload();
+  }
+
+  async flush(): Promise<void> {
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
+    await this.commit();
+  }
+
+  flushSync() {
+    if (!this.dirty || !(this.backend instanceof FileBackend)) return;
+    try {
+      this.backend.saveSync(JSON.stringify(this.store));
+      this.dirty = false;
+    } catch (e) {
+      console.error('[DB] final write failed:', e);
+    }
+  }
+
+  private chain: Promise<unknown> = Promise.resolve();
+  /** Number of write sections running on this instance. */
+  busy = 0;
+
+  /** Runs write sections one at a time on this instance (requests that change data, scheduled jobs). */
+  exclusive<T>(fn: () => Promise<T>): Promise<T> {
+    const run = async () => {
+      this.busy++;
+      try {
+        return await fn();
+      } finally {
+        this.busy--;
+      }
+    };
+    const p = this.chain.then(run, run);
+    this.chain = p.catch(() => undefined);
+    return p;
+  }
+
+  /**
+   * Runs `fn` against the latest store and writes the result, retrying when another instance wrote
+   * at the same time. Used by scheduled jobs that run outside an HTTP request.
+   */
+  transaction<T>(fn: (store: AppStore) => Promise<T> | T, attempts = 8): Promise<T> {
+    return this.exclusive(async () => {
+      for (let i = 0; ; i++) {
+        await this.refreshIfStale();
+        const result = await fn(this.store);
+        try {
+          await this.commit();
+          return result;
+        } catch (e) {
+          if (!(e instanceof ConflictError) || i >= attempts - 1) throw e;
+          await this.discardAndReload();
+          await new Promise(r => setTimeout(r, 40 * (i + 1) + Math.random() * 60));
+        }
+      }
+    });
+  }
+
+  /**
+   * Apply a change. Inside a request it runs directly (storeSync writes at the end of the request);
+   * outside one (timers) it runs as a transaction.
+   */
+  async mutate<T>(fn: (store: AppStore) => Promise<T> | T): Promise<T> {
+    if (requestContext.getStore() || !this.shared) {
+      const r = await fn(this.store);
+      this.save();
+      return r;
+    }
+    return this.transaction(fn);
+  }
+
+  resetProposal(): ProposalSettings {
     this.store.proposalSettings = generateInitialProposalSettings();
     this.save();
     return this.store.proposalSettings;
@@ -842,6 +1099,13 @@ class DatabaseManager {
 }
 
 export const db = new DatabaseManager();
-for (const sig of ['SIGINT', 'SIGTERM'] as const) {
-  process.on(sig, () => { db.flush(); process.exit(0); });
+
+if (!process.env.VERCEL) {
+  for (const sig of ['SIGINT', 'SIGTERM'] as const) {
+    process.on(sig, () => {
+      db.flushSync();
+      if (db.shared) db.flush().finally(() => process.exit(0));
+      else process.exit(0);
+    });
+  }
 }
