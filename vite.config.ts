@@ -10,6 +10,7 @@ export default defineConfig({
     // HMR can be turned off (e.g. in AI Studio) with DISABLE_HMR=true.
     hmr: process.env.DISABLE_HMR !== 'true',
     watch: process.env.DISABLE_HMR === 'true' ? null : {},
+    allowedHosts: true,
   },
   build: { sourcemap: false, chunkSizeWarningLimit: 900 },
 });
