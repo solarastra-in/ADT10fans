@@ -1,10 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-// Built files carried inside the bundle, so the function needs nothing else from disk.
-// (esbuild inlines them: the .html as text, the .json as an object.)
-import template from '../dist/_template.html';
-import firebaseConfig from '../firebase-applet-config.json';
-(globalThis as any).__ADT10_TEMPLATE__ = template;
-(globalThis as any).__ADT10_FIREBASE__ = firebaseConfig;
+// Must be the first import: it sets the embedded template and Firebase config before the rest of
+// the server loads (imports run in order, and the store picks Firestore from that config on load).
+import './vercelEmbed';
 import { app, initialize, mountFrontend } from './app';
 
 /**
