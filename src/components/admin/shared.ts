@@ -11,6 +11,10 @@ export type AdminSectionId =
   | 'feeds'
   | 'matches'
   | 'contests'
+  | 'fantasy'
+  | 'prizes'
+  | 'polls'
+  | 'checkin'
   | 'draws'
   | 'forum'
   | 'notifications'
@@ -31,17 +35,41 @@ export const ADMIN_SECTIONS: { id: AdminSectionId; label: string }[] = [
   { id: 'handles', label: 'Handles' },
   { id: 'feeds', label: 'Feeds' },
   { id: 'matches', label: 'Matches' },
-  { id: 'contests', label: 'Contests' },
-  { id: 'draws', label: 'Draws & Winners' },
-  { id: 'forum', label: 'Forum' },
+  { id: 'contests', label: 'Predictions' },
+  { id: 'fantasy', label: 'Dream XI' },
+  { id: 'prizes', label: 'Prizes & claims' },
+  { id: 'draws', label: 'Prize draws' },
+  { id: 'forum', label: 'Forum & reports' },
+  { id: 'polls', label: 'Polls' },
   { id: 'notifications', label: 'Notifications' },
   { id: 'fanspaces', label: 'Fan Spaces' },
+  { id: 'checkin', label: 'Door check-in' },
   { id: 'growth', label: 'Growth' },
   { id: 'approvals', label: 'Approvals' },
   { id: 'marketing', label: 'AI Copy' },
   { id: 'settings', label: 'Settings' },
   { id: 'proposal', label: 'Proposal' },
 ];
+
+/** Mirrors server/auth.ts hasPermission so the console only shows what the server will allow. */
+const IMPLIED: Record<string, string[]> = {
+  matches: ['leagues'], teams: ['leagues', 'team'], fantasy: ['contests'], games: ['contests'], draws: ['winners', 'prizes'], prizes: ['winners'],
+  social: ['feeds'], feeds: ['social'], community: ['social'],
+};
+export function can(user: { isSuperAdmin?: boolean; adminRole?: string; permissions?: string[] } | null | undefined, perm: string): boolean {
+  if (!user) return false;
+  if (user.isSuperAdmin || user.adminRole === 'superadmin') return true;
+  const perms = user.permissions || [];
+  if (perm === 'admins') return false;
+  if (perms.includes('all') && user.adminRole !== 'team_official') return true;
+  return perms.includes(perm) || (IMPLIED[perm] || []).some(p => perms.includes(p));
+}
+
+export const SECTION_PERMISSION: Partial<Record<AdminSectionId, string | 'super'>> = {
+  tools: 'teams', env: 'super', admins: 'super', teams: 'teams', squads: 'teams', handles: 'social', feeds: 'social', matches: 'matches',
+  contests: 'contests', fantasy: 'fantasy', prizes: 'prizes', draws: 'draws', forum: 'community', polls: 'community', notifications: 'notifications',
+  fanspaces: 'fanspaces', checkin: 'fanspaces', growth: 'growth', approvals: 'social', marketing: 'social', settings: 'settings', proposal: 'settings',
+};
 
 export const isAdminSectionId = (v: unknown): v is AdminSectionId =>
   typeof v === 'string' && ADMIN_SECTIONS.some(s => s.id === v);

@@ -57,7 +57,7 @@ type PlayerDraft = {
   nationality: string;
   photoUrl: string;
   cricbuzzProfileUrl: string;
-  credits: number;
+  credits: string;
 };
 
 const emptyPlayerDraft = (teamId: string): PlayerDraft => ({
@@ -65,7 +65,7 @@ const emptyPlayerDraft = (teamId: string): PlayerDraft => ({
   teamId,
   name: '',
   role: 'batter',
-  category: 'Gold',
+  category: '',
   battingStyle: 'Right-hand bat',
   bowlingStyle: '',
   isCaptain: false,
@@ -74,7 +74,7 @@ const emptyPlayerDraft = (teamId: string): PlayerDraft => ({
   nationality: '',
   photoUrl: '',
   cricbuzzProfileUrl: '',
-  credits: 8,
+  credits: '',
 });
 
 const fromPlayer = (p: Player): PlayerDraft => ({
@@ -91,7 +91,8 @@ const fromPlayer = (p: Player): PlayerDraft => ({
   nationality: p.nationality || '',
   photoUrl: p.photoUrl || '',
   cricbuzzProfileUrl: p.cricbuzzProfileUrl || '',
-  credits: p.credits ?? 8,
+  // Credits shown in the API are already the effective value; keep blank only for brand-new players.
+  credits: typeof p.creditsOverride === 'number' ? String(p.creditsOverride) : '',
 });
 
 export const SquadEditorSection: React.FC<{
@@ -121,7 +122,7 @@ export const SquadEditorSection: React.FC<{
   // Sync working squad when active team changes or database reloads (unless dirty)
   useEffect(() => {
     if (activeTeam) {
-      setWorkingSquad((activeTeam.squad || []).map(p => ({ ...p })));
+      setWorkingSquad((activeTeam.squad || []).map(p => ({ ...p, credits: typeof p.creditsOverride === 'number' ? p.creditsOverride : undefined })));
       setIsDirty(false);
     }
   }, [activeTeam?.id, activeTeam?.updatedAt]);
@@ -194,6 +195,9 @@ export const SquadEditorSection: React.FC<{
     const errors: Errors = {};
     if (!draft.name.trim()) errors.name = 'Player name is required';
     if (!draft.role) errors.role = 'Role is required';
+    if (draft.credits.trim() && (!(Number(draft.credits) >= 4) || Number(draft.credits) > 15)) errors.credits = 'Credits must be between 4 and 15 (or blank for automatic)';
+    if (draft.photoUrl.trim() && !/^https:\/\//.test(draft.photoUrl.trim())) errors.photoUrl = 'Photo link must start with https://';
+    if (draft.cricbuzzProfileUrl.trim() && !/^https:\/\//.test(draft.cricbuzzProfileUrl.trim())) errors.cricbuzzProfileUrl = 'Profile link must start with https://';
 
     setPlayerErrors(errors);
     if (Object.keys(errors).length > 0) return;
@@ -212,7 +216,7 @@ export const SquadEditorSection: React.FC<{
       nationality: draft.nationality.trim() || undefined,
       photoUrl: draft.photoUrl.trim() || undefined,
       cricbuzzProfileUrl: draft.cricbuzzProfileUrl.trim() || undefined,
-      credits: draft.credits,
+      credits: draft.credits.trim() ? Math.round(Number(draft.credits) * 2) / 2 : undefined,
     };
 
     if (isNew) {
@@ -293,7 +297,13 @@ export const SquadEditorSection: React.FC<{
     await run(
       `save-squad-${activeTeam.id}`,
       async () => {
-        const res = await api.saveSquad(activeTeam.id, workingSquad);
+        let res;
+        try {
+          res = await api.saveSquad(activeTeam.id, workingSquad);
+        } catch (err: any) {
+          if (err?.status === 409 && window.confirm(`${err.message}\n\nRemove anyway?`)) res = await api.saveSquad(activeTeam.id, workingSquad, true);
+          else throw err;
+        }
         setIsDirty(false);
         await onRefreshAll();
         return res;
@@ -306,7 +316,7 @@ export const SquadEditorSection: React.FC<{
   const handleDiscardChanges = () => {
     if (!activeTeam) return;
     if (isDirty && !window.confirm('Discard all unsaved squad changes and reload from database?')) return;
-    setWorkingSquad((activeTeam.squad || []).map(p => ({ ...p })));
+    setWorkingSquad((activeTeam.squad || []).map(p => ({ ...p, credits: typeof p.creditsOverride === 'number' ? p.creditsOverride : undefined })));
     setIsDirty(false);
     setNotice({ kind: 'ok', text: 'Squad changes reset to database snapshot.' });
   };
@@ -419,10 +429,8 @@ export const SquadEditorSection: React.FC<{
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mt-1 flex items-center gap-3 flex-wrap">
-                  <span>Home: <strong className="text-white">{activeTeam.home || 'Zayed Cricket Stadium'}</strong></span>
-                  <span>·</span>
-                  <span>Coach: <strong className="text-slate-200">{activeTeam.headCoach || 'Lance Klusener'}</strong></span>
-                  <span>·</span>
+                  {activeTeam.home && <><span>Home: <strong className="text-white">{activeTeam.home}</strong></span><span>·</span></>}
+                  {activeTeam.headCoach && <><span>Coach: <strong className="text-slate-200">{activeTeam.headCoach}</strong></span><span>·</span></>}
                   <span>Icon: <strong className="text-amber-300">{activeTeam.iconPlayer || stats.captain?.name || '—'}</strong></span>
                 </p>
               </div>
@@ -634,18 +642,14 @@ export const SquadEditorSection: React.FC<{
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] text-slate-400 font-semibold">Bowling Style:</span>
                       <strong className="text-slate-200 font-bold truncate max-w-[160px] text-right">
-                        {player.bowlingStyle || 'None / Right-arm medium'}
+                        {player.bowlingStyle || 'Does not bowl'}
                       </strong>
                     </div>
 
-                    {player.stats && (
-                      <div className="pt-1.5 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-amber-300 font-mono">
-                        <span>Career T20:</span>
-                        <span>
-                          {player.stats.matches}m · {player.stats.runs}r · {player.stats.wickets}w
-                        </span>
-                      </div>
-                    )}
+                    <div className="pt-1.5 border-t border-slate-800/80 flex items-center justify-between text-[11px]">
+                      <span className="text-slate-400 font-semibold">Dream XI credits:</span>
+                      <strong className="text-amber-300 font-mono">{player.credits ?? 'auto'}</strong>
+                    </div>
                   </div>
                 </div>
 
@@ -901,23 +905,21 @@ export const SquadEditorSection: React.FC<{
                 />
               </Field>
 
-              <Field label="Draft Credits / Value" hint="1 to 15">
+              <Field label="Dream XI credits" hint="4 to 15 in steps of 0.5. Leave blank to use the default for the category (Icon 10.5, Platinum 10, others 8.5)." error={playerErrors.credits}>
                 <TextInput
                   type="number"
-                  min="1"
+                  min="4"
                   max="15"
-                  value={String(editingPlayer.draft.credits)}
-                  onChange={e => {
-                    const num = parseInt(e.target.value) || 8;
-                    setEditingPlayer(prev =>
-                      prev ? { ...prev, draft: { ...prev.draft, credits: num } } : null
-                    );
-                  }}
+                  step="0.5"
+                  inputMode="decimal"
+                  value={editingPlayer.draft.credits}
+                  onChange={e => setEditingPlayer(prev => (prev ? { ...prev, draft: { ...prev.draft, credits: e.target.value } } : null))}
+                  error={!!playerErrors.credits}
                 />
               </Field>
             </div>
 
-            <Field label="Photo URL (Optional)" hint="Direct https:// image link">
+            <Field label="Photo URL (Optional)" hint="Direct https:// image link" error={playerErrors.photoUrl}>
               <TextInput
                 type="url"
                 placeholder="https://"
@@ -930,7 +932,7 @@ export const SquadEditorSection: React.FC<{
               />
             </Field>
 
-            <Field label="Cricbuzz Profile Link (Optional)">
+            <Field label="Cricbuzz Profile Link (Optional)" error={playerErrors.cricbuzzProfileUrl}>
               <TextInput
                 type="url"
                 placeholder="https://www.cricbuzz.com/profiles/..."

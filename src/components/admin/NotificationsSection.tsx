@@ -17,26 +17,27 @@ type Draft = {
 
 const blank: Draft = { title: '', body: '', category: 'announcement', targetAudience: 'all', teamId: '', url: '', priority: 'normal' };
 
-const AUDIENCE_LABEL: Record<string, string> = { all: 'Everyone', logged_in: 'Signed-in fans', team: 'One team’s fans' };
+const AUDIENCE_LABEL: Record<string, string> = { all: 'Everyone', logged_in: 'Signed-in fans', team: 'One team’s fans', users: 'Personal' };
 
 export const NotificationsSection: React.FC<{
   notifications: NotificationItem[];
   teams: Team[];
   matches: Match[];
   contests: Contest[];
-}> = ({ notifications: initial, teams, matches, contests }) => {
+  isTeamOfficial?: boolean;
+}> = ({ notifications: initial, teams, matches, contests, isTeamOfficial }) => {
   const { busy, notice, setNotice, run } = useRunner();
   const [list, setList] = useState<NotificationItem[]>(initial);
   const [tokens, setTokens] = useState<{ totalTokens: number; activeSubscribers: number } | null>(null);
   const [tokenError, setTokenError] = useState<string | null>(null);
-  const [draft, setDraft] = useState<Draft>({ ...blank });
+  const [draft, setDraft] = useState<Draft>({ ...blank, ...(isTeamOfficial ? { targetAudience: 'team' as const, teamId: teams[0]?.id || '' } : {}) });
   const [errors, setErrors] = useState<Errors>({});
   const [matchId, setMatchId] = useState('');
   const [contestId, setContestId] = useState('');
   const [minutes, setMinutes] = useState('15');
 
   const load = useCallback(async () => {
-    const [n, t] = await Promise.allSettled([api.getNotifications(), api.getFCMTokens()]);
+    const [n, t] = await Promise.allSettled([api.getAdminNotifications(), api.getFCMTokens()]);
     if (n.status === 'fulfilled') setList(n.value.notifications || []);
     if (t.status === 'fulfilled') {
       setTokens({ totalTokens: t.value.totalTokens ?? 0, activeSubscribers: t.value.activeSubscribers ?? 0 });
@@ -85,7 +86,7 @@ export const NotificationsSection: React.FC<{
     );
     if (res) {
       reportSend(res.notification, res.message);
-      setDraft({ ...blank });
+      setDraft({ ...blank, ...(isTeamOfficial ? { targetAudience: 'team' as const, teamId: teams[0]?.id || '' } : {}) });
       await load();
     }
   };
@@ -155,7 +156,7 @@ export const NotificationsSection: React.FC<{
             </Select>
           </Field>
           <Field label="Audience">
-            <Select value={draft.targetAudience} onChange={e => setDraft({ ...draft, targetAudience: e.target.value as Draft['targetAudience'] })}>
+            <Select value={draft.targetAudience} onChange={e => setDraft({ ...draft, targetAudience: e.target.value as Draft['targetAudience'] })} disabled={isTeamOfficial}>
               <option value="all">Everyone</option>
               <option value="logged_in">Signed-in fans</option>
               <option value="team">One team’s fans</option>
@@ -190,7 +191,7 @@ export const NotificationsSection: React.FC<{
         </form>
       </Card>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {!isTeamOfficial && <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <Card className="space-y-3">
           <h3 className="font-extrabold text-white">Announce a match result</h3>
           <Select value={matchId} onChange={e => setMatchId(e.target.value)} aria-label="Match">
@@ -222,7 +223,8 @@ export const NotificationsSection: React.FC<{
             Send reminder
           </Button>
         </Card>
-      </div>
+      </div>}
+      {!isTeamOfficial && <p className="text-xs text-slate-500">Sent automatically: match results when a match is saved as completed, Dream XI lock reminders before each match, personal Dream XI results, prediction results, prize-draw wins and prize claim updates.</p>}
 
       <Card>
         <h3 className="font-extrabold text-white mb-3">Sent ({list.length})</h3>
@@ -236,6 +238,7 @@ export const NotificationsSection: React.FC<{
                   <Chip>{n.category.replace('_', ' ')}</Chip>
                   {n.delivery && <Chip tone={statusTone(n.delivery)}>{n.delivery === 'fcm' ? 'push' : 'in-app only'}</Chip>}
                   <Chip tone="slate">{n.targetAudience === 'team' ? `${teamName(teams, n.teamId)} fans` : AUDIENCE_LABEL[n.targetAudience] || n.targetAudience}</Chip>
+                  {typeof n.reads === 'number' && <Chip tone="blue">{n.reads} read</Chip>}
                 </div>
                 <p className="text-sm font-bold text-white break-words">{n.title}</p>
                 <p className="text-sm text-slate-400 break-words">{n.body}</p>

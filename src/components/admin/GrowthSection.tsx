@@ -395,13 +395,12 @@ type AudioDraft = {
   status: CommentaryAudioFeed['status'];
   streamUrl: string;
   description: string;
-  bitrate: string;
 };
 
 const AudioPanel: React.FC<{ items: CommentaryAudioFeed[]; setItems: (v: CommentaryAudioFeed[]) => void; r: Runner }> = ({ items, setItems, r }) => {
   const [draft, setDraft] = useState<AudioDraft | null>(null);
   const [errors, setErrors] = useState<Errors>({});
-  const blank: AudioDraft = { language: 'English', commentator: '', status: 'standby', streamUrl: '', description: '', bitrate: '' };
+  const blank: AudioDraft = { language: 'English', commentator: '', status: 'standby', streamUrl: '', description: '' };
 
   const save = async () => {
     if (!draft) return;
@@ -421,7 +420,6 @@ const AudioPanel: React.FC<{ items: CommentaryAudioFeed[]; setItems: (v: Comment
           status: draft.status,
           streamUrl: draft.streamUrl.trim(),
           description: draft.description.trim(),
-          bitrate: draft.bitrate.trim(),
         }),
       'Commentary feed saved.'
     );
@@ -480,7 +478,6 @@ const AudioPanel: React.FC<{ items: CommentaryAudioFeed[]; setItems: (v: Comment
                         status: f.status,
                         streamUrl: f.streamUrl || '',
                         description: f.description || '',
-                        bitrate: f.bitrate || '',
                       });
                     }}
                   >
@@ -533,9 +530,6 @@ const AudioPanel: React.FC<{ items: CommentaryAudioFeed[]; setItems: (v: Comment
             </Field>
             <Field label="Description" className="sm:col-span-2">
               <TextArea rows={2} value={draft.description} onChange={e => setDraft({ ...draft, description: e.target.value })} />
-            </Field>
-            <Field label="Bitrate" hint="Optional, e.g. 128 kbps">
-              <TextInput value={draft.bitrate} onChange={e => setDraft({ ...draft, bitrate: e.target.value })} />
             </Field>
           </div>
         )}

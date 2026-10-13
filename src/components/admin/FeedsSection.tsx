@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Plus, Trash2, Pin, PinOff, EyeOff, Eye, RefreshCw, ExternalLink } from 'lucide-react';
+import { Plus, Trash2, Pin, PinOff, EyeOff, Eye, RefreshCw, ExternalLink, Link2 } from 'lucide-react';
+import { FeedHealthPanel } from './FeedHealthPanel';
 import { FeedItem, Team } from '../../types';
 import { api } from '../../api';
 import { Actions, Button, Card, Chip, EmptyState, Errors, Field, Notice, SectionHeader, Select, Sheet, TextArea, TextInput, formatDateTime, isHttpsUrl, statusTone, useRunner } from './ui';
@@ -22,13 +23,15 @@ const blank: Draft = { title: '', url: '', image: '', summary: '', platform: 'We
 const SOURCE_LABEL: Record<string, string> = {
   'youtube-rss': 'YouTube RSS',
   'news-rss': 'News RSS',
-  'social-handle': 'Verified Handle',
-  'social-syndication': 'Live Syndication',
+  'social-syndication': 'X timeline',
+  curator: 'Curator.io',
   admin: 'Admin',
   ai: 'AI draft',
 };
 
-export const FeedsSection: React.FC<{ feedItems: FeedItem[]; teams: Team[]; onRefreshAll: () => Promise<void> }> = ({ feedItems, teams, onRefreshAll }) => {
+export const FeedsSection: React.FC<{ feedItems: FeedItem[]; teams: Team[]; onRefreshAll: () => Promise<void>; isTeamOfficial?: boolean }> = ({ feedItems: allItems, teams, onRefreshAll, isTeamOfficial }) => {
+  const feedItems = isTeamOfficial ? allItems.filter(i => teams.some(t => t.id === i.teamId)) : allItems;
+  const [link, setLink] = useState({ url: '', title: '', teamId: isTeamOfficial ? teams[0]?.id || '' : '', pinned: false });
   const { busy, notice, setNotice, run } = useRunner();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [errors, setErrors] = useState<Errors>({});
@@ -53,6 +56,16 @@ export const FeedsSection: React.FC<{ feedItems: FeedItem[]; teams: Team[]; onRe
       details: res.errors && res.errors.length ? res.errors : undefined,
     });
     await onRefreshAll();
+  };
+
+  const addLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isHttpsUrl(link.url)) return setNotice({ kind: 'err', text: 'Paste the full https:// link to the post or video.' });
+    const res = await run('link', () => api.addFeedFromLink({ url: link.url.trim(), title: link.title.trim() || undefined, teamId: link.teamId || null, pinned: link.pinned }), r => `Added: ${r.item.title}`);
+    if (res) {
+      setLink({ ...link, url: '', title: '' });
+      await onRefreshAll();
+    }
   };
 
   const setStatus = async (item: FeedItem, status: FeedItem['status']) => {
@@ -102,7 +115,7 @@ export const FeedsSection: React.FC<{ feedItems: FeedItem[]; teams: Team[]; onRe
     <div className="space-y-5">
       <SectionHeader
         title="Feeds"
-        description="Posts, videos and articles on the fan wall. Sync pulls from verified official handles and your news queries."
+        description="Videos, posts and headlines shown to fans. Pulls run automatically every 30 minutes from the verified handles and the news searches."
         actions={
           <>
             <Button variant="primary" size="sm" onClick={sync} loading={busy === 'sync'} icon={<RefreshCw className="w-4 h-4" />}>
@@ -113,16 +126,35 @@ export const FeedsSection: React.FC<{ feedItems: FeedItem[]; teams: Team[]; onRe
               icon={<Plus className="w-4 h-4" />}
               onClick={() => {
                 setErrors({});
-                setDraft({ ...blank });
+                setDraft({ ...blank, teamId: isTeamOfficial ? teams[0]?.id || '' : '' });
               }}
             >
-              Add post
+              Add manually
             </Button>
           </>
         }
       />
 
       <Notice notice={notice} onClose={() => setNotice(null)} />
+
+      <Card>
+        <form onSubmit={addLink} className="space-y-3">
+          <h3 className="font-extrabold text-white inline-flex items-center gap-2"><Link2 className="w-4 h-4 text-amber-400" /> Add a post by link</h3>
+          <p className="text-xs text-slate-400">Paste a YouTube, X, Instagram, TikTok or Facebook post link. YouTube videos play in the site; X, Instagram, TikTok and Facebook posts show with the platform's embed. Titles are filled in automatically for YouTube, X and TikTok.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <TextInput type="url" inputMode="url" placeholder="https://www.instagram.com/p/…" value={link.url} onChange={e => setLink({ ...link, url: e.target.value })} required aria-label="Post link" />
+            <TextInput placeholder="Title (optional)" value={link.title} onChange={e => setLink({ ...link, title: e.target.value })} aria-label="Title" />
+            <Select value={link.teamId} onChange={e => setLink({ ...link, teamId: e.target.value })} aria-label="Team" disabled={isTeamOfficial}>
+              {!isTeamOfficial && <option value="">League-wide</option>}
+              {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </Select>
+            <label className="inline-flex items-center gap-2 text-sm text-slate-300 min-h-[44px]"><input type="checkbox" checked={link.pinned} onChange={e => setLink({ ...link, pinned: e.target.checked })} /> Pin to the top</label>
+          </div>
+          <Button type="submit" variant="primary" loading={busy === 'link'}>Add post</Button>
+        </form>
+      </Card>
+
+      <FeedHealthPanel />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} aria-label="Filter by status">
@@ -135,6 +167,8 @@ export const FeedsSection: React.FC<{ feedItems: FeedItem[]; teams: Team[]; onRe
           <option value="all">All sources</option>
           <option value="youtube-rss">YouTube RSS</option>
           <option value="news-rss">News RSS</option>
+          <option value="social-syndication">X timeline</option>
+          <option value="curator">Curator.io</option>
           <option value="admin">Admin</option>
           <option value="ai">AI draft</option>
           <option value="unknown">Unlabelled</option>
@@ -152,7 +186,6 @@ export const FeedsSection: React.FC<{ feedItems: FeedItem[]; teams: Team[]; onRe
                   <Chip tone={statusTone(item.status)}>{item.status}</Chip>
                   <Chip>{item.platform}</Chip>
                   <Chip tone="violet">{item.sourceType ? SOURCE_LABEL[item.sourceType] || item.sourceType : 'Unlabelled source'}</Chip>
-                  {item.verifiedReal && <Chip tone="green">Official</Chip>}
                 </div>
                 <p className="font-bold text-white break-words">{item.title}</p>
                 {item.summary && <p className="text-sm text-slate-400 line-clamp-3 break-words">{item.summary}</p>}
@@ -243,8 +276,8 @@ export const FeedsSection: React.FC<{ feedItems: FeedItem[]; teams: Team[]; onRe
               </Select>
             </Field>
             <Field label="Team">
-              <Select value={draft.teamId} onChange={e => setDraft({ ...draft, teamId: e.target.value })}>
-                <option value="">League-wide</option>
+              <Select value={draft.teamId} onChange={e => setDraft({ ...draft, teamId: e.target.value })} disabled={isTeamOfficial}>
+                {!isTeamOfficial && <option value="">League-wide</option>}
                 {teams.map(t => (
                   <option key={t.id} value={t.id}>
                     {t.name}

@@ -1,68 +1,43 @@
 import React, { useEffect, useState } from 'react';
 import { Shield, ShieldAlert, ShieldCheck, UserPlus, Trash2, Edit2, Check, X, AlertCircle, Sparkles, Key, Users } from 'lucide-react';
 import { api } from '../../api';
-import { AdminPermission, AdminRole, AdminUserRecord } from '../../types';
-import { Button, Field, TextInput } from './ui';
+import { AdminPermission, AdminRole, AdminUserRecord, Team } from '../../types';
+import { Button, Field, Select, TextInput } from './ui';
 
 interface AdminsSectionProps {
   currentUserEmail?: string;
   isCurrentUserSuperAdmin?: boolean;
+  teams: Team[];
 }
 
 const ALL_PERMISSIONS: { id: AdminPermission; label: string; desc: string; color: string }[] = [
-  { id: 'leagues', label: 'Leagues & Teams', desc: 'Franchise profiles, 18-player squads, player stats', color: 'bg-blue-500/10 text-blue-400 border-blue-500/30' },
-  { id: 'matches', label: 'Matches & Fixtures', desc: 'Fixtures, live ticker, scorecards, commentary', color: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' },
-  { id: 'contests', label: 'Contests & Predictions', desc: 'Contest questions, prediction scoring, points', color: 'bg-purple-500/10 text-purple-400 border-purple-500/30' },
-  { id: 'winners', label: 'Winners & Draws', desc: 'Prize giveaways, provably fair draws, pick winners', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' },
-  { id: 'feeds', label: 'Social Feeds', desc: 'Curate social posts, news articles, YouTube live', color: 'bg-amber-500/10 text-amber-400 border-amber-500/30' },
-  { id: 'social', label: 'Team Handles', desc: 'Franchise social media handles and approvals', color: 'bg-orange-500/10 text-orange-400 border-orange-500/30' },
-  { id: 'notifications', label: 'Push Notifications', desc: 'FCM push alerts, match announcements', color: 'bg-rose-500/10 text-rose-400 border-rose-500/30' },
-  { id: 'fanspaces', label: 'Fan Spaces', desc: 'Global experiential fan hubs and reservations', color: 'bg-teal-500/10 text-teal-400 border-teal-500/30' },
-  { id: 'growth', label: 'Growth Catalysts', desc: 'Youth Cup, creator partners, audio streams', color: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30' },
-  { id: 'settings', label: 'System Settings', desc: 'Branding, season dates, curator and push keys', color: 'bg-slate-500/10 text-slate-300 border-slate-500/30' },
-  { id: 'admins', label: 'RBAC & Admins', desc: 'Add/manage admin users and permission controls', color: 'bg-amber-400/20 text-amber-300 border-amber-400/40' },
+  { id: 'teams', label: 'Teams & squads', desc: 'Team pages, squads, fantasy credits', color: 'bg-blue-500/10 text-blue-400 border-blue-500/30' },
+  { id: 'matches', label: 'Matches', desc: 'Fixtures, live scores, scorecards, results', color: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' },
+  { id: 'contests', label: 'Predictions', desc: 'Prediction contests and quizzes, settling', color: 'bg-purple-500/10 text-purple-400 border-purple-500/30' },
+  { id: 'fantasy', label: 'Dream XI', desc: 'Re-score Dream XI after scorecard fixes', color: 'bg-violet-500/10 text-violet-300 border-violet-500/30' },
+  { id: 'prizes', label: 'Prizes & claims', desc: 'Reward catalogue, fulfil or cancel claims', color: 'bg-lime-500/10 text-lime-300 border-lime-500/30' },
+  { id: 'draws', label: 'Prize draws', desc: 'Create draws, pick winners', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' },
+  { id: 'social', label: 'Handles & feeds', desc: 'Official accounts, posts, approvals', color: 'bg-orange-500/10 text-orange-400 border-orange-500/30' },
+  { id: 'community', label: 'Forum & polls', desc: 'Moderation, reports, polls', color: 'bg-pink-500/10 text-pink-300 border-pink-500/30' },
+  { id: 'notifications', label: 'Notifications', desc: 'Push and in-app messages', color: 'bg-rose-500/10 text-rose-400 border-rose-500/30' },
+  { id: 'fanspaces', label: 'Fan Spaces', desc: 'Venues, bookings, door check-in', color: 'bg-teal-500/10 text-teal-400 border-teal-500/30' },
+  { id: 'growth', label: 'Programmes', desc: 'Youth cup, creators, commentary, memberships', color: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30' },
+  { id: 'settings', label: 'Settings', desc: 'Branding, season, integrations, proposal', color: 'bg-slate-500/10 text-slate-300 border-slate-500/30' },
 ];
+
+const TEAM_OFFICIAL_PERMS: AdminPermission[] = ['team', 'social', 'community', 'notifications'];
 
 const ROLE_PRESETS: { id: AdminRole; label: string; desc: string; defaultPerms: AdminPermission[] }[] = [
-  {
-    id: 'superadmin',
-    label: 'Super Admin',
-    desc: 'Unrestricted master access across every section, settings, and RBAC management.',
-    defaultPerms: ['all', 'leagues', 'matches', 'teams', 'contests', 'winners', 'draws', 'feeds', 'social', 'notifications', 'fanspaces', 'growth', 'settings', 'admins'],
-  },
-  {
-    id: 'league_admin',
-    label: 'League & Matches Admin',
-    desc: 'Manage franchise teams, 18-player squads, match fixtures, live scorecards, and commentary.',
-    defaultPerms: ['leagues', 'matches', 'teams'],
-  },
-  {
-    id: 'contest_admin',
-    label: 'Contests & Predictions Admin',
-    desc: 'Create and resolve fan contests, match predictions, fantasy questions, and point distributions.',
-    defaultPerms: ['contests'],
-  },
-  {
-    id: 'winner_admin',
-    label: 'Winners & Prize Draws Admin',
-    desc: 'Oversee VIP giveaways, provably fair prize draws, pick transparent winners, and verify claims.',
-    defaultPerms: ['winners', 'draws'],
-  },
-  {
-    id: 'social_admin',
-    label: 'Social & Feeds Curator',
-    desc: 'Manage franchise social media handles, approve discovered content, and curate live social feeds.',
-    defaultPerms: ['feeds', 'social'],
-  },
-  {
-    id: 'custom',
-    label: 'Custom Role',
-    desc: 'Customize individual permissions tailored to specific responsibilities.',
-    defaultPerms: ['leagues'],
-  },
+  { id: 'superadmin', label: 'Super Admin', desc: 'Everything, including managing admins and server settings.', defaultPerms: ['all'] },
+  { id: 'league_admin', label: 'League Admin', desc: 'Teams, matches, games, community, Fan Spaces and programmes.', defaultPerms: ['leagues', 'matches', 'teams', 'contests', 'fantasy', 'games', 'notifications', 'fanspaces', 'growth', 'community'] },
+  { id: 'contest_admin', label: 'Games Admin', desc: 'Predictions, quizzes and Dream XI scoring.', defaultPerms: ['contests', 'fantasy', 'games'] },
+  { id: 'winner_admin', label: 'Prizes Admin', desc: 'Prize catalogue, claims and prize draws.', defaultPerms: ['winners', 'draws', 'prizes'] },
+  { id: 'social_admin', label: 'Social & Community', desc: 'Official handles, feeds, approvals, forum moderation and polls.', defaultPerms: ['feeds', 'social', 'community'] },
+  { id: 'team_official', label: 'Team Official', desc: 'One franchise only: its page, squad, channels, posts, polls, forum and fan messages.', defaultPerms: TEAM_OFFICIAL_PERMS },
+  { id: 'custom', label: 'Custom Role', desc: 'Pick individual permissions.', defaultPerms: ['matches'] },
 ];
 
-export const AdminsSection: React.FC<AdminsSectionProps> = ({ currentUserEmail, isCurrentUserSuperAdmin }) => {
+export const AdminsSection: React.FC<AdminsSectionProps> = ({ currentUserEmail, isCurrentUserSuperAdmin, teams }) => {
   const [admins, setAdmins] = useState<AdminUserRecord[]>([]);
   const [superAdminEmail, setSuperAdminEmail] = useState<string>('solarastra.in@gmail.com');
   const [loading, setLoading] = useState(true);
@@ -76,6 +51,7 @@ export const AdminsSection: React.FC<AdminsSectionProps> = ({ currentUserEmail, 
   const [formName, setFormName] = useState('');
   const [formRole, setFormRole] = useState<AdminRole>('league_admin');
   const [formPermissions, setFormPermissions] = useState<AdminPermission[]>(['leagues', 'matches']);
+  const [formTeamId, setFormTeamId] = useState<string>('');
   const [saving, setSaving] = useState(false);
 
   const loadAdmins = async () => {
@@ -102,6 +78,7 @@ export const AdminsSection: React.FC<AdminsSectionProps> = ({ currentUserEmail, 
     setFormName('');
     setFormRole('league_admin');
     setFormPermissions(['leagues', 'matches']);
+    setFormTeamId('');
     setIsModalOpen(true);
   };
 
@@ -111,6 +88,7 @@ export const AdminsSection: React.FC<AdminsSectionProps> = ({ currentUserEmail, 
     setFormName(admin.name || '');
     setFormRole(admin.role || 'custom');
     setFormPermissions(admin.permissions || []);
+    setFormTeamId(admin.teamId || '');
     setIsModalOpen(true);
   };
 
@@ -127,7 +105,7 @@ export const AdminsSection: React.FC<AdminsSectionProps> = ({ currentUserEmail, 
       const next = prev.includes(perm) ? prev.filter(p => p !== perm) : [...prev, perm];
       return next;
     });
-    setFormRole('custom');
+    if (formRole !== 'team_official') setFormRole('custom');
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -139,16 +117,18 @@ export const AdminsSection: React.FC<AdminsSectionProps> = ({ currentUserEmail, 
     setSaving(true);
     setError(null);
     try {
-      const isSuper = formRole === 'superadmin' || formEmail.trim().toLowerCase() === superAdminEmail.toLowerCase();
-      const permsToSave = isSuper
-        ? ['all', 'leagues', 'matches', 'teams', 'contests', 'winners', 'draws', 'feeds', 'social', 'notifications', 'fanspaces', 'growth', 'settings', 'admins']
-        : formPermissions;
-
+      const isSuper = formRole === 'superadmin';
+      if (formRole === 'team_official' && !formTeamId) {
+        setError('Choose the team this official manages.');
+        setSaving(false);
+        return;
+      }
       const res = await api.saveAdmin({
         email: formEmail.trim().toLowerCase(),
         name: formName.trim() || undefined,
-        role: isSuper ? 'superadmin' : formRole,
-        permissions: permsToSave as AdminPermission[],
+        role: formRole,
+        permissions: isSuper ? ['all'] : formPermissions,
+        teamId: formRole === 'team_official' ? formTeamId : null,
       });
       setAdmins(res.admins || []);
       setSuccessMsg(`Admin permissions for ${formEmail.trim()} updated successfully.`);
@@ -203,6 +183,12 @@ export const AdminsSection: React.FC<AdminsSectionProps> = ({ currentUserEmail, 
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
             <Key className="w-3 h-3" /> Winner Admin
+          </span>
+        );
+      case 'team_official':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-sky-500/20 text-sky-300 border border-sky-500/40">
+            <Users className="w-3 h-3" /> Team Official
           </span>
         );
       case 'social_admin':
@@ -280,7 +266,7 @@ export const AdminsSection: React.FC<AdminsSectionProps> = ({ currentUserEmail, 
             <div className="mt-2.5 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-400">
               <span>Authorized Modules:</span>
               <span className="font-bold text-amber-300">
-                {preset.id === 'superadmin' ? 'All (11+)' : `${preset.defaultPerms.length} Modules`}
+                {preset.id === 'superadmin' ? 'All' : preset.id === 'team_official' ? 'Own team' : `${preset.defaultPerms.length} areas`}
               </span>
             </div>
           </div>
@@ -348,11 +334,14 @@ export const AdminsSection: React.FC<AdminsSectionProps> = ({ currentUserEmail, 
                           </div>
                         </div>
                       </td>
-                      <td className="py-3.5 px-4">{getRoleBadge(admin.role, isSuper)}</td>
+                      <td className="py-3.5 px-4">
+                        {getRoleBadge(admin.role, isSuper)}
+                        {admin.role === 'team_official' && <div className="text-[10px] text-slate-400 mt-1">{teams.find(t => t.id === admin.teamId)?.name || 'No team set'}</div>}
+                      </td>
                       <td className="py-3.5 px-4 max-w-md">
                         {isAll ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-400/10 text-amber-300 border border-amber-400/30 font-black text-[10px]">
-                            ★ Full Access (All 11 Modules)
+                            ★ Full access
                           </span>
                         ) : (
                           <div className="flex items-center gap-1 flex-wrap">
@@ -440,7 +429,7 @@ export const AdminsSection: React.FC<AdminsSectionProps> = ({ currentUserEmail, 
                   type="email"
                   value={formEmail}
                   onChange={e => setFormEmail(e.target.value)}
-                  placeholder="admin.name@example.com"
+                  placeholder="name@email.com"
                   disabled={!!editingAdminEmail}
                   required
                 />
@@ -484,7 +473,18 @@ export const AdminsSection: React.FC<AdminsSectionProps> = ({ currentUserEmail, 
                 </div>
               </Field>
 
-              {formRole !== 'superadmin' && (
+              {formRole === 'team_official' && (
+                <Field label="Team">
+                  <Select value={formTeamId} onChange={e => setFormTeamId(e.target.value)} required>
+                    <option value="">Choose a team…</option>
+                    {teams.map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </Select>
+                </Field>
+              )}
+
+              {formRole !== 'superadmin' && formRole !== 'team_official' && (
                 <Field label="Granular Permissions">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1.5 p-3 rounded-2xl bg-slate-950 border border-slate-800 max-h-56 overflow-y-auto">
                     {ALL_PERMISSIONS.map(perm => {

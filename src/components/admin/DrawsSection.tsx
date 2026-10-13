@@ -24,7 +24,7 @@ import {
 } from './ui';
 import { teamName } from './shared';
 
-type Draft = { id?: string; title: string; prize: string; description: string; closesAt: string; teamOnly: string; color: string; status: PrizeDraw['status'] };
+type Draft = { id?: string; title: string; prize: string; description: string; closesAt: string; teamOnly: string; color: string; minPoints: string; status: PrizeDraw['status'] };
 const HEX = /^#[0-9a-fA-F]{6}$/;
 
 export const DrawsSection: React.FC<{ draws: PrizeDraw[]; teams: Team[]; onRefreshAll: () => Promise<void> }> = ({ draws, teams, onRefreshAll }) => {
@@ -36,7 +36,7 @@ export const DrawsSection: React.FC<{ draws: PrizeDraw[]; teams: Team[]; onRefre
 
   const openNew = () => {
     setErrors({});
-    setDraft({ title: '', prize: '', description: '', closesAt: '', teamOnly: '', color: '#f59e0b', status: 'open' });
+    setDraft({ title: '', prize: '', description: '', closesAt: '', teamOnly: '', color: '#f59e0b', minPoints: '0', status: 'open' });
   };
 
   const openEdit = (d: PrizeDraw) => {
@@ -49,6 +49,7 @@ export const DrawsSection: React.FC<{ draws: PrizeDraw[]; teams: Team[]; onRefre
       closesAt: toLocalInput(d.closesAt),
       teamOnly: d.teamOnly || '',
       color: HEX.test(d.color || '') ? d.color : '#f59e0b',
+      minPoints: String(d.minPoints || 0),
       status: d.status,
     });
   };
@@ -73,6 +74,7 @@ export const DrawsSection: React.FC<{ draws: PrizeDraw[]; teams: Team[]; onRefre
           closesAt: fromLocalInput(draft.closesAt),
           teamOnly: draft.teamOnly || null,
           color: draft.color,
+          minPoints: Math.max(0, Number(draft.minPoints) || 0),
           ...(draft.id ? { status: draft.status } : { status: 'open' as const }),
         }),
       'Draw saved.'
@@ -101,7 +103,7 @@ export const DrawsSection: React.FC<{ draws: PrizeDraw[]; teams: Team[]; onRefre
     setLastResult(prev => ({ ...prev, [d.id]: res.draw }));
     setNotice({
       kind: 'ok',
-      text: `Winner: ${res.draw?.winnerName || res.winner?.name || res.winner?.userName || 'recorded'}`,
+      text: `Winner: ${res.draw?.winnerName || res.winner?.userName || 'recorded'}`,
     });
     await onRefreshAll();
   };
@@ -220,6 +222,9 @@ export const DrawsSection: React.FC<{ draws: PrizeDraw[]; teams: Team[]; onRefre
                   </option>
                 ))}
               </Select>
+            </Field>
+            <Field label="Minimum season points to enter" hint="0 lets every signed-in fan enter">
+              <TextInput type="number" min={0} value={draft.minPoints} onChange={e => setDraft({ ...draft, minPoints: e.target.value })} />
             </Field>
             <Field label="Accent colour" error={errors.color}>
               <div className="flex gap-2">

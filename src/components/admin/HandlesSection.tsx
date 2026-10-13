@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Plus, Trash2, Edit3, Check, X, ExternalLink } from 'lucide-react';
+import { Plus, Trash2, Edit3, Check, X, ExternalLink, RefreshCw } from 'lucide-react';
 import { Approval, SocialHandle, Team } from '../../types';
 import { api } from '../../api';
 import { Actions, Button, Card, Chip, EmptyState, Errors, Field, Notice, SectionHeader, Select, Sheet, TextInput, isHttpsUrl, statusTone, useRunner } from './ui';
@@ -7,14 +7,16 @@ import { HANDLE_PLATFORMS, teamName } from './shared';
 
 type Draft = { id?: string; teamId: string; platform: SocialHandle['platform']; handle: string; url: string; status: SocialHandle['status'] };
 
-const blank: Draft = { teamId: '', platform: 'X', handle: '', url: '', status: 'verified' };
+const blank = (teamId = ''): Draft => ({ teamId, platform: 'X', handle: '', url: '', status: 'verified' });
 
 export const HandlesSection: React.FC<{
   handles: SocialHandle[];
   teams: Team[];
   approvals: Approval[];
   onRefreshAll: () => Promise<void>;
-}> = ({ handles, teams, approvals, onRefreshAll }) => {
+  isTeamOfficial?: boolean;
+}> = ({ handles: allHandles, teams, approvals, onRefreshAll, isTeamOfficial }) => {
+  const handles = isTeamOfficial ? allHandles.filter(h => teams.some(t => t.id === h.teamId)) : allHandles;
   const { busy, notice, setNotice, run } = useRunner();
   const [statusFilter, setStatusFilter] = useState<'all' | 'verified' | 'pending'>('all');
   const [teamFilter, setTeamFilter] = useState('all');
@@ -54,7 +56,7 @@ export const HandlesSection: React.FC<{
           url: draft.url.trim(),
           status: draft.status,
         }),
-      'Handle saved.'
+      r => (r.sync ? `Handle saved. First pull: ${r.sync.note}.` : 'Handle saved.')
     );
     if (res) {
       setDraft(null);
@@ -86,6 +88,11 @@ export const HandlesSection: React.FC<{
     if (res) await onRefreshAll();
   };
 
+  const sync = async (h: SocialHandle) => {
+    const res = await run(`sync:${h.id}`, () => api.syncHandle(h.id), r => `${h.platform} ${h.handle}: ${r.note}`);
+    if (res) await onRefreshAll();
+  };
+
   const remove = async (h: SocialHandle) => {
     if (!window.confirm(`Delete ${h.platform} handle ${h.handle}?`)) return;
     const res = await run(`del:${h.id}`, () => api.deleteHandle(h.id), 'Handle deleted.');
@@ -96,7 +103,7 @@ export const HandlesSection: React.FC<{
     <div className="space-y-5">
       <SectionHeader
         title="Social handles"
-        description="Only verified handles are shown to fans and used for feed syncing."
+        description="Only verified handles are shown to fans and pulled. Add an account only after checking it belongs to the team (linked from their website or confirmed by them)."
         actions={
           <Button
             variant="primary"
@@ -104,7 +111,7 @@ export const HandlesSection: React.FC<{
             icon={<Plus className="w-4 h-4" />}
             onClick={() => {
               setErrors({});
-              setDraft({ ...blank });
+              setDraft(blank(isTeamOfficial ? teams[0]?.id || '' : ''));
             }}
           >
             Add handle
@@ -118,7 +125,7 @@ export const HandlesSection: React.FC<{
           <option value="pending">Pending ({pendingCount})</option>
           <option value="verified">Verified ({handles.length - pendingCount})</option>
         </Select>
-        <Select value={teamFilter} onChange={e => setTeamFilter(e.target.value)} aria-label="Filter by team">
+        <Select value={teamFilter} onChange={e => setTeamFilter(e.target.value)} aria-label="Filter by team" disabled={isTeamOfficial}>
           <option value="all">All teams</option>
           <option value="league">League-wide</option>
           {teams.map(t => (
@@ -147,7 +154,12 @@ export const HandlesSection: React.FC<{
                 <a href={h.url} target="_blank" rel="noopener noreferrer" className="text-sm text-amber-300 hover:underline break-all inline-flex items-center gap-1">
                   {h.url} <ExternalLink className="w-3.5 h-3.5 shrink-0" />
                 </a>
-                {h.source && <p className="text-xs text-slate-500">Source: {h.source}</p>}
+                {h.meta?.evidence && <p className="text-xs text-slate-500">Checked: {h.meta.evidence}</p>}
+                {h.status === 'verified' && (
+                  <p className={`text-xs ${h.lastSyncStatus === 'error' ? 'text-red-300' : h.lastSyncStatus === 'ok' ? 'text-emerald-300' : 'text-slate-400'}`}>
+                    {h.lastSyncAt ? `Last pull ${new Date(h.lastSyncAt).toLocaleString()}: ${h.lastSyncNote || h.lastSyncStatus}` : 'Not pulled yet'}
+                  </p>
+                )}
                 <Actions className="mt-auto pt-1">
                   {h.status === 'pending' && (
                     <>
@@ -158,6 +170,11 @@ export const HandlesSection: React.FC<{
                         Reject
                       </Button>
                     </>
+                  )}
+                  {h.status === 'verified' && (
+                    <Button size="sm" variant="secondary" icon={<RefreshCw className="w-4 h-4" />} loading={busy === `sync:${h.id}`} onClick={() => sync(h)}>
+                      Pull now
+                    </Button>
                   )}
                   <Button
                     size="sm"
@@ -197,8 +214,8 @@ export const HandlesSection: React.FC<{
         {draft && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Team">
-              <Select value={draft.teamId} onChange={e => setDraft({ ...draft, teamId: e.target.value })}>
-                <option value="">League-wide</option>
+              <Select value={draft.teamId} onChange={e => setDraft({ ...draft, teamId: e.target.value })} disabled={isTeamOfficial}>
+                {!isTeamOfficial && <option value="">League-wide</option>}
                 {teams.map(t => (
                   <option key={t.id} value={t.id}>
                     {t.name}
@@ -218,7 +235,7 @@ export const HandlesSection: React.FC<{
             <Field label="Profile URL" required error={errors.url} className="sm:col-span-2">
               <TextInput type="url" inputMode="url" placeholder="https://" value={draft.url} onChange={e => setDraft({ ...draft, url: e.target.value })} error={!!errors.url} />
             </Field>
-            <Field label="Handle" required error={errors.handle} hint="e.g. @uaebulls">
+            <Field label="Handle" required error={errors.handle} hint="e.g. @UAEBullsT10">
               <TextInput value={draft.handle} onChange={e => setDraft({ ...draft, handle: e.target.value })} error={!!errors.handle} />
             </Field>
             <Field label="Status">

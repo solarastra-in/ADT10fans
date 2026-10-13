@@ -21,6 +21,8 @@ type Draft = {
   curatorHashtags: string;
   maxSocialPerPlatform: string;
   newsQueries: string;
+  referralRewardPoints: string;
+  lockReminderMinutes: string;
   smtpHost: string;
   smtpPort: string;
   smtpUser: string;
@@ -47,6 +49,8 @@ const toDraft = (s: Partial<SystemSettings> | null | undefined): Draft => ({
   curatorHashtags: s?.curatorHashtags || '',
   maxSocialPerPlatform: s?.maxSocialPerPlatform !== undefined ? String(s.maxSocialPerPlatform) : '',
   newsQueries: s?.newsQueries || '',
+  referralRewardPoints: String(s?.referralRewardPoints ?? 50),
+  lockReminderMinutes: String(s?.lockReminderMinutes ?? 30),
   smtpHost: s?.smtp?.host || '',
   smtpPort: s?.smtp?.port ? String(s.smtp.port) : '',
   smtpUser: s?.smtp?.user || '',
@@ -94,6 +98,10 @@ export const SettingsSection: React.FC<{ settings: SystemSettings; onRefreshAll:
     else if (badEmails.length) er.adminEmails = `Not a valid email: ${badEmails.join(', ')}`;
     if (draft.seasonStart && draft.seasonEnd && draft.seasonEnd < draft.seasonStart) er.seasonEnd = 'End date must be after the start date.';
     const max = toNumber(draft.maxSocialPerPlatform, -1);
+    const refPts = toNumber(draft.referralRewardPoints, -1);
+    if (!(Number.isInteger(refPts) && refPts >= 0 && refPts <= 1000)) er.referralRewardPoints = 'Use a whole number from 0 to 1000.';
+    const lockMin = toNumber(draft.lockReminderMinutes, -1);
+    if (!(Number.isInteger(lockMin) && lockMin >= 5 && lockMin <= 240)) er.lockReminderMinutes = 'Use a whole number from 5 to 240.';
     if (!(Number.isInteger(max) && max >= 1 && max <= 50)) er.maxSocialPerPlatform = 'Use a whole number from 1 to 50.';
     const port = toNumber(draft.smtpPort, -1);
     if (draft.smtpPort && !(Number.isInteger(port) && port > 0 && port < 65536)) er.smtpPort = 'Port must be 1–65535.';
@@ -133,6 +141,8 @@ export const SettingsSection: React.FC<{ settings: SystemSettings; onRefreshAll:
       curatorApiKey: draft.curatorApiKey.trim(),
       curatorHashtags: draft.curatorHashtags.trim(),
       maxSocialPerPlatform: max,
+      referralRewardPoints: refPts,
+      lockReminderMinutes: lockMin,
       newsQueries: draft.newsQueries
         .split('\n')
         .map(l => l.trim())
@@ -376,6 +386,14 @@ export const SettingsSection: React.FC<{ settings: SystemSettings; onRefreshAll:
             }
           >
             <TextInput type="number" inputMode="numeric" min={1} max={50} value={draft.maxSocialPerPlatform} onChange={e => set({ maxSocialPerPlatform: e.target.value })} error={!!errors.maxSocialPerPlatform} />
+          </Field>
+
+          <Field label="Referral reward (points)" error={errors.referralRewardPoints} hint="Paid to both fans once the invited fan first plays. 0 turns rewards off.">
+            <TextInput type="number" inputMode="numeric" min={0} max={1000} value={draft.referralRewardPoints} onChange={e => set({ referralRewardPoints: e.target.value })} error={!!errors.referralRewardPoints} />
+          </Field>
+
+          <Field label="Lock reminder (minutes before start)" error={errors.lockReminderMinutes} hint="Fans with an unsaved Dream XI or open contest get a reminder this long before lock.">
+            <TextInput type="number" inputMode="numeric" min={5} max={240} value={draft.lockReminderMinutes} onChange={e => set({ lockReminderMinutes: e.target.value })} error={!!errors.lockReminderMinutes} />
           </Field>
 
           <Field 

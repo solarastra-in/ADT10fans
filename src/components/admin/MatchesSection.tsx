@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { Plus, Trash2, Edit3, Activity } from 'lucide-react';
+import { Plus, Trash2, Edit3, Activity, RadioTower, Search } from 'lucide-react';
+import { ScorecardEditor } from './ScorecardEditor';
+import type { CricketDataCandidate, MatchScorecard } from '../../types';
 import { Match, SystemSettings, Team } from '../../types';
 import { api } from '../../api';
 import {
@@ -25,7 +27,7 @@ import {
 } from './ui';
 import { teamName } from './shared';
 
-type FixtureDraft = { id?: string; matchNo: string; stage: string; teamA: string; teamB: string; startsAt: string; venue: string; status: Match['status'] };
+type FixtureDraft = { id?: string; matchNo: string; stage: string; teamA: string; teamB: string; startsAt: string; venue: string; status: Match['status']; externalId: string; streamUrl: string };
 type ScoreDraft = {
   id: string;
   status: Match['status'];
@@ -42,6 +44,8 @@ type ScoreDraft = {
   topScorer: string;
   topWicketTaker: string;
   totalSixes: string;
+  scorecard?: MatchScorecard;
+  editCard: boolean;
 };
 
 export const MatchesSection: React.FC<{ matches: Match[]; teams: Team[]; settings: SystemSettings; onRefreshAll: () => Promise<void> }> = ({
@@ -54,13 +58,14 @@ export const MatchesSection: React.FC<{ matches: Match[]; teams: Team[]; setting
   const [fixture, setFixture] = useState<FixtureDraft | null>(null);
   const [score, setScore] = useState<ScoreDraft | null>(null);
   const [errors, setErrors] = useState<Errors>({});
+  const [candidates, setCandidates] = useState<CricketDataCandidate[] | null>(null);
 
   const sorted = useMemo(() => [...matches].sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()), [matches]);
 
   const openNewFixture = () => {
     setErrors({});
     const nextNo = matches.reduce((m, x) => Math.max(m, x.matchNo || 0), 0) + 1;
-    setFixture({ matchNo: String(nextNo), stage: '', teamA: '', teamB: '', startsAt: '', venue: settings?.venue || '', status: 'upcoming' });
+    setFixture({ matchNo: String(nextNo), stage: 'Group stage', teamA: '', teamB: '', startsAt: '', venue: settings?.venue || '', status: 'upcoming', externalId: '', streamUrl: '' });
   };
 
   const openEditFixture = (m: Match) => {
@@ -74,6 +79,8 @@ export const MatchesSection: React.FC<{ matches: Match[]; teams: Team[]; setting
       startsAt: toLocalInput(m.startsAt),
       venue: m.venue || '',
       status: m.status,
+      externalId: m.externalId || '',
+      streamUrl: m.streamUrl || '',
     });
   };
 
@@ -95,6 +102,8 @@ export const MatchesSection: React.FC<{ matches: Match[]; teams: Team[]; setting
       topScorer: m.topScorer || '',
       topWicketTaker: m.topWicketTaker || '',
       totalSixes: m.totalSixes !== undefined && m.totalSixes !== null ? String(m.totalSixes) : '',
+      scorecard: m.scorecard,
+      editCard: false,
     });
   };
 
@@ -107,6 +116,7 @@ export const MatchesSection: React.FC<{ matches: Match[]; teams: Team[]; setting
     if (!fixture.startsAt || !fromLocalInput(fixture.startsAt)) e.startsAt = 'Start date and time are required.';
     if (!fixture.venue.trim()) e.venue = 'Venue is required.';
     if (!fixture.matchNo.trim() || toNumber(fixture.matchNo, -1) < 1) e.matchNo = 'Match number must be 1 or more.';
+    if (fixture.streamUrl.trim() && !/^https:\/\//.test(fixture.streamUrl.trim())) e.streamUrl = 'Stream link must start with https://';
     setErrors(e);
     if (Object.keys(e).length) return;
     const res = await run(
@@ -121,6 +131,8 @@ export const MatchesSection: React.FC<{ matches: Match[]; teams: Team[]; setting
           startsAt: fromLocalInput(fixture.startsAt),
           venue: fixture.venue.trim(),
           status: fixture.status,
+          externalId: fixture.externalId.trim(),
+          streamUrl: fixture.streamUrl.trim(),
         }),
       'Fixture saved.'
     );
@@ -141,7 +153,7 @@ export const MatchesSection: React.FC<{ matches: Match[]; teams: Team[]; setting
     if (
       score.status === 'completed' &&
       match?.status !== 'completed' &&
-      !window.confirm('Marking this match completed sends a match-result notification to fans. Continue?')
+      !window.confirm('Marking this match completed sends a result notification to fans and scores every Dream XI lineup from the scorecard. Continue?')
     )
       return;
     const res = await run(
@@ -163,13 +175,24 @@ export const MatchesSection: React.FC<{ matches: Match[]; teams: Team[]; setting
           topScorer: score.topScorer.trim(),
           topWicketTaker: score.topWicketTaker.trim(),
           totalSixes: score.totalSixes.trim() ? toNumber(score.totalSixes, 0) : undefined,
+          ...(score.editCard ? { scorecard: score.scorecard } : {}),
         }),
-      'Score updated.'
+      r => (r.fantasy?.note ? `Score updated. ${r.fantasy.note}` : 'Score updated.')
     );
     if (res) {
       setScore(null);
       await onRefreshAll();
     }
+  };
+
+  const liveSync = async (m: Match) => {
+    const res = await run(`live:${m.id}`, () => api.liveSyncMatch(m.id), r => `Synced from CricketData: ${r.status}${r.scorecard ? ', scorecard updated' : ''}${r.scorecardNote ? ` (${r.scorecardNote})` : ''}.`);
+    if (res) await onRefreshAll();
+  };
+
+  const findCandidates = async () => {
+    const res = await run('find', () => api.findCricketDataMatches());
+    if (res) setCandidates(res.matches);
   };
 
   const remove = async (m: Match) => {
@@ -184,7 +207,7 @@ export const MatchesSection: React.FC<{ matches: Match[]; teams: Team[]; setting
     <div className="space-y-5">
       <SectionHeader
         title="Matches"
-        description="Fixtures and live scores are entered here by hand — nothing is simulated."
+        description="Fixtures, live scores and scorecards. Link a fixture to its CricketData.org match id for automatic live scores, or enter them by hand."
         actions={
           <Button variant="primary" size="sm" icon={<Plus className="w-4 h-4" />} onClick={openNewFixture} disabled={teams.length < 2}>
             Add fixture
@@ -220,10 +243,19 @@ export const MatchesSection: React.FC<{ matches: Match[]; teams: Team[]; setting
                   </p>
                 )}
                 {m.result && <p className="text-sm text-emerald-300">{m.result}</p>}
+                <p className="text-[11px] text-slate-500">
+                  {m.externalId ? `CricketData: ${m.externalId}${m.liveSyncedAt ? ` · synced ${formatDateTime(m.liveSyncedAt)}` : ''}` : 'Scores entered by hand'}
+                  {m.scorecard?.innings1 ? ' · scorecard ✓' : ''}
+                </p>
                 <Actions className="mt-auto pt-1">
                   <Button size="sm" variant="primary" icon={<Activity className="w-4 h-4" />} onClick={() => openScore(m)}>
                     Score
                   </Button>
+                  {m.externalId && (
+                    <Button size="sm" icon={<RadioTower className="w-4 h-4" />} loading={busy === `live:${m.id}`} onClick={() => liveSync(m)}>
+                      Sync live
+                    </Button>
+                  )}
                   <Button size="sm" icon={<Edit3 className="w-4 h-4" />} onClick={() => openEditFixture(m)}>
                     Edit fixture
                   </Button>
@@ -289,7 +321,28 @@ export const MatchesSection: React.FC<{ matches: Match[]; teams: Team[]; setting
                 <option value="upcoming">Upcoming</option>
                 <option value="live">Live</option>
                 <option value="completed">Completed</option>
+                <option value="abandoned">Abandoned</option>
               </Select>
+            </Field>
+            <Field label="Official stream or highlights link" error={errors.streamUrl} className="sm:col-span-2" hint="Optional. A YouTube link plays inside the match page.">
+              <TextInput type="url" value={fixture.streamUrl} onChange={e => setFixture({ ...fixture, streamUrl: e.target.value })} error={!!errors.streamUrl} placeholder="https://" />
+            </Field>
+            <Field label="CricketData.org match id" className="sm:col-span-2" hint="Optional. Turns on automatic live scores and scorecards (needs CRICKET_API_KEY).">
+              <div className="flex gap-2">
+                <TextInput value={fixture.externalId} onChange={e => setFixture({ ...fixture, externalId: e.target.value })} placeholder="e.g. 4f1a…" />
+                <Button onClick={findCandidates} loading={busy === 'find'} icon={<Search className="w-4 h-4" />}>Find</Button>
+              </div>
+              {candidates && (
+                <ul className="mt-2 max-h-48 overflow-y-auto space-y-1">
+                  {candidates.length === 0 ? <li className="text-xs text-slate-400">No current CricketData matches look like this league.</li> : candidates.map(c => (
+                    <li key={c.id}>
+                      <button type="button" onClick={() => { setFixture({ ...fixture, externalId: c.id }); setCandidates(null); }} className="w-full text-start text-xs p-2 rounded-lg bg-slate-950 border border-slate-800 hover:border-amber-400/50">
+                        <span className="font-bold text-white">{c.name}</span> <span className="text-slate-400">{c.date} · {c.status}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </Field>
           </div>
         )}
@@ -315,6 +368,7 @@ export const MatchesSection: React.FC<{ matches: Match[]; teams: Team[]; setting
                 <option value="upcoming">Upcoming</option>
                 <option value="live">Live</option>
                 <option value="completed">Completed</option>
+                <option value="abandoned">Abandoned</option>
               </Select>
             </Field>
             <Field label={`${teamName(teams, scoreMatch.teamA)} score`} hint="e.g. 124/4">
@@ -360,6 +414,18 @@ export const MatchesSection: React.FC<{ matches: Match[]; teams: Team[]; setting
             <Field label="Total sixes" error={errors.totalSixes}>
               <TextInput type="number" inputMode="numeric" min={0} value={score.totalSixes} onChange={e => setScore({ ...score, totalSixes: e.target.value })} error={!!errors.totalSixes} />
             </Field>
+            <div className="sm:col-span-2 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-bold text-white">Scorecard {score.scorecard?.innings1 ? '' : '(not entered)'}</p>
+                <Button size="sm" onClick={() => setScore({ ...score, editCard: !score.editCard })}>{score.editCard ? 'Hide scorecard' : 'Edit scorecard'}</Button>
+              </div>
+              <p className="text-xs text-slate-400">Dream XI points come from the scorecard. Use squad names; write dismissals as "c Fielder b Bowler", "b Bowler", "lbw b Bowler", "st Keeper b Bowler" or "run out (Fielder)".</p>
+              {score.editCard && (() => {
+                const a = teams.find(t => t.id === scoreMatch.teamA);
+                const b = teams.find(t => t.id === scoreMatch.teamB);
+                return a && b ? <ScorecardEditor value={score.scorecard} onChange={sc => setScore({ ...score, scorecard: sc })} teamA={a} teamB={b} /> : null;
+              })()}
+            </div>
           </div>
         )}
       </Sheet>

@@ -1,26 +1,17 @@
-export type AdminPermission =
-  | 'all'
-  | 'leagues'
-  | 'matches'
-  | 'teams'
-  | 'contests'
-  | 'winners'
-  | 'draws'
-  | 'feeds'
-  | 'social'
-  | 'notifications'
-  | 'fanspaces'
-  | 'growth'
-  | 'settings'
-  | 'admins';
+// Shared client types. They mirror server/db.ts (the server is the source of truth).
 
-export type AdminRole = 'superadmin' | 'league_admin' | 'contest_admin' | 'winner_admin' | 'social_admin' | 'custom';
+export type AdminPermission =
+  | 'all' | 'leagues' | 'matches' | 'teams' | 'team' | 'contests' | 'fantasy' | 'games' | 'winners' | 'draws' | 'prizes'
+  | 'feeds' | 'social' | 'community' | 'notifications' | 'fanspaces' | 'growth' | 'settings' | 'admins';
+
+export type AdminRole = 'superadmin' | 'league_admin' | 'contest_admin' | 'winner_admin' | 'social_admin' | 'team_official' | 'custom';
 
 export interface AdminUserRecord {
   email: string;
   name?: string;
   role: AdminRole;
   permissions: AdminPermission[];
+  teamId?: string | null;
   isSuperAdmin?: boolean;
   addedBy?: string;
   addedAt: string;
@@ -32,19 +23,26 @@ export interface User {
   email: string;
   name: string;
   avatar: string;
-  provider: 'google' | 'email';
+  provider?: 'google' | 'email';
   teamId: string | null;
-  teamChanges: number;
+  teamChanges?: number;
   points: number;
+  pointsSpent?: number;
+  /** Points available to spend on prizes. */
+  balance?: number;
   streak: number;
   lastCheckin?: string;
   badges: string[];
-  role: 'fan' | 'admin';
+  role?: 'fan' | 'admin';
   isSuperAdmin?: boolean;
   adminRole?: AdminRole;
   permissions?: AdminPermission[];
-  createdAt: string;
-  stats?: UserStats;
+  adminTeamId?: string | null;
+  country?: string;
+  city?: string;
+  bio?: string;
+  referralCode?: string;
+  createdAt?: string;
 }
 
 export interface UserStats {
@@ -52,11 +50,18 @@ export interface UserStats {
   contestsWon: number;
   predictionPoints: number;
   fantasyTeamsCreated: number;
+  fantasyMatchesScored: number;
   fantasyBestScore: number;
   fantasyTotalPoints: number;
+  gamesPlayed: number;
+  guessSolved: number;
+  bestSuperOver: number;
+  forumThreads: number;
+  forumReplies: number;
   currentStreak: number;
-  highestStreak: number;
   drawsEntered: number;
+  prizesClaimed: number;
+  friendsInvited: number;
   totalBadgesUnlocked: number;
   badgesClaimedCount: number;
 }
@@ -64,47 +69,30 @@ export interface UserStats {
 export interface AchievementBadge {
   id: string;
   name: string;
-  category: 'contest' | 'streak' | 'fantasy' | 'loyalty';
-  tier: 'bronze' | 'silver' | 'gold' | 'platinum' | 'diamond';
+  category: 'predictions' | 'fantasy' | 'games' | 'community' | 'loyalty';
+  tier: 'bronze' | 'silver' | 'gold' | 'platinum';
   description: string;
   requirement: string;
-  lore?: string;
-  tip?: string;
-  actionTab?: string;
-  actionLabel?: string;
+  link: string;
   icon: string;
   currentProgress: number;
   maxProgress: number;
   unlocked: boolean;
-  unlockedAt?: string;
-  claimed?: boolean;
+  claimed: boolean;
   rewardPoints: number;
 }
 
-export interface PlayerStats {
-  matches: number;
-  innings?: number;
-  runs: number;
-  highestScore: string | number;
-  average: number;
-  strikeRate: number;
-  fifties?: number;
-  hundreds?: number;
-  fours?: number;
-  sixes?: number;
-  wickets: number;
-  economy: number;
-  bestBowling: string;
-}
+export type PlayerRole = 'batter' | 'bowler' | 'allrounder' | 'wicketkeeper';
 
 export interface Player {
   id: string;
   teamId: string;
   name: string;
-  role: 'batter' | 'bowler' | 'allrounder' | 'wicketkeeper';
+  role: PlayerRole;
   credits?: number;
+  /** Admin-set credits (null = automatic from the category). */
+  creditsOverride?: number | null;
   isIcon: boolean;
-  /** Draft category, e.g. 'Icon', 'Platinum', 'Gold', 'Diamond', 'Silver', 'Local' */
   category?: string;
   cricbuzzId?: string;
   cricbuzzRole?: string;
@@ -116,7 +104,8 @@ export interface Player {
   photoUrl?: string;
   cricbuzzProfileUrl?: string;
   nationality?: string;
-  stats?: PlayerStats;
+  note?: string;
+  selectedBy?: number;
 }
 
 export interface Team {
@@ -133,21 +122,27 @@ export interface Team {
   logo?: string;
   sort: number;
   squad: Player[];
+  fans?: number;
   createdAt?: string;
   updatedAt?: string;
 }
 
+export type SocialPlatform = 'X' | 'Instagram' | 'Threads' | 'Facebook' | 'TikTok' | 'LinkedIn' | 'YouTube' | 'RSS';
+
 export interface SocialHandle {
   id: string;
   teamId: string | null;
-  platform: 'X' | 'Instagram' | 'Threads' | 'Facebook' | 'TikTok' | 'LinkedIn' | 'YouTube' | 'RSS';
+  platform: SocialPlatform;
   handle: string;
   url: string;
   status: 'verified' | 'pending';
-  source: 'official' | 'discovery' | 'admin' | 'ai-suggestion' | 'official-preset';
+  source: string;
   meta?: Record<string, any>;
   verifiedAt?: string;
   foundAt: string;
+  lastSyncAt?: string;
+  lastSyncStatus?: 'ok' | 'empty' | 'error' | 'embed-only';
+  lastSyncNote?: string;
 }
 
 export interface FeedItem {
@@ -166,11 +161,8 @@ export interface FeedItem {
   createdAt: string;
   likes?: number;
   views?: string;
-  /** true only when the item was ingested from a verified official handle's own feed */
-  verifiedReal?: boolean;
-  channelVerified?: boolean;
-  /** How the item got here: youtube-rss (official channel RSS), news-rss (Google News), social-handle (team social media handle), social-syndication (live social feed syndication), admin (added by an admin), ai (admin-approved AI draft) */
-  sourceType?: 'youtube-rss' | 'news-rss' | 'admin' | 'ai' | 'social-handle' | 'social-syndication';
+  videoId?: string;
+  sourceType?: string;
   handleId?: string | null;
 }
 
@@ -184,7 +176,6 @@ export interface BattingScorecardEntry {
   strikeRate: number;
   isNotOut?: boolean;
 }
-
 export interface BowlingScorecardEntry {
   bowler: string;
   overs: string | number;
@@ -194,14 +185,12 @@ export interface BowlingScorecardEntry {
   economy: number;
   dots?: number;
 }
-
 export interface FallOfWicketEntry {
   wicket: number;
   score: number;
   over: string;
   player: string;
 }
-
 export interface InningsScorecard {
   teamId: string;
   teamName?: string;
@@ -209,19 +198,12 @@ export interface InningsScorecard {
   wickets: number;
   overs: string;
   runRate?: number;
-  extras?: {
-    total: number;
-    wides?: number;
-    noBalls?: number;
-    byes?: number;
-    legByes?: number;
-  };
+  extras?: { total: number; wides?: number; noBalls?: number; byes?: number; legByes?: number };
   batting: BattingScorecardEntry[];
   bowling: BowlingScorecardEntry[];
   didNotBat?: string[];
   fallOfWickets?: FallOfWicketEntry[];
 }
-
 export interface MatchScorecard {
   innings1?: InningsScorecard;
   innings2?: InningsScorecard;
@@ -235,7 +217,7 @@ export interface Match {
   teamB: string;
   startsAt: string;
   venue: string;
-  status: 'upcoming' | 'live' | 'completed';
+  status: 'upcoming' | 'live' | 'completed' | 'abandoned';
   scoreA?: string;
   oversA?: string;
   scoreB?: string;
@@ -252,6 +234,22 @@ export interface Match {
   toss?: string;
   playerOfTheMatch?: string;
   scorecard?: MatchScorecard;
+  streamUrl?: string;
+  externalId?: string;
+  scoreSource?: 'manual' | 'cricketdata';
+  liveSyncedAt?: string;
+}
+
+export interface MatchDetail {
+  match: Match;
+  fantasy: {
+    lineups: number;
+    mostPicked: { playerId: string; name: string; pct: number; captainPct: number }[];
+    playerPoints: { playerId: string; name: string; teamId: string; points: number; detail: string }[];
+  };
+  contests: { id: string; title: string; status: string }[];
+  polls: string[];
+  threads: { id: string; title: string; commentsCount: number }[];
 }
 
 export interface ContestQuestion {
@@ -262,21 +260,19 @@ export interface ContestQuestion {
   answer?: string;
   explain?: string;
 }
-
 export interface Contest {
   id: string;
   type: 'predictor' | 'sixes' | 'captain' | 'season' | 'trivia';
   title: string;
   description: string;
   matchId?: string | null;
-  locksAt?: string | null;
+  locksAt?: string;
   status: 'open' | 'locked' | 'settled';
   prize: string;
   questions: ContestQuestion[];
   instant?: boolean;
   createdAt: string;
 }
-
 export interface ContestEntry {
   userId: string;
   contestId: string;
@@ -285,13 +281,96 @@ export interface ContestEntry {
   createdAt: string;
 }
 
+export interface FantasyBreakdownLine {
+  playerId: string;
+  name: string;
+  base: number;
+  multiplier: number;
+  total: number;
+  detail: string;
+}
 export interface FantasyTeam {
   userId: string;
   matchId: string;
   playerIds: string[];
   captainId: string;
+  viceCaptainId?: string;
   points?: number;
+  rank?: number;
+  breakdown?: FantasyBreakdownLine[];
+  scoredAt?: string;
   createdAt: string;
+}
+export interface DreamXIRules {
+  size: number;
+  creditCap: number;
+  maxFromOneTeam: number;
+  roleMin: number;
+  roleMax: number;
+  captainMultiplier: number;
+  viceCaptainMultiplier: number;
+  fanPointsDivisor: number;
+}
+export interface FantasyMatchSummary {
+  matchId: string;
+  matchNo: number;
+  teamA: string;
+  teamB: string;
+  startsAt: string;
+  status: Match['status'];
+  locked: boolean;
+  lineups: number;
+  mine: { points: number | null; rank: number | null; saved: boolean } | null;
+}
+export interface LeaderRow {
+  userId: string;
+  name: string;
+  avatar: string;
+  teamId: string | null;
+  points: number;
+  rank: number;
+  matches?: number;
+  best?: number;
+}
+export interface FantasyLeague {
+  id: string;
+  name: string;
+  code: string;
+  isOwner: boolean;
+  members: LeaderRow[];
+}
+
+export interface GuessState {
+  day: string;
+  available: boolean;
+  maxGuesses?: number;
+  clues?: { label: string; value: string }[];
+  guesses?: { playerId: string; name: string; correct: boolean; sameTeam: boolean; sameRole: boolean }[];
+  finished?: boolean;
+  solved?: boolean;
+  points?: number;
+  answer?: { id: string; name: string; teamId: string; teamName: string; photoUrl?: string } | null;
+}
+export type Shot = 'defend' | 'rotate' | 'drive' | 'loft' | 'slog';
+export interface SuperOverState {
+  day: string;
+  target: number;
+  shots: { id: Shot; label: string; hint: string }[];
+  balls: { shot: Shot; outcome: number | 'W' }[];
+  runs: number;
+  wickets: number;
+  ballsLeft: number;
+  finished: boolean;
+  points: number;
+  bonus: number;
+  last?: { shot: Shot; outcome: number | 'W' };
+}
+export interface GamesToday {
+  day: string;
+  guess: GuessState;
+  superOver: SuperOverState;
+  leaderboards: { guess: { userId: string; name: string; avatar: string; teamId: string | null; points: number }[]; superover: { userId: string; name: string; avatar: string; teamId: string | null; points: number }[] };
+  players: { id: string; name: string; teamId: string }[];
 }
 
 export interface PrizeDraw {
@@ -303,24 +382,44 @@ export interface PrizeDraw {
   closesAt: string;
   status: 'open' | 'closed' | 'drawn';
   teamOnly?: string | null;
-  winnerUserId?: string;
+  minPoints?: number;
   winnerName?: string;
   seed?: string | null;
   entrantsHash?: string | null;
   drawnAt?: string | null;
-  /** Number of entrants (computed by the server) */
-  entriesCount?: number;
-  /** Whether the signed-in user has entered (computed by the server) */
-  entered?: boolean;
   createdAt?: string;
+  entriesCount?: number;
+  entered?: boolean;
+  wonByMe?: boolean;
+  verification?: { seed?: string | null; entrantsHash?: string | null; entries: number };
 }
 
-export interface DrawEntry {
-  drawId: string;
-  userId: string;
-  userEmail: string;
-  userName: string;
+export interface PrizeItem {
+  id: string;
+  title: string;
+  description: string;
+  image?: string;
+  pointsCost: number;
+  stock: number;
+  teamOnly?: string | null;
+  active: boolean;
+  fulfilment: string;
   createdAt: string;
+  claimed?: number;
+}
+export interface PrizeRedemption {
+  id: string;
+  prizeId: string;
+  prizeTitle: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  pointsCost: number;
+  code: string;
+  status: 'pending' | 'fulfilled' | 'cancelled';
+  createdAt: string;
+  updatedAt?: string;
+  note?: string;
 }
 
 export interface Approval {
@@ -333,7 +432,6 @@ export interface Approval {
   createdAt: string;
   decidedAt?: string;
 }
-
 export interface AgentRun {
   id: string;
   agent: string;
@@ -350,28 +448,22 @@ export interface SystemSettings {
   tagline: string;
   copyrightHolder: string;
   seasonLabel: string;
-  seasonStart: string; // ISO date, '' when not set
-  seasonEnd: string;   // ISO date, '' when not set
+  seasonStart: string;
+  seasonEnd: string;
   venue: string;
-  tickerText: string; // '' hides the ticker
+  tickerText: string;
   curatorFeedId: string;
   curatorContainerId: string;
   curatorFeedUuid: string;
   curatorApiKey: string;
   curatorHashtags: string;
   maxSocialPerPlatform: number;
-  newsQueries: string; // one Google News query per line; blank lines ignored
-  smtp: {
-    host: string;
-    port: number;
-    user: string;
-    pass: string; // write-only; the server returns '' or '********'
-    from: string;
-    enabled: boolean;
-  };
+  newsQueries: string;
+  referralRewardPoints: number;
+  lockReminderMinutes: number;
+  smtp: { host: string; port: number; user: string; pass: string; from: string; enabled: boolean };
 }
 
-/** Public, non-secret configuration returned by GET /api/config */
 export interface PublicConfig {
   brandName: string;
   tagline: string;
@@ -381,32 +473,20 @@ export interface PublicConfig {
   seasonEnd: string;
   venue: string;
   tickerText: string;
-  curatorFeedId: string;
-  curatorContainerId: string;
+  isSuperAdmin?: boolean;
   maxSocialPerPlatform: number;
-  features: {
-    googleSignIn: boolean;
-    emailOtp: boolean;
-    gemini: boolean;
-    pushNotifications: boolean;
-  };
+  referralRewardPoints: number;
+  features: { googleSignIn: boolean; emailOtp: boolean; gemini: boolean; pushNotifications: boolean; liveScores: boolean; curator: boolean };
   fcmVapidKey: string;
-  stats: {
-    teams: number;
-    fans: number;       // real registered users
-    handles: number;    // verified handles
-    matches: number;
-    openContests: number;
-    openDraws: number;
-  };
+  stats: { teams: number; players: number; fans: number; handles: number; matches: number; openContests: number; openDraws: number; prizes: number; forumThreads: number };
 }
 
 export interface NotificationItem {
   id: string;
   title: string;
   body: string;
-  category: 'match_result' | 'contest_deadline' | 'announcement' | 'perk';
-  targetAudience: 'all' | 'logged_in' | 'team';
+  category: 'match_result' | 'contest_deadline' | 'announcement' | 'perk' | 'fantasy';
+  targetAudience: 'all' | 'logged_in' | 'team' | 'users';
   teamId?: string | null;
   data?: Record<string, any>;
   priority: 'normal' | 'high';
@@ -415,9 +495,10 @@ export interface NotificationItem {
   recipientCount?: number;
   fcmSuccessCount?: number;
   fcmFailureCount?: number;
-  /** 'fcm' when pushed via Firebase Cloud Messaging, 'in-app' when stored only */
   delivery?: 'fcm' | 'in-app';
   read?: boolean;
+  reads?: number;
+  personal?: boolean;
 }
 
 export interface FCMDeviceToken {
@@ -454,8 +535,8 @@ export interface FanSpace {
   totalBookings: number;
   mapUrl?: string;
   bookingEnabled?: boolean;
+  reservedToday?: number;
 }
-
 export interface FanSpaceBooking {
   id: string;
   spaceId: string;
@@ -468,6 +549,9 @@ export interface FanSpaceBooking {
   ticketsCount: number;
   passCode: string;
   createdAt: string;
+  checkedInAt?: string | null;
+  checkedInBy?: string | null;
+  cancelledAt?: string | null;
 }
 
 export interface YouthCupSchool {
@@ -481,32 +565,26 @@ export interface YouthCupSchool {
   equipmentKitGranted: boolean;
   matchdayTicketsAllocated: number;
 }
-
 export interface CreatorPartner {
   id: string;
   name: string;
   handle: string;
   platform: 'YouTube' | 'Twitch' | 'Kick' | 'TikTok';
-  followers?: string; // optional; only show when an admin has entered it
-  streamUrl: string;  // must be the creator's real channel/profile URL
+  followers?: string;
+  streamUrl: string;
   specialty: string;
   status: 'live' | 'scheduled' | 'partnered';
   totalWatchViews?: string;
   avatar?: string;
 }
-
 export interface CommentaryAudioFeed {
   id: string;
   language: 'Arabic' | 'English' | 'Hindi' | 'Urdu' | 'Bengali';
   commentator: string;
   status: 'live' | 'standby';
-  streamUrl: string; // real audio stream / broadcast URL
+  streamUrl: string;
   description?: string;
-  sampleAudioText?: string;
-  bitrate?: string;
-  listenersCount?: number;
 }
-
 export interface SuperfanPassportTier {
   id: string;
   tierName: string;
@@ -516,10 +594,8 @@ export interface SuperfanPassportTier {
   fanSpacePriorityEntry: boolean;
   exclusiveBadge: string;
   doublePointsMultiplier: boolean;
-  /** Real count of fans who registered interest */
   totalSubscribers: number;
   description?: string;
-  /** Optional external checkout/registration URL; when empty the button registers interest only */
   signupUrl?: string;
 }
 
@@ -541,7 +617,6 @@ export interface ProposalActivity {
   franchiseBenefit: string;
   leagueBenefit: string;
 }
-
 export interface ProposalSettings {
   exchangeRateUsdToAed: number;
   revenueStreams: {
@@ -556,6 +631,11 @@ export interface ProposalSettings {
   updatedAt: string;
 }
 
+export interface Reaction {
+  emoji: string;
+  count: number;
+  mine: boolean;
+}
 export interface ForumComment {
   id: string;
   threadId: string;
@@ -566,10 +646,12 @@ export interface ForumComment {
   teamId?: string | null;
   content: string;
   upvotes: number;
-  upvotedBy: string[];
+  upvoted?: boolean;
+  reactions?: Reaction[];
+  hidden?: boolean;
   createdAt: string;
+  editedAt?: string;
 }
-
 export interface ForumThread {
   id: string;
   title: string;
@@ -577,23 +659,92 @@ export interface ForumThread {
   category: 'matchday' | 'tactics' | 'franchises' | 'fantasy' | 'fanspaces' | 'giveaways' | 'general';
   tags: string[];
   teamId?: string | null;
+  matchId?: string | null;
   userId: string;
   userName: string;
   userAvatar: string;
   userBadge?: string;
   pinned: boolean;
+  locked?: boolean;
+  hidden?: boolean;
   upvotes: number;
-  upvotedBy: string[];
+  upvoted?: boolean;
+  reactions?: Reaction[];
   views: number;
   commentsCount: number;
   lastActivityAt: string;
   createdAt: string;
+  editedAt?: string;
+}
+export interface ForumReportView {
+  id: string;
+  kind: 'thread' | 'comment';
+  targetId: string;
+  threadId: string;
+  reason: string;
+  createdAt: string;
+  threadTitle: string;
+  excerpt: string;
+  author: string;
+  hidden: boolean;
+}
+
+export interface PollView {
+  id: string;
+  question: string;
+  teamId: string | null;
+  matchId: string | null;
+  closesAt: string | null;
+  status: 'open' | 'closed';
+  createdAt: string;
+  total: number;
+  myVote: string | null;
+  options: { id: string; text: string; votes: number; pct: number }[];
+}
+
+export interface FanWarsRow {
+  team: { id: string; name: string; short: string; color: string };
+  points: number;
+  fansCount: number;
+}
+export interface PublicFan {
+  id: string;
+  name: string;
+  avatar: string;
+  teamId: string | null;
+  points: number;
+  badges: string[];
+  streak: number;
+  country?: string;
+}
+export interface FanBase {
+  totalFans: number;
+  unaffiliated: number;
+  teams: { teamId: string; fans: number; points: number; activeThisWeek: number; topFans: PublicFan[]; threads: number }[];
+  countries: { country: string; fans: number }[];
+  recent: { name: string; avatar: string; teamId: string | null; country?: string; joinedAt: string }[];
+}
+
+export interface ReferralSummary {
+  code: string;
+  rewardPoints: number;
+  invited: number;
+  joinedAndPlayed: number;
+  pointsEarned: number;
+  friends: { name: string; joinedAt: string; rewarded: boolean }[];
+}
+
+export interface CricketDataCandidate {
+  id: string;
+  name: string;
+  date: string;
+  status: string;
 }
 
 export interface EnvVariableInfo {
   key: string;
   label: string;
-  category: 'core' | 'storage' | 'auth' | 'notifications' | 'ai' | 'social' | 'cricket';
+  category: string;
   value: string;
   isSecret: boolean;
   isSetInEnv: boolean;
@@ -612,8 +763,37 @@ export interface CricketSyncResult {
   teamsCount: number;
   playersCount: number;
   teamsUpdated: string[];
+  added: string[];
+  removed: string[];
+  linked: number;
   executionTimeMs: number;
   timestamp: string;
   logs: { timestamp: string; level: 'info' | 'warn' | 'success' | 'error'; message: string }[];
   error?: string;
+  dryRun: boolean;
+}
+
+export interface FeedHealthRow {
+  id: string;
+  teamId: string | null;
+  platform: SocialPlatform;
+  handle: string;
+  url: string;
+  status: string;
+  lastSyncAt: string | null;
+  lastSyncStatus: string | null;
+  lastSyncNote: string | null;
+  items: number;
+  channelId: string | null;
+}
+
+export interface ProfileResponse {
+  user: User;
+  badges: AchievementBadge[];
+  stats: UserStats;
+  fantasy: { points: number; matches: number; best: number };
+  fantasyHistory: { matchId: string; matchNo?: number; teamA?: string; teamB?: string; startsAt?: string; points: number | null; rank: number | null; scored: boolean }[];
+  games: { played: number; points: number; guessSolved: number; bestSuperOver: number };
+  redemptions: PrizeRedemption[];
+  bookings: FanSpaceBooking[];
 }

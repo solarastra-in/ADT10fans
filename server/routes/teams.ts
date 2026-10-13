@@ -13,7 +13,7 @@ const ROLES: Player['role'][] = ['batter', 'bowler', 'allrounder', 'wicketkeeper
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
 export function publicTeam(t: Team, fans = 0) {
-  return { ...t, fans, squad: t.squad.map(p => ({ ...p, credits: creditsFor(p) })) };
+  return { ...t, fans, squad: t.squad.map(p => ({ ...p, credits: creditsFor(p), creditsOverride: typeof p.credits === 'number' ? p.credits : null })) };
 }
 
 function fanCounts() {

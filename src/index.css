@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-sans: "Plus Jakarta Sans", "Noto Sans Arabic", "Noto Sans Devanagari", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
@@ -100,3 +100,16 @@
     display: block;
   }
 }
+
+/* Server-rendered SEO content shown before the app starts (or without JavaScript). */
+.seo-ssr { max-width: 72rem; margin: 0 auto; padding: 1rem; color: #cbd5e1; font-size: 14px; line-height: 1.5; }
+.seo-ssr nav ul { display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; list-style: none; padding: 0; margin: 0 0 1rem; }
+.seo-ssr a { color: #fbbf24; }
+.seo-ssr h1 { font-size: 1.5rem; font-weight: 800; color: #fff; margin: 0.5rem 0; }
+.seo-ssr h2 { font-size: 1.1rem; font-weight: 700; color: #fff; margin: 1rem 0 0.25rem; }
+.seo-ssr table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.seo-ssr td, .seo-ssr th { border-bottom: 1px solid #1e293b; padding: 2px 4px; text-align: start; }
+
+/* Right-to-left languages: flip directional icons. */
+[dir="rtl"] .rtl-flip { transform: scaleX(-1); }
+[dir="rtl"] body { font-family: "Noto Sans Arabic", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif; }

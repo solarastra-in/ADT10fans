@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Pin, PinOff, Trash2, RefreshCw, Search } from 'lucide-react';
-import { ForumThread, Team } from '../../types';
+import { Pin, PinOff, Trash2, RefreshCw, Search, Lock, Unlock, EyeOff, Eye, Flag } from 'lucide-react';
+import { ForumReportView, ForumThread, Team } from '../../types';
 import { api } from '../../api';
 import { Actions, Button, Card, Chip, EmptyState, Notice, SectionHeader, TextInput, formatDateTime, useRunner } from './ui';
 import { teamName } from './shared';
@@ -10,6 +10,25 @@ export const ForumSection: React.FC<{ teams: Team[] }> = ({ teams }) => {
   const [threads, setThreads] = useState<ForumThread[]>([]);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState('');
+  const [reports, setReports] = useState<ForumReportView[]>([]);
+  const loadReports = useCallback(async () => {
+    const r = await api.getReports().catch(() => null);
+    if (r) setReports(r.reports);
+  }, []);
+  useEffect(() => {
+    loadReports();
+  }, [loadReports]);
+  const decide = async (r: ForumReportView, action: 'dismiss' | 'remove') => {
+    const res = await run(`rep:${r.id}`, () => api.decideReport(r.id, action), action === 'remove' ? 'Post hidden.' : 'Report dismissed; the post is visible.');
+    if (res) {
+      loadReports();
+      load();
+    }
+  };
+  const moderate = async (t: ForumThread, action: 'lock' | 'hide', value: boolean) => {
+    const res = await run(`${action}:${t.id}`, () => api.moderateThread(t.id, action, value));
+    if (res) setThreads(prev => prev.map(x => (x.id === t.id ? { ...x, ...res.thread } : x)));
+  };
 
   const load = useCallback(async (search?: string) => {
     setLoading(true);
@@ -44,7 +63,7 @@ export const ForumSection: React.FC<{ teams: Team[] }> = ({ teams }) => {
     <div className="space-y-5">
       <SectionHeader
         title="Forum moderation"
-        description="Pin important threads and remove anything that breaks the rules."
+        description="Reports from fans, plus pin, lock, hide or delete threads. Posts reported by 3 fans are hidden until you review them."
         actions={
           <Button size="sm" onClick={() => load(query.trim() || undefined)} loading={loading} icon={<RefreshCw className="w-4 h-4" />}>
             Refresh
@@ -65,6 +84,33 @@ export const ForumSection: React.FC<{ teams: Team[] }> = ({ teams }) => {
       </form>
       <Notice notice={notice} onClose={() => setNotice(null)} />
 
+      <Card>
+        <h3 className="font-extrabold text-white mb-2 inline-flex items-center gap-2"><Flag className="w-4 h-4 text-rose-400" /> Reports ({reports.length})</h3>
+        {reports.length === 0 ? (
+          <p className="text-sm text-slate-400">No open reports.</p>
+        ) : (
+          <ul className="space-y-2">
+            {reports.map(r => (
+              <li key={r.id} className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+                <div className="flex flex-wrap gap-1.5 items-center">
+                  <Chip tone="red">{r.reason}</Chip>
+                  <Chip>{r.kind}</Chip>
+                  {r.hidden && <Chip tone="amber">hidden automatically</Chip>}
+                  <span className="text-xs text-slate-500">{formatDateTime(r.createdAt)}</span>
+                </div>
+                <p className="text-xs text-slate-400">In “{r.threadTitle}” by {r.author}</p>
+                <p className="text-sm text-slate-200 break-words">{r.excerpt}</p>
+                <Actions>
+                  <Button size="sm" variant="danger" loading={busy === `rep:${r.id}`} onClick={() => decide(r, 'remove')}>Hide post</Button>
+                  <Button size="sm" onClick={() => decide(r, 'dismiss')}>Dismiss (keep visible)</Button>
+                  <a className="text-xs text-amber-300 underline self-center" href={`/forum/${r.threadId}`} target="_blank" rel="noopener noreferrer">Open thread</a>
+                </Actions>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
       {sorted.length === 0 ? (
         <EmptyState title={loading ? 'Loading…' : 'No threads'} />
       ) : (
@@ -74,6 +120,8 @@ export const ForumSection: React.FC<{ teams: Team[] }> = ({ teams }) => {
               <Card className="flex flex-col gap-2">
                 <div className="flex flex-wrap items-center gap-1.5">
                   {t.pinned && <Chip tone="amber">pinned</Chip>}
+                  {t.locked && <Chip>locked</Chip>}
+                  {t.hidden && <Chip tone="red">hidden</Chip>}
                   <Chip>{t.category}</Chip>
                   {t.teamId && <Chip tone="violet">{teamName(teams, t.teamId)}</Chip>}
                 </div>
@@ -90,6 +138,12 @@ export const ForumSection: React.FC<{ teams: Team[] }> = ({ teams }) => {
                     onClick={() => togglePin(t)}
                   >
                     {t.pinned ? 'Unpin' : 'Pin'}
+                  </Button>
+                  <Button size="sm" icon={t.locked ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />} loading={busy === `lock:${t.id}`} onClick={() => moderate(t, 'lock', !t.locked)}>
+                    {t.locked ? 'Unlock' : 'Lock'}
+                  </Button>
+                  <Button size="sm" icon={t.hidden ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />} loading={busy === `hide:${t.id}`} onClick={() => moderate(t, 'hide', !t.hidden)}>
+                    {t.hidden ? 'Unhide' : 'Hide'}
                   </Button>
                   <Button size="sm" variant="danger" icon={<Trash2 className="w-4 h-4" />} loading={busy === `del:${t.id}`} onClick={() => remove(t)}>
                     Delete

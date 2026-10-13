@@ -16,26 +16,43 @@ interface DashboardData {
   fcmSubscribersCount?: number;
   pendingApprovals?: Approval[];
   agentRuns?: AgentRun[];
+  fantasyLineups?: number;
+  gamePlaysToday?: number;
+  pendingRedemptions?: number;
+  openReports?: number;
+  warnings?: string[];
   integrations?: {
     gemini?: boolean;
     smtp?: boolean;
     pushServer?: boolean;
+    pushClient?: boolean;
     googleSignIn?: boolean;
     curator?: boolean;
+    liveScores?: boolean;
+    sharedStorage?: boolean;
+    persistentStorage?: boolean;
+    scheduledJobs?: boolean;
+    storage?: string;
+    lastScheduledRun?: string | null;
   };
 }
 
 const INTEGRATIONS: { key: keyof NonNullable<DashboardData['integrations']>; label: string; howTo: string }[] = [
-  { key: 'gemini', label: 'Gemini AI', howTo: 'Set GEMINI_API_KEY on the server' },
-  { key: 'smtp', label: 'Email (SMTP)', howTo: 'Fill in SMTP in Settings and enable it' },
-  { key: 'pushServer', label: 'Push notifications (FCM)', howTo: 'Configure Firebase Admin credentials on the server' },
-  { key: 'googleSignIn', label: 'Google sign-in', howTo: 'Configure Firebase Auth (web config + Admin credentials)' },
-  { key: 'curator', label: 'Curator social wall', howTo: 'Enter Curator feed / container IDs in Settings' },
+  { key: 'persistentStorage', label: 'Persistent storage', howTo: 'Set DATA_DIR to a persistent disk, or STORE_BUCKET for shared Cloud Storage (needed on Vercel)' },
+  { key: 'scheduledJobs', label: 'Scheduled jobs (reminders, live scores, feeds)', howTo: 'Set CRON_SECRET and enable the Vercel cron or the GitHub Actions schedule' },
+  { key: 'smtp', label: 'Email sign-in codes (SMTP)', howTo: 'Set SMTP_* variables or fill in SMTP in Settings' },
+  { key: 'googleSignIn', label: 'Google sign-in', howTo: 'Firebase project id (firebase-applet-config.json or FIREBASE_PROJECT_ID)' },
+  { key: 'pushServer', label: 'Push sending (FCM)', howTo: 'Set FIREBASE_SERVICE_ACCOUNT' },
+  { key: 'pushClient', label: 'Push sign-up in browsers', howTo: 'Set FCM_VAPID_KEY' },
+  { key: 'liveScores', label: 'Live scores (CricketData.org)', howTo: 'Set CRICKET_API_KEY, then link fixtures in Matches' },
+  { key: 'curator', label: 'Curator.io social feed', howTo: 'Enter a Curator feed id in Settings' },
+  { key: 'gemini', label: 'Gemini AI (discovery, previews, assistant)', howTo: 'Set GEMINI_API_KEY' },
 ];
 
 const AGENTS: { name: string; label: string; desc: string }[] = [
   { name: 'discovery', label: 'Discovery', desc: 'Look for official team handles (results go to approvals)' },
-  { name: 'social', label: 'Social', desc: 'Pull posts from verified official handles' },
+  { name: 'social', label: 'Social', desc: 'Pull videos from the verified YouTube channels' },
+  { name: 'scores', label: 'Scores', desc: 'Flag fixtures that should be live or need a result' },
   { name: 'news', label: 'News', desc: 'Fetch headlines for the configured news queries' },
   { name: 'content', label: 'Content', desc: 'Draft copy for admin review' },
   { name: 'ops', label: 'Ops', desc: 'Check links and summarise pending work' },
@@ -108,7 +125,15 @@ export const DashboardSection: React.FC<{
         <Stat label="Contests" value={n(data?.contestsCount)} onClick={() => goTo('contests')} />
         <Stat label="Draws" value={n(data?.drawsCount)} onClick={() => goTo('draws')} />
         <Stat label="Pending approvals" value={pending.length.toLocaleString()} onClick={() => goTo('approvals')} />
+        <Stat label="Dream XI lineups" value={n(data?.fantasyLineups)} onClick={() => goTo('fantasy')} />
+        <Stat label="Daily games played today" value={n(data?.gamePlaysToday)} />
+        <Stat label="Prize claims to fulfil" value={n(data?.pendingRedemptions)} onClick={() => goTo('prizes')} />
+        <Stat label="Open forum reports" value={n(data?.openReports)} onClick={() => goTo('forum')} />
       </div>
+
+      {(data?.warnings || []).map(w => (
+        <Notice key={w} notice={{ kind: 'warn', text: w }} />
+      ))}
 
       <Card>
         <h3 className="font-extrabold text-white mb-3">Integrations</h3>
@@ -134,6 +159,23 @@ export const DashboardSection: React.FC<{
             })}
           </ul>
         )}
+        {data?.integrations?.storage && <p className="mt-3 text-xs text-slate-500">Store: {data.integrations.storage}{data.integrations.sharedStorage ? ' (shared, safe for several instances)' : ''} · Last scheduled run: {data.integrations.lastScheduledRun ? formatDateTime(data.integrations.lastScheduledRun) : 'never'}</p>}
+        <div className="mt-3">
+          <Button
+            size="sm"
+            loading={busy === 'jobs'}
+            onClick={async () => {
+              const r = await run('jobs', () => api.runScheduledJobs());
+              if (r) {
+                setNotice({ kind: 'ok', text: `Scheduled jobs finished in ${r.tookMs} ms.`, details: Object.entries(r.jobs || {}).map(([k, v]) => `${k}: ${JSON.stringify(v)}`) });
+                await load();
+              }
+            }}
+            icon={<Play className="w-4 h-4" />}
+          >
+            Run scheduled jobs now
+          </Button>
+        </div>
       </Card>
 
       <Card>
