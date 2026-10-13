@@ -9,7 +9,18 @@ cd "$(dirname "$0")/.."
 WHAT="${1:-api}"
 ROOT=$(mktemp -d)
 PIDS=()
-cleanup() { for p in "${PIDS[@]:-}"; do [ -n "$p" ] && kill -- -"$p" 2>/dev/null || kill "$p" 2>/dev/null || true; done; rm -rf "$ROOT"; }
+cleanup() {
+  local code=$?
+  set +e
+  for p in "${PIDS[@]:-}"; do [ -n "$p" ] && { kill -- -"$p" 2>/dev/null || kill "$p" 2>/dev/null; }; done
+  # Give the servers a moment to stop writing before removing their data folders.
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    alive=0; for p in "${PIDS[@]:-}"; do [ -n "$p" ] && kill -0 "$p" 2>/dev/null && alive=1; done
+    [ $alive = 0 ] && break; sleep 0.3
+  done
+  rm -rf "$ROOT" 2>/dev/null || true
+  exit $code
+}
 trap cleanup EXIT
 
 export FEED_FIXTURES_DIR="$ROOT/fixtures" CRON_SECRET=test-cron-secret CRICKET_API_KEY=test-cricket-key \
