@@ -227,6 +227,20 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
   await adm.ctx.close();
 }
 
+// Right-to-left: Arabic and Urdu lay out correctly on a phone.
+for (const lang of ['ar', 'ur']) {
+  const rtl = await newPage(360, 740);
+  await rtl.ctx.addInitScript(l => window.localStorage.setItem('t10_lang', l), lang);
+  for (const p of ['/', '/teams/bulls', `/fantasy/${match.id}`, '/games', '/forum', '/prizes']) {
+    await go(rtl.page, p);
+    await rtl.page.waitForSelector('main');
+    const dir = await rtl.page.evaluate(() => document.documentElement.dir);
+    const arabicScript = /[\u0600-\u06FF]/.test(await rtl.page.locator('body').innerText());
+    ok(`${lang} ${p} is right-to-left, translated and fits`, dir === 'rtl' && arabicScript && (await noOverflow(rtl.page)) && rtl.errors.length === 0, { dir, arabicScript, errors: rtl.errors });
+  }
+  await rtl.ctx.close();
+}
+
 // Lock reminders still run with the browser data in place.
 const cron = await (await fetch(BASE + '/api/cron/run?only=reminders', { headers: { Authorization: `Bearer ${CRON}` } })).json();
 ok('cron still runs', cron.success === true);

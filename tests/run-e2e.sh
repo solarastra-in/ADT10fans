@@ -29,6 +29,7 @@ start() {
 }
 
 run_api() {
+  node tests/i18n-check.mjs
   start dev "$ROOT/data-api" npx tsx server.ts
   BASE="http://localhost:$PORT_dev" node tests/api.e2e.mjs || { echo "--- server log"; tail -50 "$ROOT/dev.log"; exit 1; }
   node tests/legacy-store.mjs "$ROOT/data-legacy"
