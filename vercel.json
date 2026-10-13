@@ -3,13 +3,32 @@
   "buildCommand": "npm run build:client",
   "outputDirectory": "dist",
   "functions": {
-    "api/index.ts": { "includeFiles": "dist/_template.html", "maxDuration": 60 }
+    "api/index.ts": {
+      "includeFiles": "{dist/_template.html,firebase-applet-config.json}",
+      "maxDuration": 60
+    }
   },
-  "crons": [{ "path": "/api/cron/run", "schedule": "0 4 * * *" }],
+  "crons": [
+    {
+      "path": "/api/cron/run",
+      "schedule": "0 4 * * *"
+    }
+  ],
   "headers": [
-    { "source": "/assets/(.*)", "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }] }
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    }
   ],
   "rewrites": [
-    { "source": "/(.*)", "destination": "/api/index" }
+    {
+      "source": "/(.*)",
+      "destination": "/api/index"
+    }
   ]
 }
