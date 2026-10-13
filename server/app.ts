@@ -67,6 +67,9 @@ type TemplateLoader = (url: string) => Promise<string>;
 let loadTemplate: TemplateLoader | null = null;
 
 function productionTemplate(): TemplateLoader {
+  // The Vercel bundle carries the built template inside it (see server/vercelHandler.ts).
+  const embedded = (globalThis as any).__ADT10_TEMPLATE__ as string | undefined;
+  if (embedded) return async () => embedded;
   const candidates = [
     path.resolve(process.cwd(), 'dist', '_template.html'),
     path.resolve(process.cwd(), 'dist', 'index.html'),

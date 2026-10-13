@@ -7,7 +7,7 @@
     "dev": "tsx server.ts",
     "build": "npm run build:client && npm run build:server",
     "build:client": "vite build && node -e \"require('fs').renameSync('dist/index.html','dist/_template.html')\"",
-    "build:server": "esbuild server.ts --bundle --platform=node --format=esm --target=node20 --packages=external --outfile=dist-server/server.mjs && esbuild server/vercelHandler.ts --bundle --platform=node --format=esm --target=node20 --packages=external --outfile=dist-server/vercel.mjs",
+    "build:server": "esbuild server.ts --bundle --platform=node --format=esm --target=node20 --packages=external --outfile=dist-server/server.mjs && esbuild server/vercelHandler.ts --bundle --loader:.html=text --platform=node --format=esm --target=node20 --packages=external --outfile=dist-server/vercel.mjs",
     "start": "NODE_ENV=production node dist-server/server.mjs",
     "lint": "tsc --noEmit && tsc --noEmit -p tsconfig.server.json",
     "test": "bash tests/run-e2e.sh api",

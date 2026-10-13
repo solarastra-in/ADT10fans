@@ -1,5 +1,5 @@
 {
   "extends": "./tsconfig.json",
-  "compilerOptions": { "types": ["node"] },
+  "compilerOptions": { "types": ["node"], "resolveJsonModule": true },
   "include": ["server.ts", "server/**/*.ts", "server/vercelHandler.ts"]
 }

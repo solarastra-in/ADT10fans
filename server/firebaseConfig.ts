@@ -16,6 +16,9 @@ export interface FirebaseAppConfig {
 let cached: FirebaseAppConfig | null = null;
 export function firebaseAppConfig(): FirebaseAppConfig {
   if (cached) return cached;
+  // The Vercel bundle carries the config inside it (see server/vercelHandler.ts).
+  const embedded = (globalThis as any).__ADT10_FIREBASE__ as FirebaseAppConfig | undefined;
+  if (embedded) return (cached = embedded);
   try {
     cached = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8'));
   } catch {
