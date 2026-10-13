@@ -159,6 +159,11 @@ export function computePlayerPoints(store: AppStore, match: Match): Map<string, 
     row.points += pts;
     row.detail.push(`${why} ${pts > 0 ? '+' : ''}${pts}`);
   };
+  // A fielder who took a catch, stumping or run out was on the field, so counts as playing.
+  const field = (p: Player | null, pts: number, why: string) => {
+    if (p) playing.add(p.id);
+    add(p, pts, why);
+  };
   const inningsList = [match.scorecard?.innings1, match.scorecard?.innings2].filter(Boolean) as NonNullable<Match['scorecard']>['innings1'][];
   const playing = new Set<string>();
   for (const ids of Object.values(match.playingXI || {})) for (const id of ids) playing.add(id);
@@ -188,17 +193,17 @@ export function computePlayerPoints(store: AppStore, match: Match): Map<string, 
       // Fielding and bowling credit from the dismissal text, e.g. "c Hetmyer b Boult", "st Pooran b Narine", "run out (Salt)", "lbw b Ali".
       const d = (b.dismissal || '').trim();
       const caught = d.match(/^c\s+(?:&|and)\s+b\s+(.+)$/i);
-      if (caught) add(resolvePlayer(caught[1], bowlPool), SCORING.catch, 'catch');
+      if (caught) field(resolvePlayer(caught[1], bowlPool), SCORING.catch, 'catch');
       else {
         const c = d.match(/^c\s+(.+?)\s+b\s+(.+)$/i);
-        if (c) add(resolvePlayer(c[1].replace(/^†/, ''), bowlPool), SCORING.catch, 'catch');
+        if (c) field(resolvePlayer(c[1].replace(/^†/, ''), bowlPool), SCORING.catch, 'catch');
       }
       const st = d.match(/^st\s+(.+?)\s+b\s+/i);
-      if (st) add(resolvePlayer(st[1].replace(/^†/, ''), bowlPool), SCORING.stumping, 'stumping');
+      if (st) field(resolvePlayer(st[1].replace(/^†/, ''), bowlPool), SCORING.stumping, 'stumping');
       const ro = d.match(/run out\s*\(([^)]+)\)/i);
       if (ro) {
         const fielders = ro[1].split('/').map(s => s.trim()).filter(Boolean);
-        for (const f of fielders.slice(0, 2)) add(resolvePlayer(f, bowlPool), fielders.length > 1 ? Math.round(SCORING.runOut / 2) : SCORING.runOut, 'run out');
+        for (const f of fielders.slice(0, 2)) field(resolvePlayer(f, bowlPool), fielders.length > 1 ? Math.round(SCORING.runOut / 2) : SCORING.runOut, 'run out');
       }
       if (/^(lbw\s+b|b)\s+/i.test(d)) {
         const bowler = d.replace(/^(lbw\s+b|b)\s+/i, '');

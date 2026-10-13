@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { db, Player, SocialHandle, Team } from '../db';
 import { canManageTeam, getAuthUser, requireAdmin, teamScopeOf } from '../auth';
 import { bad, isColor, isHttpsUrl, num, optionalUrl, str, userOf, wrap, newId } from '../http';
-import { handleKey, seedOfficialTeams } from '../seedOfficial';
+import { handleKey, OFFICIAL_HANDLES, seedOfficialTeams } from '../seedOfficial';
 import { creditsFor } from '../fantasy';
 import { fetchAndPersistOfficialSquads, testCricketProviderConnection } from '../cricketProvider';
 import { purgeHandleItems, syncHandle } from '../feeds';
@@ -255,7 +255,8 @@ teamsRouter.post('/handles', requireAdmin('social'), wrap(async (req, res) => {
     if (urlChanged) purgeHandleItems(store, existing.id);
     target = existing;
   } else {
-    target = { id: newId('h'), teamId, platform: b.platform, handle: str(b.handle, 80) || (b.platform === 'Facebook' || b.platform === 'LinkedIn' ? derived : derived.startsWith('@') ? derived : `@${derived}`), url, status, source: 'admin', meta: {}, verifiedAt: status === 'verified' ? now : undefined, foundAt: now };
+    const known = OFFICIAL_HANDLES.find(o => handleKey(o.url) === handleKey(url));
+    target = { id: newId('h'), teamId, platform: b.platform, handle: str(b.handle, 80) || (b.platform === 'Facebook' || b.platform === 'LinkedIn' ? derived : derived.startsWith('@') ? derived : `@${derived}`), url, status, source: 'admin', meta: known ? { ...(known.meta || {}), evidence: known.evidence } : {}, verifiedAt: status === 'verified' ? now : undefined, foundAt: now };
     store.handles.push(target);
   }
   delete store.jobLog[`handle-removed:${handleKey(url)}`];

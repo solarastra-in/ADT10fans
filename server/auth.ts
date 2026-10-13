@@ -282,7 +282,12 @@ export function selfUser(u: User) {
 // ---------- Rate limiting (in-memory, per IP + key) ----------
 const buckets = new Map<string, { count: number; resetAt: number }>();
 export function clientIp(req: Request) {
-  return (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
+  // Platform headers first (Vercel sets these itself). Otherwise use the right-most X-Forwarded-For
+  // entry: the one added by the proxy in front of us, which a client cannot forge.
+  const platform = (req.headers['x-vercel-forwarded-for'] || req.headers['x-real-ip']) as string | undefined;
+  if (platform) return platform.split(',')[0].trim();
+  const xff = (req.headers['x-forwarded-for'] as string | undefined)?.split(',').map(s => s.trim()).filter(Boolean);
+  return xff?.length ? xff[xff.length - 1] : req.socket.remoteAddress || 'unknown';
 }
 export function rateLimit(key: string, max: number, windowMs: number) {
   return (req: Request, res: Response, next: NextFunction) => {

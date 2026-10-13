@@ -97,7 +97,8 @@ async function servePage(req: Request, res: Response, next: NextFunction) {
 
 /** Dev: Vite serves the client and transforms the template. Prod: static dist/ plus server-rendered pages. */
 export async function mountFrontend() {
-  if (!IS_PROD && !process.env.VERCEL) {
+  // SERVE_BUILD=1 serves the built client from a dev server (used by the browser tests).
+  if (!IS_PROD && !process.env.VERCEL && !process.env.SERVE_BUILD) {
     const { createServer } = await import('vite');
     const vite = await createServer({ server: { middlewareMode: true }, appType: 'custom' });
     app.use(vite.middlewares);

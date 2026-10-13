@@ -45,7 +45,8 @@ feedsRouter.post('/admin/feeds/sync', requireAdmin('social'), syncFeeds);
 feedsRouter.get('/admin/feeds/health', requireAdmin('social'), (req, res) => {
   const store = db.get();
   const user = userOf(req);
-  const handles = store.handles.filter(h => canManageTeam(user, h.teamId) || (!h.teamId && hasPermission(user, 'feeds')));
+  // Team officials see only their own team's handles; league admins see everything.
+  const handles = store.handles.filter(h => canManageTeam(user, h.teamId));
   res.json({
     handles: handles.map(h => ({
       id: h.id, teamId: h.teamId, platform: h.platform, handle: h.handle, url: h.url, status: h.status,
