@@ -55,12 +55,13 @@ Each journey lists what the fan or admin does, what must happen, and the test th
 | D9 | Team official | Sees and changes only their own team (page, accounts, posts, polls, forum, notifications); cannot touch matches, settings, admins or other teams | A §12 |
 | D10 | Super admin | Adds and removes admins; the owner account and the "manage admins" permission are protected | A §12 |
 | D11 | Every admin section on a phone | Opens without errors and fits 360px | B §12 |
-| D12 | Scheduled jobs | Secret required; reminders, live scores and feed pulls; feeds only when due | A §6 |
+| D12 | Scheduled jobs | Run by themselves after visits (one instance at a time); outside calls without the key cannot force extra runs; reminders, live scores and feed pulls; feeds only when due | A §6, P |
+| D13 | Settings without environment variables | Keys saved in Admin → Environment apply at once and on every instance; deployment-only keys refused; secrets masked; clearing restores the default | A §13b, S |
 
 ## Platform
 
 | # | Journey | Must happen | Tests |
 |---|---|---|---|
-| P1 | Several server instances | Concurrent writes from two servers all survive in the shared bucket | S |
+| P1 | Several server instances | Concurrent writes from two servers all survive, in a Cloud Storage bucket or in Firestore split across documents; open Firestore rules are flagged | S |
 | P2 | Upgrade an old store | Invented content removed; real fans, posts and admin content kept; unchecked accounts sent for approval | M |
 | P3 | Production build | Assets cached long-term, pages cacheable at the edge, no sign-in codes or stack traces leak | P |

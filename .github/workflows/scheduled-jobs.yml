@@ -1,8 +1,7 @@
-# Calls the site's scheduled jobs (Dream XI lock reminders, live scores, feed pulls) every 10 minutes.
-# Use this when the host has no cron of its own (Vercel Hobby only allows daily cron jobs).
-# Repository settings > Secrets and variables > Actions:
-#   secret   CRON_SECRET  same value as the site's CRON_SECRET
-#   variable APP_URL      e.g. https://fans.example.com
+# Optional. The site already runs its scheduled jobs (Dream XI lock reminders, live scores, feed pulls)
+# after visits. This also nudges it every 10 minutes for quiet periods.
+# Repository settings > Secrets and variables > Actions > Variables: APP_URL, e.g. https://fans.example.com
+# (Optional secret CRON_SECRET, matching Admin > Environment, lets it force a run.)
 name: Scheduled jobs
 on:
   schedule:
@@ -18,5 +17,5 @@ jobs:
           APP_URL: ${{ vars.APP_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          test -n "$APP_URL" && test -n "$CRON_SECRET" || { echo "Set the APP_URL variable and CRON_SECRET secret"; exit 1; }
-          curl -fsS --max-time 120 -X POST -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/run"
+          if [ -z "$APP_URL" ]; then echo "Set the APP_URL repository variable to enable this schedule."; exit 0; fi
+          curl -fsS --max-time 120 -X POST ${CRON_SECRET:+-H "Authorization: Bearer $CRON_SECRET"} "$APP_URL/api/cron/run"

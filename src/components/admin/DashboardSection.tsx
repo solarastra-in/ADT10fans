@@ -38,15 +38,15 @@ interface DashboardData {
 }
 
 const INTEGRATIONS: { key: keyof NonNullable<DashboardData['integrations']>; label: string; howTo: string }[] = [
-  { key: 'persistentStorage', label: 'Persistent storage', howTo: 'Set DATA_DIR to a persistent disk, or STORE_BUCKET for shared Cloud Storage (needed on Vercel)' },
-  { key: 'scheduledJobs', label: 'Scheduled jobs (reminders, live scores, feeds)', howTo: 'Set CRON_SECRET and enable the Vercel cron or the GitHub Actions schedule' },
-  { key: 'smtp', label: 'Email sign-in codes (SMTP)', howTo: 'Set SMTP_* variables or fill in SMTP in Settings' },
-  { key: 'googleSignIn', label: 'Google sign-in', howTo: 'Firebase project id (firebase-applet-config.json or FIREBASE_PROJECT_ID)' },
-  { key: 'pushServer', label: 'Push sending (FCM)', howTo: 'Set FIREBASE_SERVICE_ACCOUNT' },
-  { key: 'pushClient', label: 'Push sign-up in browsers', howTo: 'Set FCM_VAPID_KEY' },
-  { key: 'liveScores', label: 'Live scores (CricketData.org)', howTo: 'Set CRICKET_API_KEY, then link fixtures in Matches' },
-  { key: 'curator', label: 'Curator.io social feed', howTo: 'Enter a Curator feed id in Settings' },
-  { key: 'gemini', label: 'Gemini AI (discovery, previews, assistant)', howTo: 'Set GEMINI_API_KEY' },
+  { key: 'persistentStorage', label: 'Data saved in Firebase (Firestore)', howTo: 'Set FIREBASE_SERVICE_ACCOUNT in Vercel (Firebase console → Project settings → Service accounts → Generate new private key), then redeploy. This is the only value that must be set outside this console.' },
+  { key: 'scheduledJobs', label: 'Scheduled jobs (reminders, live scores, feeds)', howTo: 'Run by themselves every few minutes while people use the site' },
+  { key: 'smtp', label: 'Email sign-in codes', howTo: 'Fill in the email (SMTP) settings in Environment or Settings' },
+  { key: 'googleSignIn', label: 'Google sign-in', howTo: 'Uses the Firebase project in firebase-applet-config.json' },
+  { key: 'pushServer', label: 'Push sending', howTo: 'Comes with FIREBASE_SERVICE_ACCOUNT' },
+  { key: 'pushClient', label: 'Push sign-up in browsers', howTo: 'Add the web push key (VAPID) in Environment' },
+  { key: 'liveScores', label: 'Live scores (CricketData.org)', howTo: 'Add the CricketData.org API key in Environment, then link fixtures in Matches' },
+  { key: 'curator', label: 'Curator.io social wall', howTo: 'Enter a Curator feed id in Settings' },
+  { key: 'gemini', label: 'AI copy helper (Gemini)', howTo: 'Add the Gemini API key in Environment' },
 ];
 
 const AGENTS: { name: string; label: string; desc: string }[] = [

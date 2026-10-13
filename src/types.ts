@@ -751,6 +751,9 @@ export interface EnvVariableInfo {
   isOverridden: boolean;
   requiresRestart: boolean;
   restartReason: string;
+  /** Can only be set in the host's environment variables (needed before the store can be read). */
+  envOnly: boolean;
+  source: 'console' | 'environment' | 'default' | 'unset';
   description: string;
   defaultValue?: string;
   type: 'string' | 'number' | 'boolean' | 'secret';

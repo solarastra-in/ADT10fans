@@ -1,439 +1,202 @@
-import { db } from './db';
+import { db, AppStore } from './db';
+
+/**
+ * Server settings that used to need environment variables.
+ *
+ * Almost all of them can now be set in Admin → Environment. Values saved there are kept in the store
+ * and applied to process.env every time the store loads (on every server instance and cold start),
+ * so they take effect everywhere within a second or two, with no redeploy.
+ *
+ * A few must stay real environment variables because the server needs them before it can read the
+ * store: where the store is and the key to reach it (FIREBASE_SERVICE_ACCOUNT), plus PORT/NODE_ENV.
+ */
+export type EnvCategory = 'core' | 'storage' | 'auth' | 'notifications' | 'ai' | 'social' | 'cricket';
 
 export interface EnvVariableInfo {
   key: string;
   label: string;
-  category: 'core' | 'storage' | 'auth' | 'notifications' | 'ai' | 'social' | 'cricket';
+  category: EnvCategory;
   value: string;
   isSecret: boolean;
   isSetInEnv: boolean;
   isOverridden: boolean;
+  /** True for the few settings that can only be set as environment variables. */
+  envOnly: boolean;
+  /** Kept for older admin screens: true only for envOnly settings (they apply on the next deploy). */
   requiresRestart: boolean;
   restartReason: string;
+  /** Where the effective value comes from. */
+  source: 'console' | 'environment' | 'default' | 'unset';
   description: string;
   defaultValue?: string;
   type: 'string' | 'number' | 'boolean' | 'secret';
 }
 
-export const ENV_SPECS: Omit<EnvVariableInfo, 'value' | 'isSetInEnv' | 'isOverridden'>[] = [
-  // Core & Server
-  {
-    key: 'PORT',
-    label: 'Server Port',
-    category: 'core',
-    isSecret: false,
-    requiresRestart: true,
-    restartReason: 'Network socket binds to this port when Node Express starts up.',
-    description: 'HTTP listening port for the application server.',
-    defaultValue: '3000',
-    type: 'number',
-  },
-  {
-    key: 'NODE_ENV',
-    label: 'Node Environment',
-    category: 'core',
-    isSecret: false,
-    requiresRestart: true,
-    restartReason: 'Build pipelines, Vite middleware, and caching modes are determined at process boot.',
-    description: 'Server runtime mode ("production" or "development").',
-    defaultValue: 'development',
-    type: 'string',
-  },
-  {
-    key: 'APP_URL',
-    label: 'Public Canonical App URL',
-    category: 'core',
-    isSecret: false,
-    requiresRestart: true,
-    restartReason: 'Base URL is cached by sitemap.xml, robots.txt, and metadata routers on boot.',
-    description: 'Public domain of the site (e.g. https://adt10fans.com) for SEO and OpenGraph share cards.',
-    defaultValue: 'http://localhost:3000',
-    type: 'string',
-  },
-  {
-    key: 'ADMIN_EMAILS',
-    label: 'Root Admin Emails',
-    category: 'core',
-    isSecret: false,
-    requiresRestart: false,
-    restartReason: 'Live without restart: Dynamic evaluation on each authenticated request.',
-    description: 'Comma-separated emails that receive root Admin Console access (e.g. solarastra.in@gmail.com).',
-    defaultValue: 'solarastra.in@gmail.com',
-    type: 'string',
-  },
+type Spec = { key: string; label: string; category: EnvCategory; isSecret?: boolean; envOnly?: boolean; description: string; defaultValue?: string; type?: EnvVariableInfo['type'] };
 
-  // Storage
+export const ENV_SPECS: Spec[] = [
+  // ---- Set once at deployment (needed before the store can be read) ----
   {
-    key: 'DATA_DIR',
-    label: 'Database Storage Directory',
-    category: 'storage',
-    isSecret: false,
-    requiresRestart: true,
-    restartReason: 'Database manager initializes store path and loads snapshot at process startup.',
-    description: 'Folder where t10_store.json lives. In containers mount a persistent volume (e.g. /mnt/data).',
-    defaultValue: 'data',
-    type: 'string',
+    key: 'FIREBASE_SERVICE_ACCOUNT', label: 'Firebase service account key', category: 'storage', isSecret: true, envOnly: true, type: 'secret',
+    description: 'The one value to set in Vercel. Firebase console → Project settings → Service accounts → Generate new private key; paste the whole JSON. The site keeps its data in your Firestore database with it, and uses it to send push notifications.',
   },
+  { key: 'STORE_BUCKET', label: 'Cloud Storage bucket (optional)', category: 'storage', envOnly: true, description: 'Only if you prefer a Cloud Storage bucket to Firestore for the data store.' },
+  { key: 'DATA_DIR', label: 'Data folder (own server only)', category: 'storage', envOnly: true, description: 'Only for a single long-running server with a disk. Not used on Vercel.' },
+  { key: 'NODE_ENV', label: 'Runtime mode', category: 'core', envOnly: true, description: 'Set by the host ("production" on Vercel).', defaultValue: 'development' },
 
-  // Authentication & OTP
-  {
-    key: 'FIREBASE_PROJECT_ID',
-    label: 'Firebase Project ID',
-    category: 'auth',
-    isSecret: false,
-    requiresRestart: true,
-    restartReason: 'Firebase client and server authentication tokens verify against this project ID initialized on startup.',
-    description: 'Google sign-in and Firestore database project identifier.',
-    defaultValue: '',
-    type: 'string',
-  },
-  {
-    key: 'OTP_PEPPER',
-    label: 'OTP Cryptographic Pepper',
-    category: 'auth',
-    isSecret: true,
-    requiresRestart: true,
-    restartReason: 'Cryptographic salt is bound to OTP hashing routines during server initialization.',
-    description: 'Optional server secret mixed into SHA-256 one-time sign-in code hashes.',
-    defaultValue: 'adt10',
-    type: 'secret',
-  },
-  {
-    key: 'SMTP_HOST',
-    label: 'SMTP Mail Server Host',
-    category: 'auth',
-    isSecret: false,
-    requiresRestart: false,
-    restartReason: 'Live without restart: Nodemailer transport is instantiated dynamically per send.',
-    description: 'Outgoing email server for 6-digit one-time passcodes (e.g. smtp.gmail.com).',
-    defaultValue: '',
-    type: 'string',
-  },
-  {
-    key: 'SMTP_PORT',
-    label: 'SMTP Server Port',
-    category: 'auth',
-    isSecret: false,
-    requiresRestart: false,
-    restartReason: 'Live without restart: Evaluated dynamically per email transport.',
-    description: 'Port for mail server (typically 587 for TLS or 465 for SSL).',
-    defaultValue: '587',
-    type: 'number',
-  },
-  {
-    key: 'SMTP_USER',
-    label: 'SMTP Username / Email',
-    category: 'auth',
-    isSecret: false,
-    requiresRestart: false,
-    restartReason: 'Live without restart: Evaluated dynamically per email transport.',
-    description: 'Login account for sending transactional emails.',
-    defaultValue: '',
-    type: 'string',
-  },
-  {
-    key: 'SMTP_PASS',
-    label: 'SMTP Password / App Password',
-    category: 'auth',
-    isSecret: true,
-    requiresRestart: false,
-    restartReason: 'Live without restart: Evaluated dynamically per email transport.',
-    description: 'App password or credentials for SMTP authentication.',
-    defaultValue: '',
-    type: 'secret',
-  },
-  {
-    key: 'SMTP_FROM',
-    label: 'SMTP From Address',
-    category: 'auth',
-    isSecret: false,
-    requiresRestart: false,
-    restartReason: 'Live without restart: Evaluated dynamically per email transport.',
-    description: 'Sender email shown in verification emails (e.g. "ADT10 Fans <noreply@adt10fans.com>").',
-    defaultValue: '',
-    type: 'string',
-  },
+  // ---- Site ----
+  { key: 'APP_URL', label: 'Site address', category: 'core', description: 'Public address used in canonical links, the sitemap and invite links, e.g. https://fans.example.com. Leave empty to use the address the visitor came in on.' },
+  { key: 'ADMIN_EMAILS', label: 'Extra super-admin emails', category: 'core', description: 'Comma-separated. Usually not needed: the owner account is always a super admin, and other admins are added in Admin → Admins.' },
+  { key: 'CRON_SECRET', label: 'Scheduled jobs key (optional)', category: 'core', isSecret: true, type: 'secret', description: 'Optional. Scheduled jobs already run by themselves while people use the site. Set this only if an outside scheduler (Vercel Cron, GitHub Actions) should be able to force a run.' },
 
-  // Push Notifications
-  {
-    key: 'FCM_VAPID_KEY',
-    label: 'Web Push VAPID Key',
-    category: 'notifications',
-    isSecret: false,
-    requiresRestart: true,
-    restartReason: 'Client public application config is served to frontend service worker on server boot.',
-    description: 'Public Web Push VAPID key from Firebase Console > Project Settings > Cloud Messaging.',
-    defaultValue: '',
-    type: 'string',
-  },
-  {
-    key: 'FIREBASE_SERVICE_ACCOUNT',
-    label: 'Firebase Service Account JSON',
-    category: 'notifications',
-    isSecret: true,
-    requiresRestart: false,
-    restartReason: 'Live without restart: Push server re-parses service account credentials on every push dispatch.',
-    description: 'Raw JSON or base64 credentials with Cloud Messaging permissions for background web push.',
-    defaultValue: '',
-    type: 'secret',
-  },
+  // ---- Sign-in ----
+  { key: 'FIREBASE_PROJECT_ID', label: 'Firebase project id', category: 'auth', description: 'Read from firebase-applet-config.json; set only to use a different project for Google sign-in.' },
+  { key: 'SMTP_HOST', label: 'Email server (SMTP host)', category: 'auth', description: 'For emailing sign-in codes, e.g. smtp.gmail.com or smtp.sendgrid.net. Without email, fans sign in with Google.' },
+  { key: 'SMTP_PORT', label: 'SMTP port', category: 'auth', defaultValue: '587', type: 'number', description: 'Usually 587 (or 465 for SSL).' },
+  { key: 'SMTP_USER', label: 'SMTP username', category: 'auth', description: 'The email account or API user.' },
+  { key: 'SMTP_PASS', label: 'SMTP password', category: 'auth', isSecret: true, type: 'secret', description: 'Password or app password for the email account.' },
+  { key: 'SMTP_FROM', label: 'Sender address', category: 'auth', description: 'Shown as the sender, e.g. ADT10 Fans <no-reply@yourdomain.com>.' },
+  { key: 'OTP_PEPPER', label: 'Sign-in code secret (optional)', category: 'auth', isSecret: true, type: 'secret', description: 'Extra secret mixed into stored sign-in codes. Changing it cancels codes already sent.' },
 
-  // AI & Gemini
-  {
-    key: 'GEMINI_API_KEY',
-    label: 'Gemini API Key',
-    category: 'ai',
-    isSecret: true,
-    requiresRestart: false,
-    restartReason: 'Live without restart: GoogleGenAI client dynamically instantiates with new key.',
-    description: 'API key for Gemini models used for AI copy generation and commentary enrichment.',
-    defaultValue: '',
-    type: 'secret',
-  },
-  {
-    key: 'GEMINI_MODEL',
-    label: 'Gemini Model Alias',
-    category: 'ai',
-    isSecret: false,
-    requiresRestart: false,
-    restartReason: 'Live without restart: Model identifier passed dynamically with each generation request.',
-    description: 'Gemini model identifier (recommended: "gemini-3.8-flash").',
-    defaultValue: 'gemini-3.8-flash',
-    type: 'string',
-  },
+  // ---- Notifications ----
+  { key: 'FCM_VAPID_KEY', label: 'Web push key (VAPID)', category: 'notifications', description: 'Firebase console → Project settings → Cloud Messaging → Web Push certificates → Key pair. Lets fans turn on push notifications.' },
+  { key: 'LOCK_REMINDER_MINUTES', label: 'Dream XI lock reminder (minutes)', category: 'notifications', defaultValue: '30', type: 'number', description: 'Default only; change it in Admin → Settings.' },
 
-  // Social Feeds
-  {
-    key: 'CURATOR_FEED_ID',
-    label: 'Curator.io Feed ID',
-    category: 'social',
-    isSecret: false,
-    requiresRestart: false,
-    restartReason: 'Live without restart: Managed directly via Admin Console > Settings > Social wall & news.',
-    description: 'Curator.io feed identifier. Configured in Admin Console Settings. Leave empty if you do not have a Curator account (built-in official feeds are used).',
-    defaultValue: '',
-    type: 'string',
-  },
-  {
-    key: 'CURATOR_API_KEY',
-    label: 'Curator.io API Key',
-    category: 'social',
-    isSecret: true,
-    requiresRestart: false,
-    restartReason: 'Live without restart: Managed directly via Admin Console > Settings > Social wall & news.',
-    description: 'Curator.io REST API key. Configured in Admin Console Settings. Leave empty if not using private Curator API.',
-    defaultValue: '',
-    type: 'secret',
-  },
-  {
-    key: 'FEED_SYNC_MINUTES',
-    label: 'Background Feed Sync Interval (min)',
-    category: 'social',
-    isSecret: false,
-    requiresRestart: true,
-    restartReason: 'Background sync cron timer (setInterval) is initialized at server startup.',
-    description: 'Minutes between automated background refreshes for team YouTube and sports news (0 disables).',
-    defaultValue: '30',
-    type: 'number',
-  },
+  // ---- Live scores ----
+  { key: 'CRICKET_API_KEY', label: 'CricketData.org API key', category: 'cricket', isSecret: true, type: 'secret', description: 'From cricketdata.org (free tier available). Turns on automatic live scores, results, scorecards and Dream XI scoring for fixtures linked in Admin → Matches → Find.' },
+  { key: 'CRICKETDATA_SERIES_ID', label: 'CricketData series id', category: 'cricket', description: 'The season\'s series id on CricketData, used by Squad tools to read squads.' },
+  { key: 'CRICBUZZ_SERIES_ID', label: 'Cricbuzz series number', category: 'cricket', defaultValue: '13307', description: 'Used by Squad tools\' Cricbuzz option.' },
 
-  // Cricket Data Provider
-  {
-    key: 'CRICBUZZ_SERIES_ID',
-    label: 'Cricbuzz Official Series ID',
-    category: 'cricket',
-    isSecret: false,
-    requiresRestart: false,
-    restartReason: 'Live without restart: Used dynamically by the automated cricket data provider sync script.',
-    description: 'Series ID on Cricbuzz for Abu Dhabi T10 League (default: 13307 for 2026 season).',
-    defaultValue: '13307',
-    type: 'string',
-  },
-  {
-    key: 'CRICKET_API_KEY',
-    label: 'Cricket Data Provider API Key',
-    category: 'cricket',
-    isSecret: true,
-    requiresRestart: false,
-    restartReason: 'Live without restart: Used dynamically by external provider API requests.',
-    description: 'CricketData.org key. Turns on automatic live scores for fixtures linked to a CricketData match id, and the CricketData squad refresh.',
-    defaultValue: '',
-    type: 'secret',
-  },
-  {
-    key: 'STORE_BUCKET',
-    label: 'Shared storage bucket',
-    category: 'storage',
-    isSecret: false,
-    requiresRestart: true,
-    restartReason: 'The storage backend is chosen when the server starts.',
-    description: 'Google Cloud Storage bucket for the data store. Needed on Vercel or with more than one server instance; writes are conditional so instances never overwrite each other.',
-    defaultValue: '',
-    type: 'string',
-  },
-  {
-    key: 'STORE_OBJECT',
-    label: 'Store object name',
-    category: 'storage',
-    isSecret: false,
-    requiresRestart: true,
-    restartReason: 'The storage backend is chosen when the server starts.',
-    description: 'Object name inside STORE_BUCKET.',
-    defaultValue: 't10_store.json',
-    type: 'string',
-  },
-  {
-    key: 'STORE_SERVICE_ACCOUNT',
-    label: 'Storage service account',
-    category: 'storage',
-    isSecret: true,
-    requiresRestart: true,
-    restartReason: 'The storage backend is chosen when the server starts.',
-    description: 'Service-account JSON (raw or base64) with Storage Object Admin on STORE_BUCKET. Falls back to FIREBASE_SERVICE_ACCOUNT.',
-    defaultValue: '',
-    type: 'secret',
-  },
-  {
-    key: 'CRON_SECRET',
-    label: 'Scheduled jobs secret',
-    category: 'core',
-    isSecret: true,
-    requiresRestart: false,
-    restartReason: 'Live without restart: checked on every scheduled-job call.',
-    description: 'Shared secret for /api/cron/run (Vercel Cron or the GitHub Actions schedule). Without it scheduled jobs only run inside a long-running server.',
-    defaultValue: '',
-    type: 'secret',
-  },
-  {
-    key: 'LOCK_REMINDER_MINUTES',
-    label: 'Dream XI lock reminder (minutes)',
-    category: 'notifications',
-    isSecret: false,
-    requiresRestart: true,
-    restartReason: 'Read into the default settings on first start; change it in Settings afterwards.',
-    description: 'How many minutes before the first ball fans are reminded that Dream XI lineups lock.',
-    defaultValue: '30',
-    type: 'number',
-  },
+  // ---- Feeds ----
+  { key: 'FEED_SYNC_MINUTES', label: 'Feed pull interval (minutes)', category: 'social', defaultValue: '30', type: 'number', description: 'How often YouTube, X, Curator and news are pulled (minimum 5).' },
+  { key: 'CURATOR_FEED_ID', label: 'Curator.io feed id', category: 'social', description: 'Also editable in Admin → Settings.' },
+  { key: 'CURATOR_API_KEY', label: 'Curator.io API key', category: 'social', isSecret: true, type: 'secret', description: 'Also editable in Admin → Settings.' },
+
+  // ---- AI ----
+  { key: 'GEMINI_API_KEY', label: 'Gemini API key', category: 'ai', isSecret: true, type: 'secret', description: 'From Google AI Studio. Turns on the AI copy helper in the admin console.' },
+  { key: 'GEMINI_MODEL', label: 'Gemini model', category: 'ai', defaultValue: 'gemini-3.8-flash', description: 'Model name for the AI helper.' },
 ];
 
-/**
- * Mask secret values for safe display to administrators
- */
+const SPEC = new Map(ENV_SPECS.map(s => [s.key, s]));
+export const CONSOLE_KEYS = ENV_SPECS.filter(s => !s.envOnly).map(s => s.key);
+
+// Values the real environment had before any console value was applied, so clearing a console value restores them.
+const original: Record<string, string | undefined> = {};
+const applied = new Set<string>();
+
+function overridesOf(store: AppStore): Record<string, string> {
+  const s = store.settings as any;
+  if (!s.envOverrides || typeof s.envOverrides !== 'object') s.envOverrides = {};
+  return s.envOverrides;
+}
+
+/** Puts the console values into process.env. Runs on every store load (see db.onLoad below). */
+export function applyEnvOverrides(store: AppStore) {
+  const overrides = overridesOf(store);
+  for (const key of CONSOLE_KEYS) {
+    if (!(key in original)) original[key] = process.env[key];
+    const v = overrides[key];
+    if (typeof v === 'string' && v.trim() !== '') {
+      process.env[key] = v.trim();
+      applied.add(key);
+    } else if (applied.has(key)) {
+      if (original[key] === undefined) delete process.env[key];
+      else process.env[key] = original[key];
+      applied.delete(key);
+    }
+  }
+  return false; // never changes the store itself
+}
+db.onLoad(applyEnvOverrides);
+
 function maskSecret(val: string): string {
   if (!val) return '';
   if (val.length <= 6) return '••••••';
   return val.slice(0, 3) + '••••••••' + val.slice(-3);
 }
 
-/**
- * Get all environment variables with detailed metadata and restart requirements
- */
 export function getAllEnvVariables(): EnvVariableInfo[] {
-  const store = db.get();
-  const overrides: Record<string, string> = (store.settings as any).envOverrides || {};
-
+  const overrides = overridesOf(db.get());
   return ENV_SPECS.map(spec => {
-    const envVal = process.env[spec.key];
+    const fromConsole = !spec.envOnly && typeof overrides[spec.key] === 'string' && overrides[spec.key] !== '';
+    const envVal = spec.envOnly ? process.env[spec.key] : original[spec.key] ?? (applied.has(spec.key) ? undefined : process.env[spec.key]);
     const isSetInEnv = envVal !== undefined && envVal !== '';
-    const hasOverride = overrides[spec.key] !== undefined && overrides[spec.key] !== '';
-    
-    // Effective value: DB override takes priority for dynamic vars, or env var, or default
-    let rawVal = hasOverride ? overrides[spec.key] : (isSetInEnv ? (envVal || '') : (spec.defaultValue || ''));
-
-    // Special integrations mapping from system settings
-    if (!hasOverride && !isSetInEnv) {
-      if (spec.key === 'ADMIN_EMAILS' && store.settings.adminEmails?.length) {
-        rawVal = store.settings.adminEmails.join(', ');
-      } else if (spec.key === 'SMTP_HOST' && store.settings.smtp?.host) {
-        rawVal = store.settings.smtp.host;
-      } else if (spec.key === 'SMTP_PORT' && store.settings.smtp?.port) {
-        rawVal = String(store.settings.smtp.port);
-      } else if (spec.key === 'SMTP_USER' && store.settings.smtp?.user) {
-        rawVal = store.settings.smtp.user;
-      } else if (spec.key === 'SMTP_FROM' && store.settings.smtp?.from) {
-        rawVal = store.settings.smtp.from;
-      } else if (spec.key === 'CURATOR_FEED_ID' && store.settings.curatorFeedId) {
-        rawVal = store.settings.curatorFeedId;
-      } else if (spec.key === 'CURATOR_API_KEY' && store.settings.curatorApiKey) {
-        rawVal = store.settings.curatorApiKey;
+    const raw = fromConsole ? overrides[spec.key] : isSetInEnv ? envVal! : spec.defaultValue || '';
+    const source: EnvVariableInfo['source'] = fromConsole ? 'console' : isSetInEnv ? 'environment' : spec.defaultValue ? 'default' : 'unset';
+    let value = spec.isSecret ? maskSecret(raw) : raw;
+    if (spec.key === 'FIREBASE_SERVICE_ACCOUNT' && raw) {
+      try {
+        const json = raw.trim().startsWith('{') ? raw : Buffer.from(raw.trim(), 'base64').toString('utf-8');
+        value = `${JSON.parse(json).client_email || 'service account'} (set)`;
+      } catch {
+        value = 'set, but not valid JSON';
       }
     }
-
-    const displayedValue = spec.isSecret ? maskSecret(rawVal) : rawVal;
-
     return {
-      ...spec,
-      value: displayedValue,
+      key: spec.key,
+      label: spec.label,
+      category: spec.category,
+      value,
+      isSecret: Boolean(spec.isSecret),
       isSetInEnv,
-      isOverridden: hasOverride,
+      isOverridden: fromConsole,
+      envOnly: Boolean(spec.envOnly),
+      requiresRestart: Boolean(spec.envOnly),
+      restartReason: spec.envOnly ? 'Set in your host\'s environment variables (Vercel → Settings → Environment Variables), then redeploy.' : 'Saved here; applies on every server within seconds.',
+      source,
+      description: spec.description,
+      defaultValue: spec.defaultValue,
+      type: spec.type || 'string',
     };
   });
 }
 
 /**
- * Save environment variable overrides to the persistent database settings
+ * Saves console values. An empty string clears the console value (the environment or default applies
+ * again). Masked secrets sent back unchanged are ignored.
  */
 export function saveEnvOverrides(newOverrides: Record<string, string>) {
   const store = db.get();
-  if (!(store.settings as any).envOverrides) {
-    (store.settings as any).envOverrides = {};
-  }
-
-  const overrides = (store.settings as any).envOverrides;
+  const overrides = overridesOf(store);
   const updatedKeys: string[] = [];
-  const requiresRestartKeys: string[] = [];
-
-  for (const [key, value] of Object.entries(newOverrides)) {
-    const spec = ENV_SPECS.find(s => s.key === key);
+  const refused: string[] = [];
+  for (const [key, rawValue] of Object.entries(newOverrides || {})) {
+    const spec = SPEC.get(key);
     if (!spec) continue;
-
-    // Do not overwrite secret if client submitted masked dots
-    if (spec.isSecret && (value.includes('••••') || value === '')) {
+    if (spec.envOnly) {
+      refused.push(key);
       continue;
     }
-
-    overrides[key] = value.trim();
+    const value = String(rawValue ?? '').trim();
+    if (spec.isSecret && value.includes('••••')) continue;
+    if (spec.type === 'number' && value && !Number.isFinite(Number(value))) {
+      return { success: false, error: `${spec.label} must be a number`, updatedKeys: [], requiresRestartKeys: [], hasRestartRequired: false, message: `${spec.label} must be a number` };
+    }
+    if (key === 'APP_URL' && value && !/^https?:\/\/[^\s/]+/.test(value)) {
+      return { success: false, error: 'Site address must start with https://', updatedKeys: [], requiresRestartKeys: [], hasRestartRequired: false, message: 'Site address must start with https://' };
+    }
+    if (value) overrides[key] = value;
+    else delete overrides[key];
     updatedKeys.push(key);
-
-    if (spec.requiresRestart) {
-      requiresRestartKeys.push(key);
-    }
-
-    // Apply live dynamic updates immediately to process.env and store settings
-    if (!spec.requiresRestart) {
-      process.env[key] = value.trim();
-
-      if (key === 'ADMIN_EMAILS') {
-        const emails = value.split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
-        store.settings.adminEmails = emails;
-      } else if (key === 'SMTP_HOST') {
-        store.settings.smtp.host = value.trim();
-      } else if (key === 'SMTP_PORT') {
-        store.settings.smtp.port = parseInt(value, 10) || 587;
-      } else if (key === 'SMTP_USER') {
-        store.settings.smtp.user = value.trim();
-      } else if (key === 'SMTP_PASS' && value) {
-        store.settings.smtp.pass = value.trim();
-      } else if (key === 'SMTP_FROM') {
-        store.settings.smtp.from = value.trim();
-      } else if (key === 'CURATOR_FEED_ID') {
-        store.settings.curatorFeedId = value.trim();
-      } else if (key === 'CURATOR_API_KEY') {
-        store.settings.curatorApiKey = value.trim();
-      }
-    }
+    // Keep the matching Settings fields in step.
+    if (key === 'SMTP_HOST') store.settings.smtp.host = value;
+    else if (key === 'SMTP_PORT') store.settings.smtp.port = parseInt(value, 10) || 587;
+    else if (key === 'SMTP_USER') store.settings.smtp.user = value;
+    else if (key === 'SMTP_PASS' && value) store.settings.smtp.pass = value;
+    else if (key === 'SMTP_FROM') store.settings.smtp.from = value;
+    else if (key === 'CURATOR_FEED_ID') store.settings.curatorFeedId = value;
+    else if (key === 'CURATOR_API_KEY') store.settings.curatorApiKey = value;
+    else if (key === 'LOCK_REMINDER_MINUTES' && value) store.settings.lockReminderMinutes = Math.min(240, Math.max(5, Math.round(Number(value))));
   }
-
+  if ((updatedKeys.some(k => k.startsWith('SMTP_'))) && store.settings.smtp.host) store.settings.smtp.enabled = true;
+  applyEnvOverrides(store);
   db.save();
-
   return {
     success: true,
     updatedKeys,
-    requiresRestartKeys,
-    hasRestartRequired: requiresRestartKeys.length > 0,
-    message: requiresRestartKeys.length > 0
-      ? `Updated ${updatedKeys.length} variable(s). Note: ${requiresRestartKeys.join(', ')} require(s) server restart to take effect.`
-      : `Updated ${updatedKeys.length} variable(s) successfully. Live variables applied immediately without restart.`,
+    refusedKeys: refused,
+    requiresRestartKeys: [] as string[],
+    hasRestartRequired: false,
+    message: `Saved ${updatedKeys.length} setting(s); they apply on every server within seconds.${refused.length ? ` ${refused.join(', ')} can only be set in your host's environment variables.` : ''}`,
   };
 }

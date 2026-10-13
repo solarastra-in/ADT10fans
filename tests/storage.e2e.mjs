@@ -1,9 +1,15 @@
-// Two server instances share one Cloud Storage object (a local fake GCS). Concurrent writes on both
-// must all survive: no instance may overwrite another's changes. Usage: node tests/storage.e2e.mjs <tmpdir>
+// Two server instances share one store, either a Cloud Storage object (fake GCS) or the Firebase
+// project's Firestore (fake Firestore, store split across several documents). Concurrent writes on
+// both must all survive: no instance may overwrite another's changes.
+// Usage: node tests/storage.e2e.mjs <tmpdir> [gcs|firestore]
 import { spawn } from 'node:child_process';
+import crypto from 'node:crypto';
 import { startFakeGcs } from './fake-gcs.mjs';
+import { startFakeFirestore } from './fake-firestore.mjs';
 
 const tmp = process.argv[2] || '/tmp';
+const MODE = process.argv[3] || 'gcs';
+console.log(`— shared storage: ${MODE} —`);
 let passed = 0;
 const ok = (name, cond, detail) => {
   if (!cond) {
@@ -14,17 +20,43 @@ const ok = (name, cond, detail) => {
   passed++;
   console.log('✓', name);
 };
-const gcs = await startFakeGcs();
+const fake = MODE === 'firestore' ? await startFakeFirestore() : await startFakeGcs();
+const gcs = fake;
 const procs = [];
 function cleanup() {
   for (const p of procs) try { process.kill(-p.pid); } catch {}
-  gcs.server.close();
+  fake.server.close();
+}
+let storeEnv;
+if (MODE === 'firestore') {
+  const { privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
+  const sa = { type: 'service_account', project_id: 'test-project', client_email: 'store@test-project.iam.gserviceaccount.com', private_key: privateKey };
+  storeEnv = {
+    STORE_BACKEND: 'firestore',
+    FIREBASE_SERVICE_ACCOUNT: Buffer.from(JSON.stringify(sa)).toString('base64'),
+    GOOGLE_OAUTH_TOKEN_URL: `http://127.0.0.1:${fake.port}/token`,
+    FIRESTORE_API_BASE: `http://127.0.0.1:${fake.port}`,
+    STORE_CHUNK_BYTES: '40000',
+  };
+} else {
+  storeEnv = { STORE_BUCKET: 'test-bucket', GCS_ACCESS_TOKEN: 'test-gcs-token', GCS_API_BASE: `http://127.0.0.1:${fake.port}` };
+}
+// The stored JSON, read back from the fake service.
+function storedJson() {
+  if (MODE !== 'firestore') return JSON.parse([...fake.objects.values()][0].data);
+  const names = [...fake.docs.keys()];
+  const meta = names.find(n => n.endsWith('/meta'));
+  const root = meta.slice(0, -'meta'.length);
+  const count = Number(fake.latest(meta).fields.chunks.integerValue);
+  let text = '';
+  for (let i = 0; i < count; i++) text += fake.latest(`${root}c${String(i).padStart(4, '0')}`).fields.d.stringValue;
+  return { json: JSON.parse(text), count };
 }
 async function startServer(port) {
   const p = spawn('npx', ['tsx', 'server.ts'], {
     detached: true,
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, PORT: String(port), STORE_BUCKET: 'test-bucket', GCS_ACCESS_TOKEN: 'test-gcs-token', GCS_API_BASE: `http://127.0.0.1:${gcs.port}`, DATA_DIR: `${tmp}/unused-${port}`, SCHEDULED_JOBS: 'off', SERVE_BUILD: '1', ADMIN_EMAILS: 'admin@test.dev' },
+    env: { ...process.env, ...storeEnv, PORT: String(port), DATA_DIR: `${tmp}/unused-${port}`, SCHEDULED_JOBS: 'off', SERVE_BUILD: '1', ADMIN_EMAILS: 'admin@test.dev' },
   });
   let log = '';
   p.stdout.on('data', d => (log += d));
@@ -48,9 +80,9 @@ const call = async (srv, method, path, body, token, ip = '10.1.1.1') => {
 };
 
 const health = await call(A, 'GET', '/api/health');
-ok('server uses the shared bucket', health.json.storage === 'gcs');
+ok(`server uses the shared ${MODE} store`, health.json.storage === MODE);
 ok('both instances see the seeded teams', (await call(A, 'GET', '/api/teams')).json.teams.length === 6 && (await call(B, 'GET', '/api/teams')).json.teams.length === 6);
-ok('seeding happened once', gcs.objects.size === 1);
+ok('seeding happened once', MODE === 'firestore' ? fake.stats.commits >= 1 && Boolean(storedJson().json.teams.length === 6) : gcs.objects.size === 1);
 
 // Sign in: code requested on A, verified on B.
 const tokens = [];
@@ -70,17 +102,31 @@ for (let i = 0; i < 6; i++) for (let j = 0; j < 5; j++) jobs.push(call(j % 2 ? B
 for (let i = 0; i < 6; i++) jobs.push(call(i % 2 ? A : B, 'POST', '/api/checkin', {}, tokens[i], `10.5.0.${i}`));
 const results = await Promise.all(jobs);
 ok('all 36 concurrent writes succeeded', results.every(r => r.status === 200), results.filter(r => r.status !== 200).map(r => r.status));
-ok('instances really raced (conditional writes were refused and retried)', gcs.stats.conflicts > 0, gcs.stats);
+ok('instances really raced (conditional writes were refused and retried)', fake.stats.conflicts > 0, fake.stats);
 // Reads check storage for newer data at most once a second, so allow that much lag between instances.
 await new Promise(r => setTimeout(r, 1200));
 const tA = (await call(A, 'GET', `/api/forum/threads/${T}`)).json;
 const tB = (await call(B, 'GET', `/api/forum/threads/${T}`)).json;
 ok('no reply was lost: 30 on instance A', tA.comments.length === 30, tA.comments.length);
 ok('no reply was lost: 30 on instance B', tB.comments.length === 30);
-const stored = JSON.parse([...gcs.objects.values()][0].data);
+const storedRaw = storedJson();
+const stored = MODE === 'firestore' ? storedRaw.json : storedRaw;
+if (MODE === 'firestore') ok('the store is split across several Firestore documents', storedRaw.count > 1, storedRaw.count);
 ok('the stored object has every reply and check-in', stored.forumComments.length === 30 && stored.users.filter(u => u.lastCheckin).length === 6);
 const pts = (await call(B, 'GET', '/api/me', null, tokens[3])).json.user.points;
 ok('points from both servers add up (5 replies x5 + check-in 10)', pts === 35, pts);
+// A key saved in the Admin console on one instance applies on the other (no environment variables).
+const ip = '10.9.0.1';
+const o1 = await call(A, 'POST', '/api/auth/otp/request', { email: 'admin@test.dev' }, null, ip);
+const o2 = await call(A, 'POST', '/api/auth/otp/verify', { email: 'admin@test.dev', code: o1.json.devCode }, null, ip);
+await call(A, 'POST', '/api/admin/env', { overrides: { GEMINI_API_KEY: 'shared-console-key' } }, o2.json.token);
+await new Promise(r => setTimeout(r, 1200));
+ok('a key saved in the console on one server applies on the other', (await call(B, 'GET', '/api/config')).json.config.features.gemini === true);
+if (MODE === 'firestore') {
+  fake.options.publicRead = true;
+  const dash = (await call(B, 'GET', '/api/admin/dashboard', null, o2.json.token)).json;
+  ok('the dashboard warns when Firestore rules let anyone read the data', dash.warnings.some(w => /security rules/.test(w)), dash.warnings);
+}
 console.log(`\n${passed} storage checks passed`);
 cleanup();
 process.exit(0);

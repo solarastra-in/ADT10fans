@@ -72,27 +72,97 @@ export async function runScheduledJobs(opts: { only?: string[]; force?: boolean 
   return { tookMs: Date.now() - started, jobs: out };
 }
 
-/** For long-running servers: runs the jobs as if they were one request, so shared storage stays consistent. */
+/** Minimum time between automatic runs. */
+export const JOB_INTERVAL_MS = 4 * 60_000;
+const LEASE_MS = 3 * 60_000;
+let runningHere = false;
+let lastLocalCheck = 0;
+
+export const jobsMode = () => (process.env.SCHEDULED_JOBS || '').trim().toLowerCase(); // '' | 'off' | 'traffic'
+
+export function jobsDue(now = Date.now()) {
+  const last = lastJobRun();
+  return !last || now - +new Date(last) >= JOB_INTERVAL_MS;
+}
+
+/**
+ * Runs the scheduled jobs once, unless they ran recently or another instance is running them.
+ * A lease in the store (claimed with a conditional write) makes sure only one instance runs at a time.
+ * `force` skips the "ran recently" check (used by an authorised cron call or a super admin).
+ */
+export async function runJobsOnce(opts: { force?: boolean } = {}): Promise<{ ran: boolean; reason?: string; result?: any }> {
+  if (runningHere) return { ran: false, reason: 'already running' };
+  runningHere = true;
+  try {
+    if (!db.shared) {
+      if (!opts.force && !jobsDue()) return { ran: false, reason: 'ran recently' };
+      return { ran: true, result: await runScheduledJobs() };
+    }
+    return await db.exclusive(() =>
+      requestContext.run({ id: crypto.randomUUID() }, async () => {
+        await db.refreshIfStale();
+        const log = db.get().jobLog;
+        if (!opts.force && !jobsDue()) return { ran: false, reason: 'ran recently' };
+        const lease = log['jobs:lease'];
+        if (lease && Date.now() - +new Date(lease) < LEASE_MS) return { ran: false, reason: 'running on another instance' };
+        log['jobs:lease'] = new Date().toISOString();
+        db.save();
+        try {
+          await db.commit();
+        } catch (e) {
+          if (e instanceof ConflictError) {
+            await db.discardAndReload();
+            return { ran: false, reason: 'another instance started first' };
+          }
+          throw e;
+        }
+        const result = await runScheduledJobs(opts);
+        delete db.get().jobLog['jobs:lease'];
+        db.save();
+        try {
+          await db.commit();
+        } catch (e) {
+          if (e instanceof ConflictError) await db.discardAndReload();
+          else throw e;
+        }
+        return { ran: true, result };
+      }),
+    );
+  } finally {
+    runningHere = false;
+  }
+}
+
+/** For long-running servers (the timer). */
 export async function runJobsInBackground() {
-  if (!db.shared) return runScheduledJobs();
-  return db.exclusive(() =>
-    requestContext.run({ id: crypto.randomUUID() }, async () => {
-      await db.refreshIfStale();
-      const r = await runScheduledJobs();
-      try {
-        await db.commit();
-      } catch (e) {
-        if (e instanceof ConflictError) await db.discardAndReload();
-        else throw e;
-      }
-      return r;
-    }),
-  );
+  return runJobsOnce();
+}
+
+/**
+ * Traffic-driven jobs: after a response is sent, run the jobs if they are due. On Vercel the function
+ * is kept alive for them with waitUntil. Checked at most every 30 seconds per instance, so it costs
+ * nothing on most requests. SCHEDULED_JOBS=off turns it off.
+ */
+export function jobsOnTraffic(req: { path: string; method: string }, res: { once: (e: string, f: () => void) => void }) {
+  if (jobsMode() === 'off') return;
+  if (req.path.startsWith('/api/cron') || req.path.startsWith('/assets/') || req.method === 'OPTIONS') return;
+  const now = Date.now();
+  if (runningHere || now - lastLocalCheck < 30_000 || !jobsDue(now)) return;
+  lastLocalCheck = now;
+  const work = new Promise<void>(resolve => res.once('finish', resolve))
+    .then(() => runJobsOnce())
+    .then(r => {
+      if (r.ran) console.log('[JOBS] ran after a visit:', JSON.stringify(r.result?.jobs || {}).slice(0, 300));
+    })
+    .catch(e => console.warn('[JOBS] failed:', e?.message || e));
+  if (process.env.VERCEL) {
+    import('@vercel/functions').then(m => m.waitUntil(work)).catch(() => undefined);
+  }
 }
 
 let timer: NodeJS.Timeout | null = null;
 export function startJobTimer() {
-  if (timer || process.env.VERCEL || process.env.SCHEDULED_JOBS === 'off') return;
+  if (timer || process.env.VERCEL || jobsMode() === 'off' || jobsMode() === 'traffic') return;
   const tick = () => runJobsInBackground().catch(e => console.warn('[JOBS] failed:', e?.message || e));
   setTimeout(tick, 15_000).unref();
   timer = setInterval(tick, 60_000);

@@ -6,6 +6,7 @@ import { db } from './db';
 import './seedOfficial'; // registers the store initializer (teams, checked handles)
 import { IS_PROD } from './auth';
 import { installStoreSync } from './storeSync';
+import { jobsOnTraffic } from './jobs';
 import { coreRouter, referralCheckMiddleware } from './routes/core';
 import { teamsRouter } from './routes/teams';
 import { feedsRouter } from './routes/feeds';
@@ -42,6 +43,15 @@ app.use((req, res, next) => {
 });
 
 installStoreSync(app);
+// Scheduled jobs (reminders, live scores, feed pulls) run after visits when they are due; no cron needed.
+app.use((req, res, next) => {
+  try {
+    jobsOnTraffic(req, res);
+  } catch {
+    /* never block a request */
+  }
+  next();
+});
 app.use('/api', referralCheckMiddleware);
 for (const r of [coreRouter, teamsRouter, feedsRouter, matchesRouter, playRouter, prizesRouter, communityRouter, notificationsRouter, fanSpacesRouter, adminRouter]) app.use('/api', r);
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));

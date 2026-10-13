@@ -4,9 +4,11 @@ import { GoogleGenAI } from '@google/genai';
  * Gemini helpers. There are no canned fallbacks: when Gemini isn't configured or a call
  * fails, callers get an error and the UI says so.
  */
-export const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+/** Read on each call so a model set in Admin → Environment applies straight away. */
+export const geminiModel = () => process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 
 let aiInstance: GoogleGenAI | null = null;
+let aiKey = '';
 export function geminiConfigured() {
   return Boolean(process.env.GEMINI_API_KEY);
 }
@@ -16,7 +18,11 @@ function getAI(): GoogleGenAI {
     err.status = 503;
     throw err;
   }
-  if (!aiInstance) aiInstance = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  // Recreated when the key changes (it can be replaced in Admin → Environment).
+  if (!aiInstance || aiKey !== process.env.GEMINI_API_KEY) {
+    aiKey = process.env.GEMINI_API_KEY;
+    aiInstance = new GoogleGenAI({ apiKey: aiKey });
+  }
   return aiInstance;
 }
 
@@ -32,17 +38,17 @@ export async function chatWithGemini(messages: { role: 'user' | 'model'; parts: 
     parts: [{ text: String(m.parts?.[0]?.text || '').slice(0, 4000) }],
   }));
   const response = await ai.models.generateContent({
-    model: GEMINI_MODEL,
+    model: geminiModel(),
     contents: history,
     config: { systemInstruction: `You are a friendly cricket assistant for fans on an Abu Dhabi T10 fan site. ${LEAGUE_CONTEXT(teams)}` },
   });
-  return { text: response.text || '', source: GEMINI_MODEL };
+  return { text: response.text || '', source: geminiModel() };
 }
 
 export async function searchGroundingCricket(query: string, teams: string[]) {
   const ai = getAI();
   const response = await ai.models.generateContent({
-    model: GEMINI_MODEL,
+    model: geminiModel(),
     contents: `${LEAGUE_CONTEXT(teams)}\n\nAnswer using up-to-date web results, citing facts precisely: ${query.slice(0, 500)}`,
     config: { tools: [{ googleSearch: {} }] },
   });
@@ -57,18 +63,18 @@ export async function searchGroundingCricket(query: string, teams: string[]) {
 export async function generateMarketingContent(prompt: string, context: { teamName?: string }) {
   const ai = getAI();
   const response = await ai.models.generateContent({
-    model: GEMINI_MODEL,
+    model: geminiModel(),
     contents:
       `You write social media copy for an Abu Dhabi T10 fan community${context.teamName ? ` focusing on ${context.teamName}` : ''}. ` +
       `Do not invent statistics, results, prizes or quotes; use placeholders like [PRIZE] where facts are needed.\nTask: ${prompt.slice(0, 2000)}`,
   });
-  return { text: response.text || '', source: GEMINI_MODEL };
+  return { text: response.text || '', source: geminiModel() };
 }
 
 export async function transcribeAudioVoice(audioBase64: string, mimeType = 'audio/webm') {
   const ai = getAI();
   const response = await ai.models.generateContent({
-    model: GEMINI_MODEL,
+    model: geminiModel(),
     contents: [{ role: 'user', parts: [{ inlineData: { mimeType, data: audioBase64 } }, { text: 'Transcribe this audio accurately. Return only the transcript.' }] }],
   });
   return { text: response.text || '' };
@@ -88,7 +94,7 @@ export interface DiscoveredSocialHandle {
 export async function suggestOfficialHandles(teamName: string, platforms: string[]): Promise<DiscoveredSocialHandle[]> {
   const ai = getAI();
   const response = await ai.models.generateContent({
-    model: GEMINI_MODEL,
+    model: geminiModel(),
     contents:
       `Find the OFFICIAL social media accounts of the Abu Dhabi T10 cricket franchise "${teamName}" on: ${platforms.join(', ')}. ` +
       `Only include an account if a search result clearly shows it belongs to this franchise. Omit anything uncertain. ` +

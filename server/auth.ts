@@ -12,21 +12,14 @@ export const IS_PROD = process.env.NODE_ENV === 'production';
 const sha256 = (s: string) => crypto.createHash('sha256').update(s).digest('hex');
 
 // ---------- Firebase project (for verifying Google sign-in ID tokens) ----------
-function loadFirebaseProjectId(): string {
-  if (process.env.FIREBASE_PROJECT_ID) return process.env.FIREBASE_PROJECT_ID;
-  try {
-    const cfg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8'));
-    return cfg.projectId || '';
-  } catch {
-    return '';
-  }
-}
-export const FIREBASE_PROJECT_ID = loadFirebaseProjectId();
+export { firebaseProjectId } from './firebaseConfig';
+import { firebaseProjectId } from './firebaseConfig';
 const firebaseJwks = createRemoteJWKSet(
   new URL('https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com')
 );
 
 export async function verifyFirebaseIdToken(idToken: string) {
+  const FIREBASE_PROJECT_ID = firebaseProjectId();
   if (!FIREBASE_PROJECT_ID) throw new Error('Google sign-in is not configured (FIREBASE_PROJECT_ID missing)');
   const { payload } = await jwtVerify(idToken, firebaseJwks, {
     issuer: `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`,

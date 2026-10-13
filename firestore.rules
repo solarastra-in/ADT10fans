@@ -1,0 +1,12 @@
+rules_version = '2';
+// The site's data is read and written only by its own server, which signs in with the
+// FIREBASE_SERVICE_ACCOUNT key and is not subject to these rules. Browsers never need direct
+// access, so everything is closed to them. Publish in Firebase console → Firestore → Rules
+// (or `firebase deploy --only firestore:rules`).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

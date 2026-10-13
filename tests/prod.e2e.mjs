@@ -34,7 +34,15 @@ ok('sitemap is XML', (await get('/sitemap.xml')).text.startsWith('<?xml'));
 const otp = await fetch(BASE + '/api/auth/otp/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'x@test.dev' }) });
 const otpJson = await otp.json();
 ok('production never returns sign-in codes in the response', !('devCode' in otpJson));
-ok('cron is locked without the secret', (await get('/api/cron/run')).status === 401);
+// Scheduled jobs run by themselves after visits (no cron or secret needed).
+let lastRun = null;
+for (let i = 0; i < 40 && !lastRun; i++) {
+  await new Promise(r => setTimeout(r, 250));
+  lastRun = (await (await fetch(BASE + '/api/health')).json()).jobsLastRun;
+}
+ok('scheduled jobs ran by themselves after the first visits', Boolean(lastRun));
+const cron = await (await fetch(BASE + '/api/cron/run')).json();
+ok('an outside cron call without a secret cannot force another run', cron.ran === false && !cron.jobs);
 const bad = await fetch(BASE + '/api/forum/threads', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{not json' });
 ok('bad JSON gives a clean error without a stack trace', bad.status >= 400 && !(await bad.text()).includes('at '));
 ok('unknown API routes are JSON 404s', (await get('/api/nope')).status === 404);

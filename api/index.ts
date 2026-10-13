@@ -31,7 +31,9 @@ export default async function handler(req: IncomingMessage & { url?: string }, r
   } catch (e: any) {
     res.statusCode = 503;
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ error: 'The site is starting up or storage is not reachable. Please try again.' }));
+    // Storage errors carry no secrets (HTTP status and Google's error code), and they tell the owner what to fix.
+    const detail = /Firestore|GCS|OAuth|service account/i.test(String(e?.message)) ? ` (${String(e.message).slice(0, 300)})` : '';
+    res.end(JSON.stringify({ error: `The site could not reach its database${detail}. If FIREBASE_SERVICE_ACCOUNT was just set, check that it is the full JSON key of a service account in this Firebase project.` }));
     console.error('[BOOT]', e);
     return;
   }

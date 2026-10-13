@@ -314,8 +314,6 @@ const pickBalanced = () => {
 const xi3 = pickBalanced();
 const s3 = await save(F4, xi3, xi3[0], xi3[1], m3);
 ok('lineup saved for a match starting soon', s3.status === 200, s3.json);
-ok('cron refuses calls without the secret', (await get('/api/cron/run')).status === 401);
-ok('cron refuses a wrong secret', (await call('GET', '/api/cron/run', null, null, { headers: { Authorization: 'Bearer nope' } })).status === 401);
 const cron1 = await call('GET', '/api/cron/run?only=reminders', null, null, { headers: { Authorization: `Bearer ${CRON}` } });
 ok('cron sends one lock reminder', cron1.status === 200 && cron1.json.jobs.reminders.lockReminders === 1, cron1.json);
 const cron2 = await call('POST', '/api/cron/run?only=reminders', null, null, { headers: { Authorization: `Bearer ${CRON}` } });
@@ -327,6 +325,11 @@ ok('fans without one get "pick 11 players"', /Pick 11 players/.test(remF2?.body)
 const cron3 = await call('POST', '/api/cron/run', null, null, { headers: { Authorization: `Bearer ${CRON}` } });
 ok('full cron run pulls feeds and checks fixtures', cron3.json.jobs.feeds && cron3.json.jobs.scores && cron3.json.jobs.checks !== undefined, cron3.json);
 ok('feeds are not pulled again before they are due', (await call('POST', '/api/cron/run', null, null, { headers: { Authorization: `Bearer ${CRON}` } })).json.jobs.feeds.skipped);
+const anonCron = await get('/api/cron/run');
+ok('without the secret, the cron only runs when jobs are due (not again right after a run)', anonCron.status === 200 && anonCron.json.ran === false && anonCron.json.reason === 'ran recently' && !anonCron.json.jobs, anonCron.json);
+ok('a wrong secret gets the same limited run', (await call('GET', '/api/cron/run', null, null, { headers: { Authorization: 'Bearer nope' } })).json.ran === false);
+const forced = await call('POST', '/api/cron/run', null, A);
+ok('a super admin can force a run', forced.json.ran === true && forced.json.jobs);
 
 // ============ 7. Daily games ============
 const today = (await get('/api/games/today', F3)).json;
@@ -488,6 +491,20 @@ ok('referral reward and reminder time are configurable', st.json.settings.referr
 ok('secrets are masked', (await get('/api/admin/settings', A)).json.settings.smtp.pass === '');
 const dash = (await get('/api/admin/dashboard', A)).json;
 ok('dashboard counts are real', dash.matchesCount === 3 && dash.fantasyLineups === 4 && dash.integrations.liveScores === true);
+
+// ============ 13b. Settings kept in the Admin console instead of environment variables ============
+const envList = (await get('/api/admin/env', A)).json.variables;
+ok('the deployment key is the only required environment-only setting', envList.filter(v => v.envOnly).map(v => v.key).includes('FIREBASE_SERVICE_ACCOUNT') && envList.find(v => v.key === 'CRICKET_API_KEY').envOnly === false);
+ok('AI helper is off before a key is saved', (await get('/api/config')).json.config.features.gemini === false);
+const savedEnv = await post('/api/admin/env', { overrides: { GEMINI_API_KEY: 'console-test-key', FEED_SYNC_MINUTES: '45', FIREBASE_SERVICE_ACCOUNT: '{"x":1}' } }, A);
+ok('console settings save; deployment-only ones are refused', savedEnv.json.success && savedEnv.json.updatedKeys.includes('GEMINI_API_KEY') && savedEnv.json.refusedKeys.includes('FIREBASE_SERVICE_ACCOUNT'));
+ok('a key saved in the console takes effect at once', (await get('/api/config')).json.config.features.gemini === true);
+const envAfter = (await get('/api/admin/env', A)).json.variables;
+ok('saved secrets are masked and marked as set here', envAfter.find(v => v.key === 'GEMINI_API_KEY').value.includes('••') && envAfter.find(v => v.key === 'GEMINI_API_KEY').source === 'console');
+ok('invalid values are refused', (await post('/api/admin/env', { overrides: { APP_URL: 'not a url' } }, A)).json.success === false);
+await post('/api/admin/env', { overrides: { GEMINI_API_KEY: '' } }, A);
+ok('clearing a console value switches it off again', (await get('/api/config')).json.config.features.gemini === false);
+ok('only super admins see the environment page', (await get('/api/admin/env', F1)).status === 403);
 
 // ============ 14. SEO pages ============
 const html = async p => {

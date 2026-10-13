@@ -1,16 +1,17 @@
 import crypto from 'crypto';
 import { Router } from 'express';
 import { ALL_PERMISSIONS, AdminPermission, AdminRole, db, defaultSettings, SUPER_ADMIN_EMAIL, TEAM_OFFICIAL_PERMISSIONS } from '../db';
-import { adminEmails, IS_PROD, isSuperAdmin, rateLimit, requireAdmin, requireSuperAdmin, requireUser, smtpConfigured, FIREBASE_PROJECT_ID } from '../auth';
+import { adminEmails, IS_PROD, isSuperAdmin, rateLimit, requireAdmin, requireSuperAdmin, requireUser, smtpConfigured, firebaseProjectId } from '../auth';
 import { bad, newId, num, str, userOf, wrap } from '../http';
 import { runDiscoveryAgent, runSocialAgent, runNewsAgent, runScoresAgent, runContentAgent, runOpsAgent } from '../agents';
 import { geminiConfigured, chatWithGemini, searchGroundingCricket, generateMarketingContent, transcribeAudioVoice } from '../gemini';
 import { getAllEnvVariables, saveEnvOverrides } from '../envConfig';
 import { pushServerConfigured } from '../push';
 import { liveScoresConfigured } from '../liveScores';
-import { ephemeralDiskWarning } from '../storage';
+import { ephemeralDiskWarning, FirestoreBackend } from '../storage';
+import { firebaseAppConfig } from '../firebaseConfig';
 import { getCuratorConfig } from '../feeds';
-import { runScheduledJobs, lastJobRun } from '../jobs';
+import { runScheduledJobs, runJobsOnce, lastJobRun } from '../jobs';
 
 export const adminRouter = Router();
 
@@ -19,9 +20,19 @@ function maskedSettings() {
   return { ...s, adminEmails: adminEmails(), curatorApiKey: s.curatorApiKey ? '********' : '', smtp: { ...s.smtp, pass: s.smtp.pass ? '********' : '' }, envOverrides: undefined };
 }
 
-adminRouter.get('/admin/dashboard', requireAdmin, (_req, res) => {
+let rulesCheck: { at: number; open: boolean } | null = null;
+async function firestoreOpenToPublic(): Promise<boolean> {
+  if (!(db.backend instanceof FirestoreBackend)) return false;
+  if (rulesCheck && Date.now() - rulesCheck.at < 10 * 60_000) return rulesCheck.open;
+  const open = await db.backend.publiclyReadable(firebaseAppConfig().apiKey || '');
+  rulesCheck = { at: Date.now(), open };
+  return open;
+}
+
+adminRouter.get('/admin/dashboard', requireAdmin, wrap(async (_req, res) => {
   const s = db.get();
   const warning = ephemeralDiskWarning(db.backend);
+  const rulesOpen = await firestoreOpenToPublic();
   res.json({
     usersCount: s.users.length,
     handlesCount: s.handles.length,
@@ -40,23 +51,26 @@ adminRouter.get('/admin/dashboard', requireAdmin, (_req, res) => {
     pendingApprovals: s.approvals.filter(a => a.status === 'pending'),
     agentRuns: s.agentRuns.slice(0, 20),
     settings: maskedSettings(),
-    warnings: warning ? [warning] : [],
+    warnings: [
+      ...(warning ? [warning] : []),
+      ...(rulesOpen ? ['Your Firestore security rules let anyone read the site\'s data. In Firebase console → Firestore → Rules, publish the rules in firestore.rules from the repository (they close the database to browsers; the site itself is not affected).'] : []),
+    ],
     integrations: {
       gemini: geminiConfigured(),
       smtp: smtpConfigured(),
       pushServer: pushServerConfigured(),
       pushClient: Boolean(process.env.FCM_VAPID_KEY),
-      googleSignIn: Boolean(FIREBASE_PROJECT_ID),
+      googleSignIn: Boolean(firebaseProjectId()),
       curator: getCuratorConfig().isConfigured,
       liveScores: liveScoresConfigured(),
       storage: db.backend.describe(),
       sharedStorage: db.shared,
       persistentStorage: db.shared || Boolean(process.env.DATA_DIR),
-      scheduledJobs: Boolean(process.env.CRON_SECRET) || !process.env.VERCEL,
+      scheduledJobs: (process.env.SCHEDULED_JOBS || '').toLowerCase() !== 'off',
       lastScheduledRun: lastJobRun(),
     },
   });
-});
+}));
 
 const AGENTS: Record<string, () => Promise<any>> = { discovery: runDiscoveryAgent, social: runSocialAgent, news: runNewsAgent, scores: runScoresAgent, content: runContentAgent, ops: runOpsAgent };
 adminRouter.post('/admin/agents/:name/run', requireAdmin(['feeds', 'social', 'matches']), wrap(async (req, res) => {
@@ -267,8 +281,10 @@ adminRouter.post('/gemini/transcribe', requireAdmin, wrap(async (req, res) => {
 
 // ---------- scheduled jobs ----------
 /**
- * Called by Vercel Cron (GET with "Authorization: Bearer <CRON_SECRET>") or the GitHub Actions
- * schedule (POST with the same header). Super admins can also run it from the dashboard.
+ * Jobs normally run by themselves after visits (see jobs.ts). This endpoint lets an outside scheduler
+ * (Vercel Cron, GitHub Actions) or a super admin trigger them too. Anyone may call it, but without the
+ * CRON_SECRET (or a super admin session) it only runs when the jobs are due, so it cannot be abused to
+ * run them more often than every few minutes.
  */
 const cronAuth = (req: any) => {
   const secret = process.env.CRON_SECRET || '';
@@ -280,12 +296,13 @@ const cronAuth = (req: any) => {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 };
 const cronHandler = wrap(async (req, res) => {
-  if (!cronAuth(req)) {
-    const user = (await import('../auth')).getAuthUser(req);
-    if (!isSuperAdmin(user)) return bad(res, IS_PROD || process.env.CRON_SECRET ? 'Not allowed' : 'Set CRON_SECRET to call this', 401);
-  }
+  const user = (await import('../auth')).getAuthUser(req);
+  const trusted = cronAuth(req) || isSuperAdmin(user);
   const only = typeof req.query.only === 'string' ? req.query.only.split(',') : undefined;
-  res.json({ success: true, ...(await runScheduledJobs({ only })) });
+  if (trusted && only) return res.json({ success: true, ...(await runScheduledJobs({ only })) });
+  const r = await runJobsOnce({ force: trusted });
+  if (!trusted) return res.json({ success: true, ran: r.ran, reason: r.reason, lastRun: lastJobRun() });
+  res.json({ success: true, ran: r.ran, reason: r.reason, ...(r.result || {}) });
 });
 adminRouter.get('/cron/run', cronHandler);
 adminRouter.post('/cron/run', cronHandler);

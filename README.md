@@ -84,46 +84,56 @@ npm run build     # client (dist/, template at dist/_template.html) and server (
 npm start         # NODE_ENV=production node dist-server/server.mjs
 ```
 
-### Storage
+### On Vercel: one environment variable
 
-Pick one:
+Set **`FIREBASE_SERVICE_ACCOUNT`** in Vercel (Project → Settings → Environment Variables) and redeploy:
 
-- **One server with a disk:** set `DATA_DIR` to a persistent folder.
-- **Vercel, Cloud Run with several instances, or anything serverless:** set `STORE_BUCKET`, plus a service account with Storage Object Admin on that bucket.
+1. In the Firebase console, open Project settings → Service accounts → **Generate new private key**.
+2. Paste the whole JSON file as the value.
 
-With a bucket, every instance reads and writes the same JSON object using conditional writes. A request that races another instance is replayed on fresh data, so nothing is overwritten. `npm run test:storage` proves this with two servers writing at once.
+That key lets the server keep its data in your Firebase project's **Firestore** database, which works on the free Spark plan. It also lets the site send push notifications. The project and database come from `firebase-applet-config.json`.
 
-Without either, Vercel keeps data in `/tmp` and loses it, and the dashboard warns about this.
+Everything else is set in **Admin → Environment** after you sign in. Values saved there are kept with the site's data and apply on every server within seconds:
 
-### Vercel
+- the CricketData live-score key
+- email (SMTP) for sign-in codes
+- the web-push key
+- the Gemini key
+- Curator
+- the site address
+- extra admin emails
+- feed and reminder timings
 
-`vercel.json` routes everything to `api/index.ts`, which server-renders pages and serves the API. Static assets come from `dist/`.
+The owner account (`solarastra.in@gmail.com`) is always a super admin. Add other admins in Admin → Admins.
 
-It also schedules `/api/cron/run` **once a day**, because that's the most Vercel Hobby allows. Dream XI lock reminders and live scores need it every 10–15 minutes:
+**Publish `firestore.rules`** in Firebase console → Firestore → Rules, or run `firebase deploy --only firestore:rules`. These rules close the database to browsers; the site's server isn't subject to them. The rules this project had before let any signed-in user make themselves an admin and read everything. The dashboard warns if the data can be read without signing in.
 
-- **Vercel Pro:** change the schedule in `vercel.json` to `*/10 * * * *`.
-- **Hobby, or any other host without cron:** use `.github/workflows/scheduled-jobs.yml`. Set the `APP_URL` repository variable and the `CRON_SECRET` secret.
+**How the data is stored:**
 
-Long-running servers also run the jobs every minute by themselves. Set `SCHEDULED_JOBS=off` to stop that.
+- The site's data is one JSON document set in the `adt10_store` collection, split into chunks of about 900 KB.
+- Every write is one atomic commit that only succeeds if nothing changed since the server read the data. Several Vercel instances can write at once without overwriting each other; `npm run test:storage` proves this with two servers racing.
+- Firestore's free tier allows 20,000 writes a day. A fan action costs one write per chunk (usually one or two). For bigger match days, switch the Firebase project to the Blaze plan; Firestore costs cents at this scale.
 
-Set `CRON_SECRET` in production. Without it, only signed-in super admins can run the jobs.
+**Other storage options:**
 
-### Other settings
+- `STORE_BUCKET`: use a Cloud Storage bucket instead of Firestore.
+- `DATA_DIR`: a folder, for a single server with its own disk.
+- With neither, and no service account, Vercel keeps data in `/tmp` and loses it; the dashboard warns about this.
 
-All environment variables are explained in `.env.example`. Main ones:
+### Scheduled jobs
 
-| Variable | Needed for |
-|---|---|
-| `ADMIN_EMAILS`, `APP_URL` | Always |
-| `STORE_BUCKET` + service account, or `DATA_DIR` | Keeping data |
-| `CRON_SECRET` | Scheduled jobs |
-| `SMTP_*` | Email sign-in codes in production (Google sign-in works without it) |
-| `CRICKET_API_KEY` | Automatic live scores, results, scorecards, Dream XI scoring |
-| `FCM_VAPID_KEY` + `FIREBASE_SERVICE_ACCOUNT` | Push notifications (without them, notifications are in-app only) |
-| `CURATOR_FEED_ID` | A Curator.io wall for Instagram/TikTok/Facebook posts |
-| `GEMINI_API_KEY` | AI copy helper in the admin console (optional) |
+These are Dream XI lock reminders, live scores and feed pulls. They **run by themselves**: after a visit, if four minutes have passed since the last run, the server runs them once. On Vercel it keeps the function alive for this. A lease in the store makes sure only one instance runs them at a time. No cron or secret is needed.
 
-For Google sign-in, add the production domain to Firebase Auth → Authorized domains.
+Optional extras:
+
+- `vercel.json` also calls `/api/cron/run` once a day, for days without visitors.
+- `.github/workflows/scheduled-jobs.yml` can call it every 10 minutes. Set the `APP_URL` repository variable.
+
+Without a key, that endpoint only runs jobs that are due. A `CRON_SECRET`, saved in Admin → Environment, or a super admin session can force a run. `SCHEDULED_JOBS=off` turns automatic jobs off.
+
+### Running on your own server
+
+Same as Vercel. Long-running servers also check every minute. Optional settings are listed in `.env.example`. Any setting in Admin → Environment can also be given as an environment variable; a value saved in the console wins.
 
 Stores written by older versions are upgraded when they load:
 
@@ -136,7 +146,7 @@ Stores written by older versions are upgraded when they load:
 ```bash
 npm run lint          # TypeScript: client and server
 npm test              # API journeys (260+ checks), translation coverage, legacy-store upgrade
-npm run test:storage  # two servers sharing one Cloud Storage object (local fake GCS), concurrent writes
+npm run test:storage  # two servers sharing one store (fake Cloud Storage, then fake Firestore), concurrent writes
 npm run test:prod     # production build smoke test
 npm run test:browser  # Playwright at 390px and 360px: every page, embeds, sign-in, Dream XI, games,
                       # forum, Fan Space pass, admin console sections, Arabic/Urdu right-to-left

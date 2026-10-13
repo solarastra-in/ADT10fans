@@ -47,11 +47,11 @@ run_api() {
   start legacy "$ROOT/data-legacy" npx tsx server.ts
   BASE="http://localhost:$PORT_legacy" node tests/migration.e2e.mjs
 }
-run_storage() { node tests/storage.e2e.mjs "$ROOT"; }
+run_storage() { node tests/storage.e2e.mjs "$ROOT" gcs; node tests/storage.e2e.mjs "$ROOT" firestore; }
 build() { [ -f dist/_template.html ] && [ -f dist-server/server.mjs ] && [ "${REBUILD:-1}" = 0 ] || npm run build >"$ROOT/build.log" 2>&1 || { echo "build failed"; tail -40 "$ROOT/build.log"; exit 1; }; }
 run_prod() {
   build
-  start prod "$ROOT/data-prod" env NODE_ENV=production node dist-server/server.mjs
+  start prod "$ROOT/data-prod" env NODE_ENV=production SCHEDULED_JOBS=traffic node dist-server/server.mjs
   BASE="http://localhost:$PORT_prod" node tests/prod.e2e.mjs
 }
 run_browser() {

@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { Router } from 'express';
 import { db } from '../db';
 import {
-  FIREBASE_PROJECT_ID, getAuthUser, requireUser, upsertUser, createSession, revokeSession, verifyFirebaseIdToken, rateLimit,
+  firebaseProjectId, getAuthUser, requireUser, upsertUser, createSession, revokeSession, verifyFirebaseIdToken, rateLimit,
   emailOtpAvailable, sendOtpEmail, hashOtp, timingSafeEqualHex, selfUser, isSuperAdmin,
 } from '../auth';
 import { bad, newId, optionalUrl, str, userOf, wrap } from '../http';
@@ -18,7 +18,7 @@ export const coreRouter = Router();
 const brand = () => db.get().settings.brandName || 'ADT10 Fans';
 const drawOpen = (d: { status: string; closesAt: string }) => d.status !== 'drawn' && d.status !== 'closed' && +new Date(d.closesAt) > Date.now();
 
-coreRouter.get('/health', (_req, res) => res.json({ ok: true, storage: db.backend.kind }));
+coreRouter.get('/health', (_req, res) => res.json({ ok: true, storage: db.backend.kind, jobsLastRun: db.get().jobLog['jobs:last-run'] || null }));
 
 coreRouter.get('/config', (req, res) => {
   const viewer = getAuthUser(req);
@@ -38,7 +38,7 @@ coreRouter.get('/config', (req, res) => {
       maxSocialPerPlatform: st.maxSocialPerPlatform || 6,
       referralRewardPoints: st.referralRewardPoints || 0,
       features: {
-        googleSignIn: Boolean(FIREBASE_PROJECT_ID),
+        googleSignIn: Boolean(firebaseProjectId()),
         emailOtp: emailOtpAvailable(),
         gemini: geminiConfigured(),
         pushNotifications: Boolean(process.env.FCM_VAPID_KEY),

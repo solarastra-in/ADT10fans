@@ -66,7 +66,7 @@ interface ProviderTeam {
   players: ProviderPlayer[];
 }
 
-const DEFAULT_SERIES = process.env.CRICBUZZ_SERIES_ID || '13307';
+const defaultSeries = () => process.env.CRICBUZZ_SERIES_ID || '13307';
 const CRICBUZZ_SLUG = process.env.CRICBUZZ_SERIES_SLUG || 'abu-dhabi-t10-league-2026';
 
 export function normalizeRole(raw?: string): Player['role'] {
@@ -141,7 +141,7 @@ function matchTeam(teams: Team[], providerName: string): Team | undefined {
 
 async function loadProvider(opts: CricketSyncOptions, teamNames: string[]): Promise<{ teams: ProviderTeam[]; label: string }> {
   const provider = opts.provider || 'cricbuzz';
-  const seriesId = (opts.seriesId || DEFAULT_SERIES).replace(/\D/g, '') || DEFAULT_SERIES;
+  const seriesId = (opts.seriesId || defaultSeries()).replace(/\D/g, '') || defaultSeries();
   if (provider === 'cricbuzz') {
     const url = `https://www.cricbuzz.com/cricket-series/${seriesId}/${CRICBUZZ_SLUG}/squads`;
     const html = await fetchText(url, 12000);
@@ -185,7 +185,7 @@ export async function fetchAndPersistOfficialSquads(options: CricketSyncOptions 
   const logs: CricketSyncLogEntry[] = [];
   const log = (level: CricketSyncLogEntry['level'], message: string) => logs.push({ timestamp: new Date().toISOString(), level, message });
   const provider = options.provider || 'cricbuzz';
-  const seriesId = options.seriesId || DEFAULT_SERIES;
+  const seriesId = options.seriesId || defaultSeries();
   const result: CricketSyncResult = {
     success: false, provider, seriesId, teamsCount: 0, playersCount: 0, teamsUpdated: [], added: [], removed: [], linked: 0,
     executionTimeMs: 0, timestamp: new Date().toISOString(), logs, dryRun: Boolean(options.dryRun),
