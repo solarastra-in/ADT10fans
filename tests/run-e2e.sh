@@ -14,7 +14,7 @@ trap cleanup EXIT
 
 export FEED_FIXTURES_DIR="$ROOT/fixtures" CRON_SECRET=test-cron-secret CRICKET_API_KEY=test-cricket-key \
   GAME_SECRET=test-game-secret SCHEDULED_JOBS=off ADMIN_EMAILS=admin@test.dev GEMINI_API_KEY= FCM_VAPID_KEY=
-npx tsx tests/make-fixtures.ts "$FEED_FIXTURES_DIR" >/dev/null
+npx tsx tests/make-fixtures.ts "$FEED_FIXTURES_DIR" >/dev/null || { echo "fixtures failed"; exit 1; }
 
 # start <name> <data dir> <command...>  -> sets PORT_<name>
 start() {
@@ -37,7 +37,7 @@ run_api() {
   BASE="http://localhost:$PORT_legacy" node tests/migration.e2e.mjs
 }
 run_storage() { node tests/storage.e2e.mjs "$ROOT"; }
-build() { [ -f dist/_template.html ] && [ -f dist-server/server.mjs ] && [ "${REBUILD:-1}" = 0 ] || npm run build >/dev/null; }
+build() { [ -f dist/_template.html ] && [ -f dist-server/server.mjs ] && [ "${REBUILD:-1}" = 0 ] || npm run build >"$ROOT/build.log" 2>&1 || { echo "build failed"; tail -40 "$ROOT/build.log"; exit 1; }; }
 run_prod() {
   build
   start prod "$ROOT/data-prod" env NODE_ENV=production node dist-server/server.mjs

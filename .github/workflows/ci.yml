@@ -28,5 +28,4 @@ jobs:
         if: failure()
         run: |
           grep -nE "✗|Error|failed|did not start|Timeout" e2e.log | head -8 | while IFS= read -r l; do echo "::error::${l:0:900}"; done
-          grep -B2 -A12 "✗" e2e.log | head -40 > fail.txt || true
-          echo "::error::context: $(tr '\n' ' ' < fail.txt | cut -c1-3000)"
+          echo "::error::tail: $(tail -40 e2e.log | tr '\n' '|' | cut -c1-4000)"
