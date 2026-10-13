@@ -22,4 +22,11 @@ jobs:
       - name: End-to-end tests
         run: |
           export CHROMIUM_PATH=$(ls -d ~/.cache/ms-playwright/chromium-*/chrome-linux/chrome | head -1)
-          npm run test:all
+          npm run test:all 2>&1 | tee e2e.log
+          exit ${PIPESTATUS[0]}
+      - name: Report failures
+        if: failure()
+        run: |
+          grep -nE "✗|Error|failed|did not start|Timeout" e2e.log | head -8 | while IFS= read -r l; do echo "::error::${l:0:900}"; done
+          grep -B2 -A12 "✗" e2e.log | head -40 > fail.txt || true
+          echo "::error::context: $(tr '\n' ' ' < fail.txt | cut -c1-3000)"
