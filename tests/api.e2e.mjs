@@ -512,6 +512,9 @@ ok('unknown team is a 404', (await html('/teams/nope')).status === 404);
 ok('admin pages are noindex', /noindex/.test((await html('/admin')).text));
 const sm = await html('/sitemap.xml');
 ok('sitemap lists teams, players, matches and threads', sm.text.includes('/teams/bulls') && sm.text.includes(`/players/${maxB}`) && sm.text.includes(`/matches/${m1.id}`) && sm.text.includes(`/forum/${T}`));
+const evil = (await post('/api/forum/threads', { title: '<script>alert(1)</script> title', content: 'Body </script><img src=x onerror=alert(2)> here' }, F1)).json.thread;
+const evilPage = (await html(`/forum/${evil.id}`)).text;
+ok('user text is escaped in server-rendered pages and JSON-LD', !evilPage.includes('<script>alert(1)') && !evilPage.includes('<img src=x') && !/<\/script><img/.test(evilPage));
 ok('robots.txt blocks admin and API', /Disallow: \/admin/.test((await html('/robots.txt')).text) && /Disallow: \/api\//.test((await html('/robots.txt')).text));
 
 // ============ 15. Account deletion ============
