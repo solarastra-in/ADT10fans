@@ -911,12 +911,17 @@ export const TeamsView: React.FC<TeamsViewProps> = ({
                 {/* Handles preview */}
                 <div className="flex items-center gap-1.5 flex-wrap mb-3">
                   {teamHandles.map((h) => (
-                    <span
+                    <a
                       key={h.id}
-                      className="px-2 py-0.5 rounded-md bg-slate-800 text-[10px] font-bold text-slate-300"
+                      href={h.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 hover:text-white text-[10px] font-bold text-slate-300 transition-colors inline-flex items-center gap-1 group/pill"
+                      title={`${h.platform}: ${h.handle}`}
                     >
-                      {h.platform}
-                    </span>
+                      <span>{h.platform}</span>
+                      <ExternalLink className="w-2.5 h-2.5 opacity-60 group-hover/pill:opacity-100" />
+                    </a>
                   ))}
                 </div>
 

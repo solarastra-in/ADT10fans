@@ -498,54 +498,19 @@ app.delete('/api/handles/:id', requireAdmin, (req, res) => {
 
 // ---------- feeds ----------
 const FEED_PLATFORMS = ['YouTube', 'X', 'Instagram', 'Threads', 'TikTok', 'Facebook', 'LinkedIn', 'Web'] as const;
-app.get('/api/feeds', wrap(async (req, res) => {
-  const viewer = getAuthUser(req);
-  const store = db.get();
-
-  // If cold-start, empty or low count, ensure feeds are populated first
-  if (!store.feedItems || store.feedItems.length < 50) {
-    try {
-      await ensureFeedsPopulated();
-    } catch {
-      // ignore
-    }
-  }
-
-  const limit = Math.max(1, Math.min(100, Number(req.query.limit) || store.settings.maxSocialPerPlatform || 10));
-  const { teamId, platform, category, status } = req.query;
-  let items = [...store.feedItems];
-  if (teamId) items = items.filter(f => f.teamId === teamId);
-  if (category) items = items.filter(f => f.category === category);
-  if (status && viewer?.role === 'admin') items = items.filter(f => f.status === status);
-  else items = items.filter(f => f.status !== 'hidden');
-
-  const order = (a: FeedItem, b: FeedItem) =>
-    (a.status === 'pinned' ? -1 : 0) - (b.status === 'pinned' ? -1 : 0) || +new Date(b.publishedAt) - +new Date(a.publishedAt);
-  items.sort(order);
-
-  if (platform) {
-    const filtered = items.filter(f => f.platform.toLowerCase() === String(platform).toLowerCase());
-    return res.json({ items: filtered, total: filtered.length, limitPerPlatform: limit });
-  }
-
-  const countsByPlatform: Record<string, number> = {};
-  for (const p of FEED_PLATFORMS) {
-    countsByPlatform[p] = items.filter(f => f.platform === p).length;
-  }
-
+app.get('/api/feeds', wrap(async (_req, res) => {
   res.json({
-    items,
-    allItemsRaw: items,
-    countsByPlatform,
-    limitPerPlatform: limit,
-    totalCurated: items.length,
-    totalAvailable: store.feedItems.length,
+    items: [],
+    allItemsRaw: [],
+    countsByPlatform: {},
+    limitPerPlatform: 0,
+    totalCurated: 0,
+    totalAvailable: 0,
   });
 }));
 
 const syncFeeds = wrap(async (_req, res) => {
-  const r = await syncAllFeeds();
-  res.json({ success: true, ...r, feedItems: db.get().feedItems });
+  res.json({ success: true, createdCount: 0, updatedCount: 0, syncedCount: 0, summary: 'Feeds disabled per user request', feedItems: [] });
 });
 app.post('/api/admin/feeds/sync', requireAdmin, syncFeeds);
 app.post('/api/social/sync-real', syncFeeds);
@@ -1931,12 +1896,11 @@ export function ensureAppInitialized() {
   const currentStore = db.get();
   const needsSquadUpgrade = !currentStore.teams || currentStore.teams.length === 0 ||
     currentStore.teams.some(t => !t.squad || t.squad.length < 18 || t.squad.some(p => p.credits !== undefined)) ||
-    !currentStore.handles || currentStore.handles.length < 30 ||
-    !currentStore.feedItems || currentStore.feedItems.length < 50;
+    !currentStore.handles || currentStore.handles.length < 30;
 
   if (needsSquadUpgrade) {
     console.log('[SETUP] Seeding/upgrading official 2026 Cricbuzz franchises & confirmed squads and all team handles...');
-    seedOfficialTeams(false);
+    seedOfficialTeams(true);
   }
 }
 
@@ -1979,17 +1943,7 @@ async function startServer() {
     }
   });
 
-  // Background agent: refresh official YouTube + news feeds periodically.
-  const minutes = Math.max(0, num(process.env.FEED_SYNC_MINUTES, 30));
-  if (minutes > 0) {
-    const tick = () => {
-      const s = db.get();
-      if (!s.teams.length && !s.handles.length) return;
-      syncAllFeeds().then(r => console.log(`[FEEDS] ${r.summary}`)).catch(e => console.warn('[FEEDS] sync failed:', e?.message));
-    };
-    setTimeout(tick, 20_000).unref();
-    setInterval(tick, minutes * 60_000).unref();
-  }
+  // Background feed auto-crawler disabled per user directive.
 }
 
 export default app;

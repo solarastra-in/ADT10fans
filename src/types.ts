@@ -140,7 +140,7 @@ export interface Team {
 export interface SocialHandle {
   id: string;
   teamId: string | null;
-  platform: 'X' | 'Instagram' | 'Threads' | 'Facebook' | 'TikTok' | 'LinkedIn' | 'YouTube' | 'RSS';
+  platform: 'X' | 'Instagram' | 'Threads' | 'Facebook' | 'TikTok' | 'LinkedIn' | 'YouTube' | 'RSS' | 'Website';
   handle: string;
   url: string;
   status: 'verified' | 'pending';

@@ -16,7 +16,8 @@ import {
   Shield,
   Palette,
   RotateCcw,
-  RefreshCw
+  RefreshCw,
+  Globe
 } from 'lucide-react';
 
 export interface TeamTheme {
@@ -181,6 +182,34 @@ interface SocialCuratorWallProps {
   onRefreshFeeds?: () => Promise<void>;
 }
 
+export function getValidPostUrl(item: FeedItem, handles: SocialHandle[]): string {
+  const url = item.url || '';
+  const isDummy = !url || url === '#' || 
+    url.includes('/status/188') || 
+    url.includes('/status/190') || 
+    url.includes('/p/DB') || 
+    url.includes('/p/C8_') || 
+    url.includes('dQw4w9WgXcQ') ||
+    url.includes('fb-aces') ||
+    url.includes('li-aces') ||
+    url.includes('Th1001') ||
+    url.includes('739100');
+
+  if (isDummy) {
+    const handleMatch = handles.find(h => 
+      (h.teamId === item.teamId || (!h.teamId && !item.teamId)) && 
+      h.platform.toLowerCase() === item.platform.toLowerCase()
+    );
+    if (handleMatch?.url) return handleMatch.url;
+    if (item.teamId === 'aces') return 'https://arabianaces.ae';
+    if (item.teamId === 'bulls') return 'https://www.instagram.com/delhibullst10/';
+    if (item.teamId === 'lions') return 'https://yaslionst10.com';
+    return 'https://ttensports.com';
+  }
+
+  return url;
+}
+
 export const SocialCuratorWall: React.FC<SocialCuratorWallProps> = ({
   feedItems,
   teams,
@@ -316,7 +345,7 @@ export const SocialCuratorWall: React.FC<SocialCuratorWallProps> = ({
                 color: theme.textAccentColor,
               }}
             >
-              <Sparkles className="w-3 h-3" /> Curator.io Social Wall
+              <Sparkles className="w-3 h-3" /> Official Franchise Channels
             </span>
 
             {/* Dynamic Theme Indicator */}
@@ -337,9 +366,11 @@ export const SocialCuratorWall: React.FC<SocialCuratorWallProps> = ({
               </span>
             </div>
 
-            <span className="text-xs text-slate-400">
-              Limited to Top {limitPerPlatform} per Platform
-            </span>
+            {filtered.length > 0 && (
+              <span className="text-xs text-slate-400">
+                Limited to Top {limitPerPlatform} per Platform
+              </span>
+            )}
           </div>
 
           <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
@@ -394,21 +425,6 @@ export const SocialCuratorWall: React.FC<SocialCuratorWallProps> = ({
               <RotateCcw className="w-3.5 h-3.5" />
             </button>
           )}
-
-          {/* Sync Real Feeds Button */}
-          <button
-            onClick={handleSyncRealFeeds}
-            disabled={syncingFeeds}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border ${
-              syncingFeeds 
-                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 cursor-wait' 
-                : 'bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white border-slate-700 hover:border-amber-400/50'
-            }`}
-            title="Poll and fetch live real posts from team social handles, YouTube highlights, and accredited news"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${syncingFeeds ? 'animate-spin text-amber-400' : 'text-slate-400'}`} />
-            <span>{syncingFeeds ? 'Syncing...' : 'Sync Real Feeds'}</span>
-          </button>
         </div>
       </div>
 
@@ -529,49 +545,237 @@ export const SocialCuratorWall: React.FC<SocialCuratorWallProps> = ({
         </div>
       </div>
 
-      {/* Platform Filter Tabs - Themed */}
-      <div className="relative z-10 flex items-center gap-1.5 overflow-x-auto pb-2 no-scrollbar text-xs font-bold">
-        {platforms.map(p => {
-          const active = platformFilter === p.id;
-          const count = platformCounts[p.id] ?? 0;
-          return (
-            <button
-              key={p.id}
-              onClick={() => setPlatformFilter(p.id)}
-              className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition-all inline-flex items-center gap-1.5 ${
-                active ? 'font-black' : 'bg-slate-900/80 text-slate-300 hover:text-white hover:bg-slate-800 border'
-              }`}
-              style={
-                active
-                  ? {
-                      background: theme.tabActiveBg,
-                      color: theme.tabActiveText,
-                      boxShadow: theme.tabActiveShadow,
-                    }
-                  : {
-                      borderColor: theme.tabInactiveBorder,
-                    }
-              }
-            >
-              <span>{p.label}</span>
-              <span
-                className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono transition-opacity ${
-                  active ? 'bg-black/25 text-inherit' : 'bg-slate-800 text-slate-400'
+      {/* Platform Filter Tabs - Themed (only if live feed items exist) */}
+      {filtered.length > 0 && (
+        <div className="relative z-10 flex items-center gap-1.5 overflow-x-auto pb-2 no-scrollbar text-xs font-bold">
+          {platforms.map(p => {
+            const active = platformFilter === p.id;
+            const count = platformCounts[p.id] ?? 0;
+            return (
+              <button
+                key={p.id}
+                onClick={() => setPlatformFilter(p.id)}
+                className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition-all inline-flex items-center gap-1.5 ${
+                  active ? 'font-black' : 'bg-slate-900/80 text-slate-300 hover:text-white hover:bg-slate-800 border'
                 }`}
+                style={
+                  active
+                    ? {
+                        background: theme.tabActiveBg,
+                        color: theme.tabActiveText,
+                        boxShadow: theme.tabActiveShadow,
+                      }
+                    : {
+                        borderColor: theme.tabInactiveBorder,
+                      }
+                }
               >
-                {count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+                <span>{p.label}</span>
+                <span
+                  className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono transition-opacity ${
+                    active ? 'bg-black/25 text-inherit' : 'bg-slate-800 text-slate-400'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
-      {/* Curated Grid with Dynamic Themed Cards */}
+      {/* Curated Grid or Official Franchise Channels Hub */}
       {filtered.length === 0 ? (
-        <div className="relative z-10 p-12 text-center rounded-2xl bg-slate-900/50 border border-slate-800">
-          <Share2 className="w-10 h-10 text-slate-400 mx-auto mb-2" />
-          <p className="text-sm font-bold text-slate-300">No curated items found for this selection.</p>
-          <p className="text-xs text-slate-400 mt-1">Select another platform filter or franchise above.</p>
+        <div className="relative z-10 space-y-6">
+          <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/80 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div 
+                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-md"
+                style={{ background: theme.tabActiveBg, color: theme.tabActiveText }}
+              >
+                <Shield className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-sm sm:text-base text-white">
+                  Verified Official Channels Directory
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Direct official accounts for all franchises and the league. Zero synthetic posts.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <CheckCircle className="w-3.5 h-3.5" /> 100% Authentic Channels
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {/* Show League Central when no specific franchise is filtered */}
+            {!activeTeamId && (
+              <div 
+                className="rounded-2xl p-5 border flex flex-col justify-between transition-all hover:scale-[1.01]"
+                style={{
+                  background: 'linear-gradient(180deg, rgba(232, 176, 74, 0.08) 0%, rgba(15, 23, 42, 0.95) 120px)',
+                  borderColor: 'rgba(232, 176, 74, 0.3)',
+                  boxShadow: '0 8px 30px -10px rgba(232, 176, 74, 0.15)',
+                }}
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-400/20 text-amber-300 border border-amber-400/30">
+                      League Headquarters
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-400">Abu Dhabi</span>
+                  </div>
+                  <h4 className="text-lg font-black text-white">Abu Dhabi T10 Central</h4>
+                  <p className="text-xs text-slate-400 mt-1 mb-4">
+                    The official organizing body of the fastest 90-minute cricket tournament on Earth.
+                  </p>
+
+                  <div className="space-y-2">
+                    {handles.filter(h => !h.teamId).map(h => (
+                      <a
+                        key={h.id}
+                        href={h.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 hover:border-amber-400/60 hover:bg-slate-800/80 text-xs font-semibold text-slate-200 transition-all group"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-amber-400">{h.platform}:</span>
+                          <span className="text-slate-300 group-hover:text-white">{h.handle}</span>
+                        </div>
+                        <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-amber-400 transition-colors" />
+                      </a>
+                    ))}
+                    <a
+                      href="https://www.cricbuzz.com/cricket-series/13307/abu-dhabi-t10-league-2026"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 hover:border-cyan-400/60 hover:bg-slate-800/80 text-xs font-semibold text-slate-200 transition-all group"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Globe className="w-3.5 h-3.5 text-cyan-400" />
+                        <span className="font-black text-cyan-400">Cricbuzz Hub:</span>
+                        <span className="text-slate-300 group-hover:text-white">Series 13307 Squads</span>
+                      </div>
+                      <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-cyan-400 transition-colors" />
+                    </a>
+                  </div>
+                </div>
+
+                <div className="mt-5 pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+                  <span>Zayed Cricket Stadium</span>
+                  <a
+                    href="https://www.youtube.com/@T10LeagueOfficial/videos"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-bold text-amber-400 hover:underline flex items-center gap-1"
+                  >
+                    <span>Watch Highlights</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              </div>
+            )}
+
+            {/* Franchise Cards */}
+            {(activeTeamId ? teams.filter(t => t.id === activeTeamId) : teams).map(t => {
+              const teamHandles = handles.filter(h => h.teamId === t.id);
+              const isAces = t.id === 'aces';
+              const isBulls = t.id === 'bulls';
+              const officialWebsite = isAces ? 'https://www.arabianaces.ae' : (isBulls ? 'https://delhibulls.com/' : 'https://ttensports.com/');
+
+              return (
+                <div
+                  key={t.id}
+                  className="rounded-2xl p-5 border flex flex-col justify-between transition-all hover:scale-[1.01]"
+                  style={{
+                    background: `linear-gradient(180deg, ${t.color}15 0%, rgba(15, 23, 42, 0.95) 120px)`,
+                    borderColor: `${t.color}40`,
+                    boxShadow: `0 8px 30px -10px ${t.color}20`,
+                  }}
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: t.color }} />
+                        <span 
+                          className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider"
+                          style={{
+                            backgroundColor: `${t.color}25`,
+                            color: t.color,
+                            border: `1px solid ${t.color}40`,
+                          }}
+                        >
+                          {t.short} Official
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-mono text-slate-400">2026 Franchise</span>
+                    </div>
+
+                    <h4 className="text-lg font-black text-white">{t.name}</h4>
+                    <p className="text-xs text-slate-400 mt-1 mb-4">
+                      Icon Star: <strong className="text-slate-200">{t.iconPlayer}</strong> · {t.squad?.length || 18} Squad Members
+                    </p>
+
+                    <div className="space-y-2">
+                      {officialWebsite && !teamHandles.some(h => h.platform === 'Website') && (
+                        <a
+                          href={officialWebsite}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 hover:border-amber-400/60 hover:bg-slate-800/80 text-xs font-semibold text-slate-200 transition-all group"
+                          style={{ borderColor: `${t.color}35` }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Globe className="w-3.5 h-3.5" style={{ color: t.color }} />
+                            <span className="font-black" style={{ color: t.color }}>Website:</span>
+                            <span className="text-slate-300 group-hover:text-white truncate">
+                              {officialWebsite.replace(/^https?:\/\//, '')}
+                            </span>
+                          </div>
+                          <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-white transition-colors" />
+                        </a>
+                      )}
+
+                      {teamHandles.map(h => (
+                        <a
+                          key={h.id}
+                          href={h.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 hover:border-amber-400/60 hover:bg-slate-800/80 text-xs font-semibold text-slate-200 transition-all group"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="font-black" style={{ color: t.color }}>{h.platform}:</span>
+                            <span className="text-slate-300 group-hover:text-white truncate">{h.handle}</span>
+                          </div>
+                          <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-white transition-colors" />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-5 pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+                    <span>18 Confirmed Players</span>
+                    <a
+                      href={teamHandles[0]?.url || (officialWebsite || '#')}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-bold hover:underline flex items-center gap-1"
+                      style={{ color: t.color }}
+                    >
+                      <span>Visit Channel</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       ) : (
         <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -579,6 +783,7 @@ export const SocialCuratorWall: React.FC<SocialCuratorWallProps> = ({
             const team = getTeam(item.teamId);
             const isVideo = item.kind === 'video' || item.kind === 'live';
             const isLive = item.kind === 'live';
+            const postUrl = getValidPostUrl(item, handles);
 
             return (
               <div
@@ -601,15 +806,24 @@ export const SocialCuratorWall: React.FC<SocialCuratorWallProps> = ({
                   {/* Media Thumbnail with Video Overlay if applicable */}
                   {item.image && (
                     <div className="relative aspect-video w-full overflow-hidden bg-slate-950">
-                      <img
-                        src={item.image}
-                        alt={item.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      />
+                      <a
+                        href={postUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block w-full h-full cursor-pointer"
+                        title={`Open official ${item.platform} content from ${item.source}`}
+                      >
+                        <img
+                          src={item.image}
+                          alt={item.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                      </a>
                       {isVideo && (
                         <div 
                           onClick={() => setActiveVideoModal(item)}
                           className="absolute inset-0 bg-slate-950/40 flex items-center justify-center cursor-pointer hover:bg-slate-950/20 transition-colors"
+                          title="Play preview or open video broadcast"
                         >
                           <div 
                             className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform"
@@ -625,7 +839,7 @@ export const SocialCuratorWall: React.FC<SocialCuratorWallProps> = ({
 
                       {/* Live Indicator */}
                       {isLive && (
-                        <div className="absolute top-3 left-3 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-black uppercase tracking-wider animate-pulse">
+                        <div className="absolute top-3 left-3 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-black uppercase tracking-wider animate-pulse pointer-events-none">
                           <Radio className="w-3 h-3" /> LIVE STREAM
                         </div>
                       )}
@@ -633,7 +847,7 @@ export const SocialCuratorWall: React.FC<SocialCuratorWallProps> = ({
                       {/* Pinned Badge */}
                       {item.status === 'pinned' && (
                         <div 
-                          className="absolute top-3 right-3 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase"
+                          className="absolute top-3 right-3 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase pointer-events-none"
                           style={{
                             background: theme.primaryHex,
                             color: theme.contrastText,
@@ -667,7 +881,7 @@ export const SocialCuratorWall: React.FC<SocialCuratorWallProps> = ({
                             title="Verified authentic post from official team handle or accredited sports wire"
                           >
                             <CheckCircle className="w-2.5 h-2.5 text-emerald-400" />
-                            Real Media
+                            Official Media
                           </span>
                         )}
                       </div>
@@ -680,10 +894,15 @@ export const SocialCuratorWall: React.FC<SocialCuratorWallProps> = ({
                       )}
                     </div>
 
-                    {/* Title */}
-                    <h3 className="font-extrabold text-sm sm:text-base text-white group-hover:text-slate-100 transition-colors line-clamp-3 leading-snug">
+                    {/* Title linked */}
+                    <a
+                      href={postUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-extrabold text-sm sm:text-base text-white group-hover:text-amber-300 transition-colors line-clamp-3 leading-snug block"
+                    >
                       {item.title}
-                    </h3>
+                    </a>
 
                     {/* Summary / Text Body */}
                     {item.summary && (
@@ -696,8 +915,13 @@ export const SocialCuratorWall: React.FC<SocialCuratorWallProps> = ({
 
                 {/* Card Footer: Source handle, views/likes & external link */}
                 <div className="px-4 py-3 bg-slate-950/60 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-                  <div className="flex items-center gap-2 truncate">
-                    <span className="font-bold text-slate-300 truncate">{item.source}</span>
+                  <a
+                    href={postUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 truncate hover:text-white transition-colors"
+                  >
+                    <span className="font-bold text-slate-300 truncate hover:underline">{item.source}</span>
                     {item.views && (
                       <span className="flex items-center gap-1 text-[11px] text-slate-400">
                         <Eye className="w-3 h-3" /> {item.views}
@@ -708,17 +932,17 @@ export const SocialCuratorWall: React.FC<SocialCuratorWallProps> = ({
                         <Heart className="w-3 h-3 text-red-400 fill-red-400" /> {item.likes}
                       </span>
                     )}
-                  </div>
+                  </a>
 
                   <a
-                    href={item.url}
+                    href={postUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-1 font-bold transition-colors ml-2 hover:underline"
                     style={{ color: theme.primaryHex }}
                   >
                     <span>View</span>
-                    <ExternalLink className="w-3 h-3" />
+                    <ExternalLink className="w-3.5 h-3.5" />
                   </a>
                 </div>
               </div>
@@ -750,49 +974,52 @@ export const SocialCuratorWall: React.FC<SocialCuratorWallProps> = ({
             </div>
 
             <div className="aspect-video w-full bg-black">
-              {activeVideoModal.url.includes('youtube.com') || activeVideoModal.url.includes('youtu.be') ? (
-                <iframe
-                  className="w-full h-full"
-                  src={`https://www.youtube.com/embed/${
-                    activeVideoModal.url.match(/v=([\w-]{11})/)?.[1] ||
-                    activeVideoModal.url.split('/').pop()?.split('?')[0] ||
-                    'dQw4w9WgXcQ'
-                  }?autoplay=1`}
-                  title={activeVideoModal.title}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                />
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full p-6 text-center text-slate-300">
-                  <Play className="w-12 h-12 mb-3" style={{ color: theme.primaryHex }} />
-                  <p className="text-sm font-bold mb-2">Watch external video post directly on original platform:</p>
-                  <a
-                    href={activeVideoModal.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-4 py-2 font-bold rounded-xl text-xs flex items-center gap-2 transition-all hover:scale-105"
-                    style={{
-                      background: theme.tabActiveBg,
-                      color: theme.tabActiveText,
-                    }}
-                  >
-                    <span>Open on {activeVideoModal.platform}</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                </div>
-              )}
+              {(() => {
+                const vidMatch = activeVideoModal.url.match(/v=([\w-]{11})/) || (activeVideoModal.url.includes('youtu.be/') ? activeVideoModal.url.match(/youtu\.be\/([\w-]{11})/) : null);
+                const ytVideoId = vidMatch ? vidMatch[1] : null;
+                const modalUrl = getValidPostUrl(activeVideoModal, handles);
+
+                if (ytVideoId) {
+                  return (
+                    <iframe
+                      className="w-full h-full"
+                      src={`https://www.youtube.com/embed/${ytVideoId}?autoplay=1`}
+                      title={activeVideoModal.title}
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  );
+                }
+
+                return (
+                  <div className="flex flex-col items-center justify-center h-full p-6 text-center text-slate-300">
+                    <Play className="w-12 h-12 mb-3 text-amber-400" />
+                    <p className="text-base font-extrabold text-white mb-1">Official Video Broadcast Channel</p>
+                    <p className="text-xs text-slate-400 max-w-md mb-4">{activeVideoModal.title}</p>
+                    <a
+                      href={modalUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-5 py-2.5 font-bold rounded-xl text-xs flex items-center gap-2 transition-all hover:scale-105 shadow-lg bg-amber-400 text-slate-950 font-black"
+                    >
+                      <span>Watch on Official {activeVideoModal.platform} Channel</span>
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="p-4 bg-slate-950 flex justify-between items-center text-xs text-slate-400">
               <span>Source: {activeVideoModal.source}</span>
               <a
-                href={activeVideoModal.url}
+                href={getValidPostUrl(activeVideoModal, handles)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hover:underline flex items-center gap-1 font-bold"
-                style={{ color: theme.primaryHex }}
+                className="flex items-center gap-1 font-bold text-amber-400 hover:underline"
               >
-                Open Official Post <ExternalLink className="w-3 h-3" />
+                <span>Open channel link</span>
+                <ExternalLink className="w-3.5 h-3.5" />
               </a>
             </div>
           </div>

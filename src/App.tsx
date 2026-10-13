@@ -95,7 +95,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [teams, setTeams] = useState<Team[]>(OFFICIAL_2026_TEAMS);
   const [handles, setHandles] = useState<SocialHandle[]>(FALLBACK_HANDLES);
-  const [feedItems, setFeedItems] = useState<FeedItem[]>(OFFICIAL_FEED_ITEMS);
+  const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [contests, setContests] = useState<Contest[]>([]);
   const [draws, setDraws] = useState<PrizeDraw[]>([]);
@@ -538,20 +538,24 @@ export default function App() {
         setHandles(FALLBACK_HANDLES);
       }
 
-      let rawFeeds = (feedsRes.allItemsRaw && feedsRes.allItemsRaw.length > 0) ? feedsRes.allItemsRaw : (feedsRes.items && feedsRes.items.length > 0 ? feedsRes.items : null);
-      if (!rawFeeds || rawFeeds.length === 0) {
-        try {
-          const fsFeeds = await fetchFeedItemsFromFirestore();
-          if (fsFeeds && fsFeeds.length > 0) rawFeeds = fsFeeds;
-        } catch {
-          // ignore
-        }
-      }
-      if (rawFeeds && rawFeeds.length > 0) {
-        setFeedItems(rawFeeds);
-      } else {
-        setFeedItems(OFFICIAL_FEED_ITEMS);
-      }
+      // Fake/synthetic feeds removed per user directive. Only real external syndicated items if present.
+      const rawFeeds = (feedsRes.allItemsRaw && feedsRes.allItemsRaw.length > 0) ? feedsRes.allItemsRaw : (feedsRes.items && feedsRes.items.length > 0 ? feedsRes.items : []);
+      const realFeedsOnly = (rawFeeds || []).filter(item => {
+        const u = item.url || '';
+        return !(
+          u.includes('/status/188') ||
+          u.includes('/status/190') ||
+          u.includes('/p/DB') ||
+          u.includes('/p/C8_') ||
+          u.includes('dQw4w9WgXcQ') ||
+          u.includes('fb-aces') ||
+          u.includes('li-aces') ||
+          u.includes('Th1001') ||
+          u.includes('739100') ||
+          item.sourceType === 'social-handle'
+        );
+      });
+      setFeedItems(realFeedsOnly);
       setMatches(matchesRes.matches);
       setContests(contestsRes.contests);
       setDraws(drawsRes.draws);
@@ -786,8 +790,8 @@ export default function App() {
               onOpenTeamPicker={() => setTeamPickerOpen(true)}
               userTeamId={user?.teamId}
               limitPerPlatform={settings.maxSocialPerPlatform}
-              title="Consolidated Team Social Wall"
-              subtitle="Crawling verified public feeds, YouTube live broadcasts, and media across all franchises."
+              title="Official Franchise Social Channels Directory"
+              subtitle="Direct verified channels for all 6 franchises and the Abu Dhabi T10 league. Follow live updates on real platforms."
               onRefreshFeeds={handleRefreshFeeds}
             />
 

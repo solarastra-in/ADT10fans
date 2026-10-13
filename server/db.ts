@@ -124,7 +124,7 @@ export interface Team {
 export interface SocialHandle {
   id: string;
   teamId: string | null;
-  platform: 'X' | 'Instagram' | 'Threads' | 'Facebook' | 'TikTok' | 'LinkedIn' | 'YouTube' | 'RSS';
+  platform: 'X' | 'Instagram' | 'Threads' | 'Facebook' | 'TikTok' | 'LinkedIn' | 'YouTube' | 'RSS' | 'Website';
   handle: string;
   url: string;
   status: 'verified' | 'pending';
@@ -716,10 +716,8 @@ function migrate(raw: any): AppStore {
     if (!Array.isArray(merged.handles) || merged.handles.length === 0) {
       merged.handles = fresh.handles;
     }
-    // Ensure feed items are preserved or restored
-    if (!Array.isArray(merged.feedItems) || merged.feedItems.length === 0) {
-      merged.feedItems = fresh.feedItems;
-    }
+    // Synthetic/fake feeds removed per user directive.
+    merged.feedItems = [];
     return merged as AppStore;
   }
 
@@ -759,8 +757,7 @@ function migrate(raw: any): AppStore {
     c.upvotes = c.upvotedBy.length;
     c.userAvatar = avatarIsStock(c.userAvatar) ? '' : c.userAvatar;
   }
-  out.fcmTokens = (raw?.fcmTokens || []).filter((t: FCMDeviceToken) => !String(t.token).startsWith('fcm_web_'));
-  if (raw?.proposalSettings) out.proposalSettings = raw.proposalSettings;
+  out.feedItems = [];
   return out;
 }
 
