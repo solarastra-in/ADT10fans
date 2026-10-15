@@ -149,7 +149,7 @@ export interface SocialHandle {
   handle: string;
   url: string;
   status: 'verified' | 'pending';
-  source: 'official' | 'discovery' | 'admin' | 'ai-suggestion' | 'legacy';
+  source: 'official' | 'discovery' | 'admin' | 'ai-suggestion' | 'legacy' | 'suggested';
   meta?: Record<string, any>;
   verifiedAt?: string;
   foundAt: string;

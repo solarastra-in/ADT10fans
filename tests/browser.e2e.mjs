@@ -100,9 +100,9 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
 
   // 3. Team social handles: each platform loads its official embed on tap.
   const channels = async () => {
-    await anon.page.locator('button, [role="tab"]', { hasText: 'Social feed' }).first().click();
+    await anon.page.locator('button, [role="tab"]', { hasText: 'Social & Videos' }).first().click();
     // Teams with confirmed accounts have a Posts / Embeds switch; open the embeds.
-    const embeds = anon.page.getByRole('button', { name: 'Embeds', exact: true });
+    const embeds = anon.page.getByRole('button', { name: 'By Channel', exact: true });
     if (await embeds.waitFor({ timeout: 3000 }).then(() => true, () => false)) await embeds.click();
   };
   await go(anon.page, '/teams/bulls');

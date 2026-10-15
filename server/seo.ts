@@ -211,6 +211,10 @@ export function renderPage(rawPath: string, store: AppStore, base: string): Rend
             [t.iconPlayer && `Icon player: ${t.iconPlayer}.`, t.headCoach && `Head coach: ${t.headCoach}.`].filter(Boolean).join(' '),
             `<h2>Players</h2><ul>${t.squad.map(p => `<li><a href="${playerPath(p)}">${esc(p.name)}</a> – ${esc(ROLE[p.role])}${p.category ? ` (${esc(p.category)})` : ''}</li>`).join('')}</ul>` +
               (handles.length ? `<h2>Official channels</h2><ul>${handles.map(h => `<li><a href="${esc(h.url)}" rel="noopener">${esc(h.platform)} ${esc(h.handle)}</a></li>`).join('')}</ul>` : '') +
+              (() => {
+                const teamPosts = visibleFeed.filter(f => f.teamId === t.id && f.category === 'social').slice(0, 5);
+                return teamPosts.length ? `<h2>Latest official social posts</h2><ul>${teamPosts.map(p => `<li><strong>${esc(p.platform)} ${esc(p.source)}:</strong> ${esc(p.title)}</li>`).join('')}</ul>` : '';
+              })() +
               `<h2>Fixtures</h2><ul>${store.matches.filter(m => m.teamA === t.id || m.teamB === t.id).map(m => matchLine(store, m)).join('') || '<li>Fixtures not published yet.</li>'}</ul>`,
           ),
         });

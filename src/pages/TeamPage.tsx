@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ExternalLink, Heart, LayoutGrid, MessageSquarePlus, Radio, RefreshCw } from 'lucide-react';
+import { ExternalLink, Heart, LayoutGrid, MessageSquarePlus, Radio, RefreshCw, Search, Sparkles } from 'lucide-react';
 import { api } from '../api';
 import { useApp, useLoad } from '../state';
 import { useT } from '../i18n';
@@ -25,11 +25,13 @@ export default function TeamPage({ id }: { id: string }) {
   const fans = useLoad(() => api.getLeaderboard(id), [id]);
   const [tab, setTab] = useState<'squad' | 'channels' | 'fixtures' | 'fans'>('channels');
   const [platformFilter, setPlatformFilter] = useState<string>('all');
-  const [socialView, setSocialView] = useState<'posts' | 'embeds'>('posts');
-  // With no stored posts yet, open on the live embeds instead of an empty list.
+  const [selectedHandleId, setSelectedHandleId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [socialView, setSocialView] = useState<'wall' | 'channels'>('wall');
+  // With no stored posts yet, open on the live channel embeds instead of an empty wall.
   const postsCount = (feed.data?.items || []).length;
   useEffect(() => {
-    if (!feed.loading && postsCount === 0) setSocialView('embeds');
+    if (!feed.loading && postsCount === 0) setSocialView('channels');
   }, [feed.loading, postsCount]);
   const [pulling, setPulling] = useState(false);
   const teamMatches = useMemo(() => matches.filter(m => m.teamA === id || m.teamB === id), [matches, id]);
@@ -50,6 +52,41 @@ export default function TeamPage({ id }: { id: string }) {
       setPulling(false);
     }
   };
+
+  const allPosts = feed.data?.items || [];
+  const socialPosts = allPosts.filter(i => i.category === 'social');
+
+  // Filter posts based on selected handle, platform, and search query
+  const filteredPosts = useMemo(() => {
+    return allPosts.filter(item => {
+      // Handle filter
+      if (selectedHandleId) {
+        const targetHandle = verified.find(h => h.id === selectedHandleId);
+        if (targetHandle) {
+          const matchHandle = item.handleId === targetHandle.id ||
+            item.source.toLowerCase() === targetHandle.handle.toLowerCase() ||
+            (item.platform === targetHandle.platform && item.category === 'social');
+          if (!matchHandle) return false;
+        }
+      }
+
+      // Platform filter
+      if (platformFilter !== 'all' && item.platform.toLowerCase() !== platformFilter.toLowerCase()) {
+        return false;
+      }
+
+      // Search query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const inTitle = item.title.toLowerCase().includes(q);
+        const inSummary = (item.summary || '').toLowerCase().includes(q);
+        const inSource = item.source.toLowerCase().includes(q);
+        if (!inTitle && !inSummary && !inSource) return false;
+      }
+
+      return true;
+    });
+  }, [allPosts, selectedHandleId, verified, platformFilter, searchQuery]);
 
   return (
     <div className="space-y-6">
@@ -92,7 +129,7 @@ export default function TeamPage({ id }: { id: string }) {
         onChange={setTab}
         items={[
           { id: 'squad', label: t('Squad'), count: team.squad.length },
-          { id: 'channels', label: t('Social feed'), count: (feed.data?.items || []).length || verified.length },
+          { id: 'channels', label: t('Social & Videos'), count: allPosts.length || verified.length },
           { id: 'fixtures', label: t('Fixtures'), count: teamMatches.length },
           { id: 'fans', label: t('Fans & chat') },
         ]}
@@ -138,74 +175,120 @@ export default function TeamPage({ id }: { id: string }) {
           ) : (
             <>
               {/* Aggregator Header & Controls Bar */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-slate-900/90 border border-slate-800">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900/95 to-slate-950 border border-slate-800 shadow-lg">
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-black text-white">{t('Official Social Stream')}</h2>
-                    <span className="px-2 py-0.5 rounded-full bg-amber-400/15 border border-amber-400/30 text-amber-300 text-[11px] font-black">
-                      {t('{n} posts', { n: (feed.data?.items || []).length })}
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <h2 className="text-lg font-black text-white flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-400" />
+                      {t('{team} Official Social Stream', { team: team.name })}
+                    </h2>
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-400/15 border border-emerald-400/30 text-emerald-400 text-[11px] font-black">
+                      {t('{n} posts pulled', { n: allPosts.length })}
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full bg-amber-400/15 border border-amber-400/30 text-amber-300 text-[11px] font-black">
+                      {t('{n} verified channels', { n: verified.length })}
                     </span>
                   </div>
                   <p className="text-xs text-slate-400 mt-0.5">
                     {t('Pulled every few minutes from {n} official {team} accounts and kept here.', { n: verified.length, team: team.name })}
                   </p>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <Button variant="secondary" size="sm" onClick={handlePullSocial} loading={pulling} title={t('Pull latest posts from handles')}>
-                    <RefreshCw className={cx('w-4 h-4', pulling && 'animate-spin')} /> {t('Pull latest')}
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                  <Button variant="primary" size="sm" onClick={handlePullSocial} loading={pulling} title={t('Pull latest posts from handles')}>
+                    <RefreshCw className={cx('w-4 h-4', pulling && 'animate-spin')} /> {t('Pull latest posts')}
                   </Button>
                   <div className="flex rounded-xl bg-slate-950 p-1 border border-slate-800">
                     <button
                       type="button"
-                      onClick={() => setSocialView('posts')}
-                      className={cx('px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors', socialView === 'posts' ? 'bg-amber-400 text-slate-950' : 'text-slate-400 hover:text-white')}
+                      onClick={() => setSocialView('wall')}
+                      className={cx('px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors', socialView === 'wall' ? 'bg-amber-400 text-slate-950 font-black' : 'text-slate-400 hover:text-white')}
                     >
-                      <LayoutGrid className="w-3.5 h-3.5" /> {t('Posts')}
+                      <LayoutGrid className="w-3.5 h-3.5" /> {t('Social Wall')}
                     </button>
                     <button
                       type="button"
-                      onClick={() => setSocialView('embeds')}
-                      className={cx('px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors', socialView === 'embeds' ? 'bg-amber-400 text-slate-950' : 'text-slate-400 hover:text-white')}
+                      onClick={() => setSocialView('channels')}
+                      className={cx('px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors', socialView === 'channels' ? 'bg-amber-400 text-slate-950 font-black' : 'text-slate-400 hover:text-white')}
                     >
-                      <Radio className="w-3.5 h-3.5" /> {t('Embeds')}
+                      <Radio className="w-3.5 h-3.5" /> {t('By Channel')}
                     </button>
                   </div>
                 </div>
               </div>
 
-              {/* Verified Account Chips */}
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-bold text-slate-400 me-1">{t('Official Channels')}:</span>
-                {verified.map(h => (
-                  <a
-                    key={h.id}
-                    href={h.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 min-h-[34px] px-3 rounded-xl bg-slate-950/80 border border-slate-800 text-xs font-bold text-slate-300 hover:text-white hover:border-slate-600 transition-colors"
-                    data-testid="handle-link"
+              {/* Interactive Handle Filter Chips */}
+              <div className="p-3.5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between text-xs text-slate-400 font-bold">
+                  <span>{t('Filter by official handle')}:</span>
+                  {selectedHandleId && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedHandleId(null)}
+                      className="text-amber-400 hover:underline text-[11px]"
+                    >
+                      {t('Show all handles')}
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedHandleId(null)}
+                    className={cx(
+                      'inline-flex items-center gap-1.5 min-h-[34px] px-3 rounded-xl border text-xs font-bold transition-colors',
+                      !selectedHandleId
+                        ? 'bg-amber-400 text-slate-950 border-amber-400 font-black'
+                        : 'bg-slate-950/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+                    )}
                   >
-                    <PlatformIcon platform={h.platform} className="w-3.5 h-3.5" />
-                    <span>{h.handle}</span>
-                    <ExternalLink className="w-3 h-3 text-slate-500" />
-                  </a>
-                ))}
+                    <span>{t('All handles')}</span>
+                    <span className={cx('text-[10px] px-1.5 py-0.2 rounded-full font-black', !selectedHandleId ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-400')}>
+                      {allPosts.length}
+                    </span>
+                  </button>
+                  {verified.map(h => {
+                    const handlePostCount = allPosts.filter(i =>
+                      i.handleId === h.id ||
+                      i.source.toLowerCase() === h.handle.toLowerCase() ||
+                      (i.platform === h.platform && i.category === 'social')
+                    ).length;
+                    const isSelected = selectedHandleId === h.id;
+                    return (
+                      <button
+                        key={h.id}
+                        type="button"
+                        onClick={() => setSelectedHandleId(isSelected ? null : h.id)}
+                        className={cx(
+                          'inline-flex items-center gap-1.5 min-h-[34px] px-3 rounded-xl border text-xs font-bold transition-all',
+                          isSelected
+                            ? 'bg-amber-400 text-slate-950 border-amber-400 font-black shadow-md'
+                            : 'bg-slate-950/80 border-slate-800 text-slate-300 hover:text-white hover:border-slate-600'
+                        )}
+                        data-testid="handle-link"
+                      >
+                        <PlatformIcon platform={h.platform} className="w-3.5 h-3.5" />
+                        <span>{h.handle}</span>
+                        <span className={cx('text-[10px] px-1.5 py-0.5 rounded-full font-black', isSelected ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-400')}>
+                          {handlePostCount}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
-              {socialView === 'posts' ? (
-                <>
-                  {/* Platform Filter Tabs */}
+              {socialView === 'wall' ? (
+                <div className="space-y-4">
+                  {/* Platform Filters & Search Bar */}
                   {(() => {
-                    const allPosts = feed.data?.items || [];
                     const platformCounts: Record<string, number> = {};
                     for (const item of allPosts) {
                       platformCounts[item.platform] = (platformCounts[item.platform] || 0) + 1;
                     }
                     const availablePlatforms = ['all', ...Object.keys(platformCounts)];
-                    const filteredPosts = allPosts.filter(i => platformFilter === 'all' || i.platform.toLowerCase() === platformFilter.toLowerCase());
 
                     return (
-                      <div className="space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         {availablePlatforms.length > 2 && (
                           <div className="flex flex-wrap gap-1.5">
                             {availablePlatforms.map(p => {
@@ -219,13 +302,13 @@ export default function TeamPage({ id }: { id: string }) {
                                   className={cx(
                                     'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-colors border',
                                     active
-                                      ? 'bg-amber-400 text-slate-950 border-amber-400 shadow-sm'
+                                      ? 'bg-amber-400 text-slate-950 border-amber-400 shadow-sm font-black'
                                       : 'bg-slate-900/90 text-slate-400 border-slate-800 hover:text-white hover:border-slate-700'
                                   )}
                                 >
                                   {p !== 'all' && <PlatformIcon platform={p} className="w-3.5 h-3.5" />}
                                   <span>{p === 'all' ? t('All Posts') : p}</span>
-                                  <span className={cx('text-[10px] px-1.5 py-0.5 rounded-full font-black', active ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-400')}>
+                                  <span className={cx('text-[10px] px-1.5 py-0.2 rounded-full font-black', active ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-400')}>
                                     {count}
                                   </span>
                                 </button>
@@ -233,40 +316,52 @@ export default function TeamPage({ id }: { id: string }) {
                             })}
                           </div>
                         )}
-
-                        {filteredPosts.length > 0 ? (
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {filteredPosts.map(item => (
-                              <FeedCard key={item.id} item={item} team={team} />
-                            ))}
-                          </div>
-                        ) : (
-                          <EmptyState
-                            title={t('No posts found')}
-                            body={t('No social posts matched this filter. Pull fresh posts from {team} handles to update.', { team: team.name })}
-                            action={
-                              <Button onClick={handlePullSocial} loading={pulling}>
-                                <RefreshCw className="w-4 h-4" /> {t('Pull latest posts now')}
-                              </Button>
-                            }
+                        <div className="relative min-w-[200px] sm:max-w-xs w-full">
+                          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                          <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            placeholder={t('Search posts, keywords, tags...')}
+                            className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
                           />
-                        )}
+                        </div>
                       </div>
                     );
                   })()}
-                </>
+
+                  {filteredPosts.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {filteredPosts.map(item => (
+                        <FeedCard key={item.id} item={item} team={team} />
+                      ))}
+                    </div>
+                  ) : (
+                    <EmptyState
+                      title={t('No posts matched your filter')}
+                      body={t('Try selecting another handle or clearing your search term.')}
+                      action={
+                        <Button
+                          variant="secondary"
+                          onClick={() => {
+                            setSelectedHandleId(null);
+                            setPlatformFilter('all');
+                            setSearchQuery('');
+                          }}
+                        >
+                          {t('Reset filters')}
+                        </Button>
+                      }
+                    />
+                  )}
+                </div>
               ) : (
-                /* Raw Live Embeds Fallback */
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                /* Grouped By Official Channel */
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                   {verified
                     .sort((a, b) => (a.platform === 'YouTube' ? -1 : 0) - (b.platform === 'YouTube' ? -1 : 0))
                     .map(h => (
-                      <div key={h.id} className="space-y-2" data-testid="handle-embed" data-platform={h.platform}>
-                        <p className="text-xs font-bold text-slate-400 inline-flex items-center gap-1.5">
-                          <PlatformIcon platform={h.platform} /> {h.platform} · {h.handle}
-                        </p>
-                        <HandleEmbed handle={h} team={team} />
-                      </div>
+                      <HandleEmbed key={h.id} handle={h} team={team} items={allPosts} />
                     ))}
                 </div>
               )}

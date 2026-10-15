@@ -71,6 +71,7 @@ export function initializeStore(store: AppStore): boolean {
     changed = true;
   }
   if (reconcileOfficialHandles(store, now)) changed = true;
+  if (addSuggestedHandles(store, now)) changed = true;
   if (!store.jobLog['game-secret'] && !process.env.GAME_SECRET) {
     store.jobLog['game-secret'] = crypto.randomBytes(24).toString('hex');
     changed = true;
@@ -78,6 +79,59 @@ export function initializeStore(store: AppStore): boolean {
   return changed;
 }
 
+
+/**
+ * Accounts someone proposed for the other teams (October 2026) but that could not be confirmed.
+ * They go to Admin → Approvals as suggestions; an admin approves the real ones (they are then pulled
+ * like any other account) and rejects the rest. Never shown to fans until approved.
+ */
+export const SUGGESTED_HANDLES: { teamId: string; platform: SocialHandle['platform']; handle: string; url: string }[] = [
+  { teamId: 'aces', platform: 'YouTube', handle: '@ArabianAcesT10', url: 'https://www.youtube.com/@ArabianAcesT10' },
+  { teamId: 'tigers', platform: 'X', handle: '@UnitedTigersT10', url: 'https://x.com/UnitedTigersT10' },
+  { teamId: 'tigers', platform: 'Instagram', handle: '@unitedtigerst10', url: 'https://www.instagram.com/unitedtigerst10/' },
+  { teamId: 'tigers', platform: 'Threads', handle: '@unitedtigerst10', url: 'https://www.threads.com/@unitedtigerst10' },
+  { teamId: 'tigers', platform: 'YouTube', handle: '@UnitedTigersT10', url: 'https://www.youtube.com/@UnitedTigersT10' },
+  { teamId: 'tigers', platform: 'Facebook', handle: 'UnitedTigersT10', url: 'https://www.facebook.com/UnitedTigersT10' },
+  { teamId: 'lions', platform: 'X', handle: '@YasLionsT10', url: 'https://x.com/YasLionsT10' },
+  { teamId: 'lions', platform: 'Instagram', handle: '@yaslionst10', url: 'https://www.instagram.com/yaslionst10/' },
+  { teamId: 'lions', platform: 'Threads', handle: '@yaslionst10', url: 'https://www.threads.com/@yaslionst10' },
+  { teamId: 'lions', platform: 'YouTube', handle: '@YasLionsT10', url: 'https://www.youtube.com/@YasLionsT10' },
+  { teamId: 'lions', platform: 'TikTok', handle: '@yaslionst10', url: 'https://www.tiktok.com/@yaslionst10' },
+  { teamId: 'eagles', platform: 'Instagram', handle: '@emirateseaglest10', url: 'https://www.instagram.com/emirateseaglest10/' },
+  { teamId: 'eagles', platform: 'Threads', handle: '@emirateseaglest10', url: 'https://www.threads.com/@emirateseaglest10' },
+  { teamId: 'eagles', platform: 'YouTube', handle: '@EmiratesEaglesT10', url: 'https://www.youtube.com/@EmiratesEaglesT10' },
+  { teamId: 'eagles', platform: 'Facebook', handle: 'EmiratesEaglesT10', url: 'https://www.facebook.com/EmiratesEaglesT10' },
+  { teamId: 'champions', platform: 'Instagram', handle: '@royaldesertchampions', url: 'https://www.instagram.com/royaldesertchampions/' },
+  { teamId: 'champions', platform: 'Threads', handle: '@royaldesertchampions', url: 'https://www.threads.com/@royaldesertchampions' },
+  { teamId: 'champions', platform: 'YouTube', handle: '@RoyalDesertChampionsT10', url: 'https://www.youtube.com/@RoyalDesertChampionsT10' },
+  { teamId: 'champions', platform: 'TikTok', handle: '@royalchampions', url: 'https://www.tiktok.com/@royalchampions' },
+];
+
+/** Puts each suggestion in the approval queue once (a rejected or removed one is not suggested again). */
+export function addSuggestedHandles(store: AppStore, now = new Date().toISOString()): boolean {
+  let changed = false;
+  for (const s of SUGGESTED_HANDLES) {
+    if (!store.teams.some(t => t.id === s.teamId)) continue;
+    const key = handleKey(s.url);
+    if (store.jobLog[`handle-removed:${key}`]) continue;
+    if (store.handles.some(h => handleKey(h.url) === key)) continue;
+    if (store.approvals.some(a => a.kind === 'handle' && handleKey(String(a.payload?.url || '')) === key)) continue;
+    const id = 'h-' + crypto.randomUUID().replace(/-/g, '').slice(0, 10);
+    store.handles.push({ id, teamId: s.teamId, platform: s.platform, handle: s.handle, url: s.url, status: 'pending', source: 'suggested', meta: {}, foundAt: now } as SocialHandle);
+    const team = store.teams.find(t => t.id === s.teamId);
+    store.approvals.unshift({
+      id: 'ap-' + crypto.randomUUID().replace(/-/g, '').slice(0, 10),
+      kind: 'handle',
+      title: `${team?.name || s.teamId} · ${s.platform} ${s.handle}`,
+      detail: `Suggested but not confirmed. Open ${s.url}: approve only if the account exists and is the team's official account.`,
+      payload: { handleId: id, teamId: s.teamId, platform: s.platform, url: s.url },
+      status: 'pending',
+      createdAt: now,
+    });
+    changed = true;
+  }
+  return changed;
+}
 
 /** Adds checked handles that are missing and fills in their metadata. Never re-adds one an admin removed. */
 export function reconcileOfficialHandles(store: AppStore, now = new Date().toISOString()): boolean {
