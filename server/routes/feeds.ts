@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { db, FeedItem } from '../db';
 import { canManageTeam, getAuthUser, hasPermission, requireAdmin, requireSuperAdmin } from '../auth';
 import { bad, isHttpsUrl, isoOrEmpty, newId, optionalUrl, str, userOf, wrap } from '../http';
-import { getCuratorConfig, fetchCurator, lookupOEmbed, merge, platformOfUrl, syncAllFeeds, youtubeIdFromUrl } from '../feeds';
+import { getCuratorConfig, fetchCurator, lookupOEmbed, extractPostMetadata, bulkIngestUrls, merge, platformOfUrl, syncAllFeeds, syncTeamFeeds, youtubeIdFromUrl } from '../feeds';
+import { runSocialHarvesterAgent } from '../agents';
 
 export const feedsRouter = Router();
 
@@ -35,6 +36,20 @@ feedsRouter.get('/feeds', (req, res) => {
   res.json({ items: page, total: items.length, countsByPlatform, hasMore: items.length > page.length });
 });
 
+/**
+ * POST /api/feeds/pull
+ * On-demand pull from official social handles for a team or for all teams (Curator.io replacement engine).
+ */
+feedsRouter.post('/feeds/pull', wrap(async (req, res) => {
+  const teamId = str(req.body?.teamId, 60) || undefined;
+  if (teamId) {
+    const result = await syncTeamFeeds(teamId);
+    return res.json({ success: true, ...result });
+  }
+  const result = await syncAllFeeds();
+  res.json({ success: true, ...result });
+}));
+
 const syncFeeds = wrap(async (_req, res) => {
   const r = await syncAllFeeds();
   res.json({ success: true, ...r });
@@ -59,7 +74,7 @@ feedsRouter.get('/admin/feeds/health', requireAdmin('social'), (req, res) => {
   });
 });
 
-/** Add a post by pasting its link (YouTube, X, TikTok get their title and thumbnail filled in). */
+/** Add a post by pasting its link (Universal extractor for Instagram, TikTok, YouTube, X, Facebook, Web). */
 feedsRouter.post('/admin/feeds/from-link', requireAdmin('social'), wrap(async (req, res) => {
   const url = str(req.body?.url, 1000);
   if (!isHttpsUrl(url)) return bad(res, 'Paste the full https:// link to the post or video');
@@ -67,31 +82,90 @@ feedsRouter.post('/admin/feeds/from-link', requireAdmin('social'), wrap(async (r
   const user = userOf(req);
   if (teamId && !db.get().teams.some(t => t.id === teamId)) return bad(res, 'Unknown team');
   if (!canManageTeam(user, teamId)) return bad(res, 'You can only add posts for your own team', 403);
-  const platform = platformOfUrl(url);
-  const o = await lookupOEmbed(url);
-  const title = str(req.body?.title, 300) || o?.title || '';
+  const meta = await extractPostMetadata(url);
+  const title = str(req.body?.title, 300) || meta.title;
   if (!title) return bad(res, 'We could not read a title for that link. Type one in.');
-  const videoId = platform === 'YouTube' ? youtubeIdFromUrl(url) || undefined : undefined;
   const item: FeedItem = {
     id: newId('feed'),
     teamId,
-    platform,
-    kind: videoId || platform === 'TikTok' ? 'video' : platform === 'Web' ? 'article' : 'post',
+    platform: meta.platform,
+    kind: meta.kind,
     category: req.body?.category === 'news' ? 'news' : 'social',
     title,
     url,
-    videoId,
-    image: o?.image && isHttpsUrl(o.image) ? o.image : null,
-    source: str(req.body?.source, 80) || o?.author || platform,
-    summary: str(req.body?.summary, 1000),
+    videoId: meta.videoId,
+    image: (str(req.body?.image, 1000) || meta.image) && isHttpsUrl(str(req.body?.image, 1000) || meta.image || '') ? (str(req.body?.image, 1000) || meta.image) : null,
+    source: str(req.body?.source, 80) || meta.author || meta.platform,
+    summary: str(req.body?.summary, 1000) || meta.summary,
     status: req.body?.pinned ? 'pinned' : 'live',
-    publishedAt: isoOrEmpty(req.body?.publishedAt) || new Date().toISOString(),
+    publishedAt: isoOrEmpty(req.body?.publishedAt) || meta.publishedAt || new Date().toISOString(),
     createdAt: new Date().toISOString(),
     sourceType: 'admin',
   };
   merge([item]);
   db.save();
   res.json({ success: true, item: db.get().feedItems.find(f => f.url.toLowerCase() === url.toLowerCase()) || item });
+}));
+
+/** Native Social Harvester: Discovers and pulls recent posts for teams across handles without Curator.io */
+feedsRouter.post('/admin/feeds/harvest', requireAdmin('social'), wrap(async (req, res) => {
+  const user = userOf(req);
+  const teamId = str(req.body?.teamId, 60) || undefined;
+  if (teamId && !canManageTeam(user, teamId)) return bad(res, 'You can only harvest for your own team', 403);
+  const result = await runSocialHarvesterAgent(teamId);
+  res.json({ success: result.status !== 'error', ...result });
+}));
+
+/** Bulk Ingest: Paste multiple social URLs at once (Instagram, X, TikTok, YouTube, etc.) */
+feedsRouter.post('/admin/feeds/bulk-ingest', requireAdmin('social'), wrap(async (req, res) => {
+  const user = userOf(req);
+  const teamId = str(req.body?.teamId, 60) || null;
+  if (teamId && !canManageTeam(user, teamId)) return bad(res, 'You can only ingest posts for your own team', 403);
+  const rawUrls: string[] = Array.isArray(req.body?.urls) ? req.body.urls : String(req.body?.urls || '').split(/[\r\n,]+/);
+  if (!rawUrls.length) return bad(res, 'Provide at least one URL');
+  const result = await bulkIngestUrls(rawUrls, teamId, {
+    pinned: Boolean(req.body?.pinned),
+    category: req.body?.category === 'news' ? 'news' : 'social',
+  });
+  res.json({ success: true, ...result });
+}));
+
+/**
+ * Public Webhook Endpoint for Zapier / IFTTT / Make / Custom Bots:
+ * POST /api/feeds/webhook
+ * Accepts: { url, title?, summary?, image?, platform?, teamId?, secret? }
+ */
+feedsRouter.post('/feeds/webhook', wrap(async (req, res) => {
+  const secret = process.env.CRON_SECRET || process.env.GAME_SECRET || '';
+  const provided = req.headers['x-webhook-secret'] || req.query.secret || req.body?.secret;
+  if (secret && provided !== secret) {
+    return bad(res, 'Unauthorized webhook: provide matching secret', 401);
+  }
+  const url = str(req.body?.url, 1000);
+  if (!isHttpsUrl(url)) return bad(res, 'url must be a valid https:// link');
+  const meta = await extractPostMetadata(url);
+  const title = str(req.body?.title, 300) || meta.title;
+  const teamId = str(req.body?.teamId, 60) || null;
+  const item: FeedItem = {
+    id: newId('hook'),
+    teamId,
+    platform: meta.platform,
+    kind: meta.kind,
+    category: req.body?.category === 'news' ? 'news' : 'social',
+    title,
+    url,
+    videoId: meta.videoId,
+    image: (str(req.body?.image, 1000) || meta.image) && isHttpsUrl(str(req.body?.image, 1000) || meta.image || '') ? (str(req.body?.image, 1000) || meta.image) : null,
+    source: str(req.body?.source, 80) || meta.author || meta.platform,
+    summary: str(req.body?.summary, 1000) || meta.summary,
+    status: req.body?.pinned ? 'pinned' : 'live',
+    publishedAt: isoOrEmpty(req.body?.publishedAt) || meta.publishedAt || new Date().toISOString(),
+    createdAt: new Date().toISOString(),
+    sourceType: 'admin',
+  };
+  const added = merge([item]);
+  db.save();
+  res.json({ success: true, added: added > 0, item });
 }));
 
 feedsRouter.post('/feeds', requireAdmin('social'), (req, res) => {

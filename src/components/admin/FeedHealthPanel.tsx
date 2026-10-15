@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, RefreshCw } from 'lucide-react';
+import { Activity, RefreshCw, Sparkles } from 'lucide-react';
 import { api } from '../../api';
 import type { FeedHealthRow } from '../../types';
 import { Button, Card, Chip, Notice, useRunner } from './ui';
@@ -32,11 +32,21 @@ export const FeedHealthPanel: React.FC = () => {
       load();
     }
   };
+  const harvestAll = async () => {
+    const r = await run('harvest', () => api.harvestFeeds());
+    if (r) {
+      setNotice({ kind: r.status === 'warning' ? 'warn' : 'ok', text: r.summary });
+      load();
+    }
+  };
   return (
     <Card>
-      <div className="flex items-center justify-between gap-2 mb-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <h3 className="font-extrabold text-white inline-flex items-center gap-2"><Activity className="w-4 h-4 text-amber-400" /> Feed health</h3>
-        <Button size="sm" onClick={pullAll} loading={busy === 'all'} icon={<RefreshCw className="w-4 h-4" />}>Pull everything now</Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="secondary" onClick={harvestAll} loading={busy === 'harvest'} icon={<Sparkles className="w-4 h-4 text-amber-400" />}>Harvest social posts</Button>
+          <Button size="sm" onClick={pullAll} loading={busy === 'all'} icon={<RefreshCw className="w-4 h-4" />}>Pull RSS & YouTube</Button>
+        </div>
       </div>
       <Notice notice={notice} onClose={() => setNotice(null)} />
       {rows === null ? (

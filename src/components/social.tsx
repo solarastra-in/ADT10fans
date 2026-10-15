@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ExternalLink, Facebook, Globe, Instagram, Linkedin, Music2, Play, Rss, Youtube, AtSign } from 'lucide-react';
+import { ExternalLink, Facebook, Globe, Heart, Instagram, Linkedin, Music2, Play, Rss, Youtube, AtSign } from 'lucide-react';
 import { useT } from '../i18n';
 import { Button, cx, useFormat } from './ui';
 import type { FeedItem, SocialHandle, Team } from '../types';
@@ -377,6 +377,11 @@ export function FeedCard({ item, team, compact }: { item: FeedItem; team?: Team 
             {isNews ? t('Read at {source}', { source: item.source }) : t('Open on {platform}', { platform: PLATFORM_META[item.platform]?.label || item.platform })}
             <ExternalLink className="w-3.5 h-3.5" />
           </a>
+          {typeof item.likes === 'number' && item.likes > 0 && (
+            <span className="text-[11px] font-semibold text-rose-400 inline-flex items-center gap-1 ms-auto">
+              <Heart className="w-3 h-3 fill-rose-400" /> {item.likes.toLocaleString()}
+            </span>
+          )}
           {item.views && <span className="text-[11px] text-slate-500 ms-auto">{item.views}</span>}
         </div>
       </div>

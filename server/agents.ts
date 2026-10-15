@@ -1,7 +1,7 @@
 import crypto from 'crypto';
-import { db, AgentRun, SocialHandle } from './db';
-import { geminiConfigured, suggestOfficialHandles, generateMarketingContent } from './gemini';
-import { syncYouTube, syncNews } from './feeds';
+import { db, AgentRun, FeedItem, SocialHandle } from './db';
+import { geminiConfigured, suggestOfficialHandles, generateMarketingContent, harvestSocialPostsWithSearch } from './gemini';
+import { syncYouTube, syncNews, extractPostMetadata, merge, idFor } from './feeds';
 
 type Result = { items: number; summary: string; status: AgentRun['status'] };
 
@@ -173,3 +173,89 @@ export async function runOpsAgent(): Promise<Result> {
     summary: issues.length ? `To do: ${issues.join('; ')}.` : 'Everything fans see is configured.',
   });
 }
+
+/**
+ * Built-in Social Harvester (Curator alternative):
+ * Discovers and pulls real social posts for teams across Instagram, X, TikTok, Facebook, YouTube, and Web.
+ */
+export async function runSocialHarvesterAgent(targetTeamId?: string): Promise<Result> {
+  const startedAt = new Date().toISOString();
+  const store = db.get();
+  const teams = targetTeamId ? store.teams.filter(t => t.id === targetTeamId) : store.teams;
+  if (!teams.length) {
+    return record('Social Harvester', startedAt, { items: 0, status: 'warning', summary: 'No teams configured to harvest.' });
+  }
+
+  let totalAdded = 0;
+  const notes: string[] = [];
+
+  for (const team of teams) {
+    const handles = store.handles.filter(h => h.teamId === team.id && h.status === 'verified');
+    if (!handles.length) continue;
+
+    try {
+      const posts = await harvestSocialPostsWithSearch(
+        team.name,
+        handles.map(h => ({ platform: h.platform, handle: h.handle, url: h.url }))
+      );
+
+      const items: FeedItem[] = [];
+      const now = new Date().toISOString();
+
+      for (const p of posts) {
+        const matchingHandle = handles.find(h => h.platform === p.platform) || handles[0];
+        let metaImage = p.image;
+        let metaTitle = p.title;
+        let metaSummary = p.summary;
+        try {
+          const extracted = await extractPostMetadata(p.url);
+          if (extracted.image) metaImage = extracted.image;
+          if (extracted.title) metaTitle = extracted.title;
+          if (extracted.summary) metaSummary = extracted.summary;
+        } catch {
+          /* fallback to search result */
+        }
+
+        items.push({
+          id: idFor('harv', p.url),
+          teamId: team.id,
+          platform: p.platform,
+          kind: p.platform === 'YouTube' || /video|reel|shorts/i.test(p.url) ? 'video' : 'post',
+          category: 'social',
+          title: metaTitle || `${team.name} Update`,
+          url: p.url,
+          image: metaImage || null,
+          source: matchingHandle?.handle || team.name,
+          summary: metaSummary || '',
+          status: 'live',
+          publishedAt: p.publishedAt && !isNaN(+new Date(p.publishedAt)) ? new Date(p.publishedAt).toISOString() : now,
+          createdAt: now,
+          sourceType: 'native-harvester',
+          handleId: matchingHandle?.id || null,
+        });
+      }
+
+      const added = merge(items);
+      totalAdded += added;
+      if (posts.length > 0) {
+        notes.push(`${team.short}: ${added} added (${posts.length} discovered)`);
+      } else {
+        notes.push(`${team.short}: checked`);
+      }
+    } catch {
+      notes.push(`${team.short}: skipped`);
+    }
+  }
+
+  db.save();
+  const summary = totalAdded > 0
+    ? `Harvested ${totalAdded} social post(s). ${notes.join(', ')}`
+    : `Social Harvester ran. All channels up to date. (${notes.join(', ')})`;
+
+  return record('Social Harvester', startedAt, {
+    items: totalAdded,
+    status: 'success',
+    summary,
+  });
+}
+

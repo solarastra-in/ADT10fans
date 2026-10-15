@@ -11,14 +11,14 @@ export const notificationsRouter = Router();
 notificationsRouter.get('/notifications', (req, res) => {
   const user = getAuthUser(req);
   const store = db.get();
-  let list = store.notifications.filter(n => visibleTo(n, user));
+  let list = (store.notifications || []).filter(n => visibleTo(n, user));
   if (req.query.category && req.query.category !== 'all') list = list.filter(n => n.category === req.query.category);
   const out = list.slice(0, 50).map(n => viewFor(n, user));
   res.json({
     notifications: out,
     unreadCount: user ? out.filter(n => !n.read).length : 0,
     total: out.length,
-    fcmSubscribed: user ? store.fcmTokens.some(t => t.userId === user.id && t.enabled) : false,
+    fcmSubscribed: user ? (store.fcmTokens || []).some(t => t.userId === user.id && t.enabled) : false,
   });
 });
 

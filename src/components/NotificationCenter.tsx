@@ -23,13 +23,16 @@ export function NotificationCenter() {
   const load = useCallback(async () => {
     try {
       const r = await api.getNotifications();
+      if (!r || !Array.isArray(r.notifications)) return;
       setItems(prev => {
         const newest = r.notifications[0];
-        if (prev.length && newest && !prev.some(p => p.id === newest.id) && !newest.read) toast(`${ICON[newest.category] || '🔔'} ${newest.title}`, 'info');
+        if (prev.length && newest && !prev.some(p => p.id === newest.id) && !newest.read) {
+          toast(`${ICON[newest.category] || '🔔'} ${newest.title}`, 'info');
+        }
         return r.notifications;
       });
-      setUnread(r.unreadCount);
-      setSubscribed(r.fcmSubscribed);
+      setUnread(r.unreadCount ?? 0);
+      setSubscribed(Boolean(r.fcmSubscribed));
     } catch {
       /* offline: keep what we have */
     }
@@ -43,7 +46,7 @@ export function NotificationCenter() {
 
   useEffect(() => {
     let unsub: (() => void) | null = null;
-    if (config?.features.pushNotifications) {
+    if (config?.features?.pushNotifications) {
       import('../firebase').then(m => m.registerForegroundPushListener(() => load())).then(u => (unsub = u));
     }
     return () => unsub?.();
@@ -91,7 +94,7 @@ export function NotificationCenter() {
       </button>
       <Modal open={open} onClose={() => setOpen(false)} title={t('Notifications')}>
         <div className="space-y-3" data-testid="notification-center">
-          {config?.features.pushNotifications && user && !subscribed && (
+          {config?.features?.pushNotifications && user && !subscribed && (
             <Button variant="outline" className="w-full" loading={busy} onClick={enablePush}>
               <BellRing className="w-4 h-4" /> {t('Turn on push notifications')}
             </Button>

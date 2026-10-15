@@ -127,9 +127,10 @@ export async function mountFrontend() {
   app.use((req, res) => res.status(404).type('text/plain').send('Not found'));
   // JSON errors instead of HTML stack traces
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    if (err?.status !== 404) console.error('[ERROR]', err);
+    const status = err?.status || err?.statusCode || 500;
+    if (status >= 500) console.error('[ERROR]', err);
     if (res.headersSent) return;
-    res.status(err?.status || err?.statusCode || 500).json({ error: err?.status === 404 ? 'Not found' : IS_PROD ? 'Something went wrong' : err?.message || 'Server error' });
+    res.status(status).json({ error: status === 404 ? 'Not found' : IS_PROD ? 'Something went wrong' : err?.message || 'Server error' });
   });
 }
 

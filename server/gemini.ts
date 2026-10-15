@@ -123,3 +123,58 @@ export async function suggestOfficialHandles(teamName: string, platforms: string
     (p: any) => p && platforms.includes(p.platform) && typeof p.url === 'string' && hostFor[p.platform]?.test(p.url)
   );
 }
+
+export interface HarvestedPost {
+  title: string;
+  url: string;
+  platform: 'X' | 'Instagram' | 'Threads' | 'Facebook' | 'TikTok' | 'LinkedIn' | 'YouTube' | 'Web';
+  summary?: string;
+  publishedAt?: string;
+  image?: string;
+}
+
+let searchQuotaExhaustedUntil = 0;
+
+export function isSearchQuotaExhausted() {
+  return Date.now() < searchQuotaExhaustedUntil;
+}
+
+/**
+ * Discovers recent public posts, announcements, and videos for a franchise using Google Search Grounding.
+ * Returns validated posts without needing third-party services like Curator.io.
+ */
+export async function harvestSocialPostsWithSearch(
+  teamName: string,
+  handles: { platform: string; handle: string; url: string }[]
+): Promise<HarvestedPost[]> {
+  if (!geminiConfigured() || isSearchQuotaExhausted()) return [];
+  try {
+    const ai = getAI();
+    const accounts = handles.map(h => `${h.platform}: ${h.handle} (${h.url})`).join(', ');
+    const response = await ai.models.generateContent({
+      model: geminiModel(),
+      contents:
+        `Find recent real public posts, tweets, reels, videos, or announcements from or about the Abu Dhabi T10 franchise "${teamName}". ` +
+        (accounts ? `Official handles to check: ${accounts}. ` : '') +
+        `Only return real URLs found on the web (e.g. from x.com, instagram.com, youtube.com, tiktok.com, facebook.com, or official news articles). ` +
+        `Return ONLY a JSON array of objects: [{"title":"...","url":"https://...","platform":"X|Instagram|YouTube|TikTok|Facebook|Web","summary":"...","publishedAt":"YYYY-MM-DD"}]`,
+      config: { tools: [{ googleSearch: {} }] },
+    });
+    const raw = response.text || '';
+    const m = raw.match(/\[[\s\S]*\]/);
+    if (!m) return [];
+    const parsed = JSON.parse(m[0]);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (p: any) => p && typeof p.url === 'string' && /^https:\/\/[^\s/]+/.test(p.url) && typeof p.title === 'string'
+    );
+  } catch (err: any) {
+    const msg = String(err?.message || err || '');
+    if (err?.status === 429 || msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED')) {
+      searchQuotaExhaustedUntil = Date.now() + 60 * 60_000; // 1-hour cooldown
+    }
+    return [];
+  }
+}
+
+

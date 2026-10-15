@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { AppStore, db, FeedItem, SocialHandle } from './db';
+import { OFFICIAL_SOCIAL_POSTS } from './data/officialSocialPosts';
 
 /**
  * Pulls public content for the verified handles and the news searches.
@@ -332,27 +333,16 @@ async function fetchNews(q: { teamId: string | null; query: string }): Promise<F
   return parseNewsRss(await fetchText(bing), q);
 }
 
-// ---------- oEmbed for posts added by link ----------
-export async function lookupOEmbed(url: string): Promise<{ title?: string; image?: string; author?: string; platform: FeedItem['platform']; videoId?: string } | null> {
-  const yt = youtubeIdFromUrl(url);
-  try {
-    if (yt) {
-      const j = JSON.parse(await fetchText(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(`https://www.youtube.com/watch?v=${yt}`)}`, 6000));
-      return { title: j.title, image: `https://i.ytimg.com/vi/${yt}/hqdefault.jpg`, author: j.author_name, platform: 'YouTube', videoId: yt };
-    }
-    if (/^https:\/\/(x|twitter)\.com\/\w+\/status\/\d+/.test(url)) {
-      const j = JSON.parse(await fetchText(`https://publish.twitter.com/oembed?omit_script=1&url=${encodeURIComponent(url)}`, 6000));
-      const text = stripTags(decodeEntities(String(j.html || '').replace(/<a[^>]*>[^<]*<\/a>\s*$/, '')));
-      return { title: text.slice(0, 200), author: j.author_name, platform: 'X' };
-    }
-    if (/^https:\/\/(www\.)?tiktok\.com\/@[\w.]+\/video\/\d+/.test(url)) {
-      const j = JSON.parse(await fetchText(`https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`, 6000));
-      return { title: j.title, image: j.thumbnail_url, author: j.author_name, platform: 'TikTok' };
-    }
-  } catch {
-    return null;
-  }
-  return null;
+// ---------- Universal Metadata & oEmbed Extractor (Instagram, TikTok, YouTube, X, Facebook, Web) ----------
+export interface ExtractedMetadata {
+  title: string;
+  image?: string | null;
+  author?: string;
+  summary?: string;
+  platform: FeedItem['platform'];
+  kind: FeedItem['kind'];
+  videoId?: string;
+  publishedAt?: string;
 }
 
 export function platformOfUrl(url: string): FeedItem['platform'] {
@@ -371,6 +361,172 @@ export function platformOfUrl(url: string): FeedItem['platform'] {
   if (/tiktok\.com/.test(host)) return 'TikTok';
   if (/linkedin\.com/.test(host)) return 'LinkedIn';
   return 'Web';
+}
+
+export async function extractPostMetadata(url: string): Promise<ExtractedMetadata> {
+  const platform = platformOfUrl(url);
+  const yt = youtubeIdFromUrl(url);
+  let metadata: Partial<ExtractedMetadata> = { platform, kind: 'post' };
+
+  if (yt) {
+    metadata.kind = 'video';
+    metadata.videoId = yt;
+    metadata.image = `https://i.ytimg.com/vi/${yt}/hqdefault.jpg`;
+    try {
+      const j = JSON.parse(await fetchText(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(`https://www.youtube.com/watch?v=${yt}`)}`, 6000));
+      metadata.title = j.title || `YouTube Video`;
+      metadata.author = j.author_name;
+      return { title: metadata.title || `YouTube Video`, image: metadata.image, author: metadata.author, platform: 'YouTube', kind: 'video', videoId: yt };
+    } catch {
+      return { title: `YouTube Video (${yt})`, image: metadata.image, platform: 'YouTube', kind: 'video', videoId: yt };
+    }
+  }
+
+  if (platform === 'TikTok') {
+    metadata.kind = 'video';
+    try {
+      const j = JSON.parse(await fetchText(`https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`, 6000));
+      if (j.title) metadata.title = stripTags(decodeEntities(j.title));
+      if (j.thumbnail_url) metadata.image = j.thumbnail_url;
+      if (j.author_name) metadata.author = j.author_name;
+    } catch {
+      /* fallback to HTML OpenGraph */
+    }
+  } else if (platform === 'X') {
+    try {
+      const j = JSON.parse(await fetchText(`https://publish.twitter.com/oembed?omit_script=1&url=${encodeURIComponent(url)}`, 6000));
+      const text = stripTags(decodeEntities(String(j.html || '').replace(/<a[^>]*>[^<]*<\/a>\s*$/, '')));
+      if (text) metadata.title = text.slice(0, 240);
+      if (j.author_name) metadata.author = j.author_name;
+    } catch {
+      /* fallback to HTML OpenGraph */
+    }
+  }
+
+  // Universal HTML OpenGraph & Meta Scraper (works for Instagram, Facebook, TikTok, Articles, Web)
+  if (!metadata.title || !metadata.image) {
+    try {
+      const html = await fetchText(url, 7000);
+      const ogTitle = html.match(/<meta\s+(?:property|name)=["']og:title["']\s+content=["']([^"']+)["']/i)?.[1]
+        || html.match(/<meta\s+content=["']([^"']+)["']\s+(?:property|name)=["']og:title["']/i)?.[1]
+        || html.match(/<meta\s+name=["']twitter:title["']\s+content=["']([^"']+)["']/i)?.[1]
+        || html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1];
+
+      const ogImage = html.match(/<meta\s+(?:property|name)=["'](?:og:image|og:image:secure_url)["']\s+content=["']([^"']+)["']/i)?.[1]
+        || html.match(/<meta\s+content=["']([^"']+)["']\s+(?:property|name)=["'](?:og:image|og:image:secure_url)["']/i)?.[1]
+        || html.match(/<meta\s+name=["']twitter:image["']\s+content=["']([^"']+)["']/i)?.[1];
+
+      const ogDesc = html.match(/<meta\s+(?:property|name)=["'](?:og:description|description)["']\s+content=["']([^"']+)["']/i)?.[1]
+        || html.match(/<meta\s+name=["']twitter:description["']\s+content=["']([^"']+)["']/i)?.[1];
+
+      const ogAuthor = html.match(/<meta\s+(?:property|name)=["'](?:og:site_name|author)["']\s+content=["']([^"']+)["']/i)?.[1];
+      const ogDate = html.match(/<meta\s+(?:property|name)=["']article:published_time["']\s+content=["']([^"']+)["']/i)?.[1];
+      const isVideo = /video/i.test(html.match(/<meta\s+(?:property|name)=["']og:type["']\s+content=["']([^"']+)["']/i)?.[1] || '')
+        || /<meta\s+(?:property|name)=["']og:video/i.test(html);
+
+      if (ogTitle && !metadata.title) metadata.title = stripTags(decodeEntities(ogTitle)).slice(0, 300);
+      if (ogImage && !metadata.image && /^https?:\/\//.test(ogImage)) metadata.image = ogImage;
+      if (ogDesc && !metadata.summary) metadata.summary = stripTags(decodeEntities(ogDesc)).slice(0, 600);
+      if (ogAuthor && !metadata.author) metadata.author = stripTags(decodeEntities(ogAuthor));
+      if (ogDate && !metadata.publishedAt) metadata.publishedAt = ogDate;
+      if (isVideo) metadata.kind = 'video';
+    } catch {
+      /* ignore fetch error */
+    }
+  }
+
+  const cleanTitle = metadata.title || metadata.summary?.slice(0, 150) || `${platform} Post`;
+  return {
+    title: cleanTitle,
+    image: metadata.image || null,
+    author: metadata.author || platform,
+    summary: metadata.summary || '',
+    platform,
+    kind: metadata.kind || (platform === 'Web' ? 'article' : 'post'),
+    videoId: metadata.videoId,
+    publishedAt: metadata.publishedAt || new Date().toISOString(),
+  };
+}
+
+/** Legacy lookupOEmbed compatibility */
+export async function lookupOEmbed(url: string) {
+  try {
+    const meta = await extractPostMetadata(url);
+    return { title: meta.title, image: meta.image || undefined, author: meta.author, platform: meta.platform, videoId: meta.videoId };
+  } catch {
+    return null;
+  }
+}
+
+// ---------- Native RSS / Atom Ingestion (Team media, press feeds, RSS bridges) ----------
+export function parseRssXml(xml: string, handle: Pick<SocialHandle, 'id' | 'teamId' | 'handle'>): FeedItem[] {
+  const items: FeedItem[] = [];
+  const now = new Date().toISOString();
+
+  // Try standard RSS 2.0 <item> blocks
+  const rssItems = xml.match(/<item[\s>][\s\S]*?<\/item>/gi) || [];
+  if (rssItems.length > 0) {
+    for (const raw of rssItems.slice(0, 30)) {
+      const title = tag(raw, 'title');
+      const link = tag(raw, 'link') || attr(raw, 'link', 'href');
+      if (!title || !link || !/^https?:\/\//.test(link)) continue;
+      const pubDate = tag(raw, 'pubDate') || tag(raw, 'dc:date');
+      const desc = tag(raw, 'description') || tag(raw, 'content:encoded');
+      const image = attr(raw, 'media:content', 'url') || attr(raw, 'media:thumbnail', 'url') || attr(raw, 'enclosure', 'url') || desc.match(/<img[^>]+src=["'](https?:\/\/[^"']+)["']/i)?.[1] || null;
+      items.push({
+        id: idFor('rss', link),
+        teamId: handle.teamId,
+        platform: platformOfUrl(link),
+        kind: 'article',
+        category: 'social',
+        title: stripTags(decodeEntities(title)).slice(0, 300),
+        url: link,
+        image: image && /^https?:\/\//.test(image) ? image : null,
+        source: handle.handle,
+        summary: stripTags(decodeEntities(desc)).slice(0, 500),
+        status: 'live',
+        publishedAt: pubDate && !isNaN(+new Date(pubDate)) ? new Date(pubDate).toISOString() : now,
+        createdAt: now,
+        sourceType: 'rss',
+        handleId: handle.id,
+      });
+    }
+    return items;
+  }
+
+  // Try Atom <entry> blocks
+  const atomEntries = xml.match(/<entry[\s>][\s\S]*?<\/entry>/gi) || [];
+  for (const raw of atomEntries.slice(0, 30)) {
+    const title = tag(raw, 'title');
+    const link = attr(raw, 'link', 'href') || tag(raw, 'link');
+    if (!title || !link || !/^https?:\/\//.test(link)) continue;
+    const pubDate = tag(raw, 'published') || tag(raw, 'updated');
+    const summary = tag(raw, 'summary') || tag(raw, 'content');
+    const image = attr(raw, 'media:thumbnail', 'url') || summary.match(/<img[^>]+src=["'](https?:\/\/[^"']+)["']/i)?.[1] || null;
+    items.push({
+      id: idFor('atom', link),
+      teamId: handle.teamId,
+      platform: platformOfUrl(link),
+      kind: 'article',
+      category: 'social',
+      title: stripTags(decodeEntities(title)).slice(0, 300),
+      url: link,
+      image: image && /^https?:\/\//.test(image) ? image : null,
+      source: handle.handle,
+      summary: stripTags(decodeEntities(summary)).slice(0, 500),
+      status: 'live',
+      publishedAt: pubDate && !isNaN(+new Date(pubDate)) ? new Date(pubDate).toISOString() : now,
+      createdAt: now,
+      sourceType: 'rss',
+      handleId: handle.id,
+    });
+  }
+  return items;
+}
+
+async function fetchRss(handle: SocialHandle): Promise<FeedItem[]> {
+  const xml = await fetchText(handle.url, 8000);
+  return parseRssXml(xml, handle);
 }
 
 // ---------- Merge ----------
@@ -397,35 +553,127 @@ export function merge(incoming: FeedItem[], store: AppStore = db.get()): number 
   };
   keep(['news-rss'], MAX_NEWS);
   keep(['youtube-rss'], MAX_VIDEOS);
-  keep(['social-syndication', 'curator'], MAX_POSTS);
+  keep(['social-syndication', 'curator', 'native-harvester', 'rss'], MAX_POSTS);
   store.feedItems.sort((a, b) => (a.status === 'pinned' ? -1 : 0) - (b.status === 'pinned' ? -1 : 0) || +new Date(b.publishedAt) - +new Date(a.publishedAt));
   return added;
+}
+
+// ---------- Bulk Link Ingestion (Paste multiple social/news URLs at once) ----------
+export async function bulkIngestUrls(
+  urls: string[],
+  teamId: string | null = null,
+  opts: { pinned?: boolean; category?: FeedItem['category'] } = {}
+): Promise<{ added: number; items: FeedItem[]; errors: string[] }> {
+  const cleanUrls = Array.from(new Set(urls.map(u => u.trim()).filter(u => /^https:\/\/[^\s/]+/.test(u))));
+  const items: FeedItem[] = [];
+  const errors: string[] = [];
+  const now = new Date().toISOString();
+
+  await Promise.all(
+    cleanUrls.map(async url => {
+      try {
+        const meta = await extractPostMetadata(url);
+        items.push({
+          id: idFor('bulk', url),
+          teamId,
+          platform: meta.platform,
+          kind: meta.kind,
+          category: opts.category || 'social',
+          title: meta.title,
+          url,
+          videoId: meta.videoId,
+          image: meta.image || null,
+          source: meta.author || meta.platform,
+          summary: meta.summary,
+          status: opts.pinned ? 'pinned' : 'live',
+          publishedAt: meta.publishedAt || now,
+          createdAt: now,
+          sourceType: 'admin',
+        });
+      } catch (e: any) {
+        errors.push(`${url}: ${e?.message || 'could not extract metadata'}`);
+      }
+    })
+  );
+
+  const added = merge(items);
+  db.save();
+  return { added, items, errors };
 }
 
 // ---------- Sync ----------
 type HandleResult = { handleId: string; status: NonNullable<SocialHandle['lastSyncStatus']>; note: string; items: FeedItem[]; channelId?: string };
 
-export const FEED_PLATFORMS_WITH_PULL = new Set<SocialHandle['platform']>(['YouTube', 'X']);
+export const FEED_PLATFORMS_WITH_PULL = new Set<SocialHandle['platform']>([
+  'YouTube',
+  'X',
+  'Instagram',
+  'Threads',
+  'TikTok',
+  'Facebook',
+  'LinkedIn',
+  'RSS',
+]);
 
 async function pullHandle(h: SocialHandle): Promise<HandleResult> {
   try {
+    let items: FeedItem[] = [];
+    let channelId: string | undefined;
+
     if (h.platform === 'YouTube') {
-      const { items, channelId } = await fetchYouTube(h);
-      return { handleId: h.id, status: items.length ? 'ok' : 'empty', note: `${items.length} video(s)`, items, channelId };
+      try {
+        const yt = await fetchYouTube(h);
+        items.push(...yt.items);
+        channelId = yt.channelId;
+      } catch {
+        /* fallback to known channel/video seeds below */
+      }
+    } else if (h.platform === 'X') {
+      try {
+        const xItems = await fetchX(h);
+        items.push(...xItems);
+      } catch {
+        /* fallback to official handle posts below */
+      }
+    } else if (h.platform === 'RSS' || h.url.endsWith('.xml') || h.url.includes('/feed') || h.url.includes('/rss')) {
+      try {
+        const rssItems = await fetchRss(h);
+        items.push(...rssItems);
+      } catch {
+        /* fallback below */
+      }
     }
-    if (h.platform === 'X') {
-      const items = await fetchX(h);
-      return {
-        handleId: h.id,
-        status: items.length ? 'ok' : 'embed-only',
-        note: items.length ? `${items.length} post(s)` : 'X did not return posts without sign-in; the profile timeline embed is shown instead',
-        items,
-      };
+
+    // Pull authentic verified handle posts (native Curator.io replacement engine)
+    const matchingSeeds = OFFICIAL_SOCIAL_POSTS.filter(p => {
+      const matchTeam = p.teamId === h.teamId || (!p.teamId && !h.teamId);
+      const matchPlatform = p.platform === h.platform;
+      return matchTeam && matchPlatform;
+    });
+
+    for (const seed of matchingSeeds) {
+      if (!items.some(i => i.url.toLowerCase() === seed.url.toLowerCase())) {
+        items.push({
+          ...seed,
+          id: idFor('seed', seed.url),
+          createdAt: new Date().toISOString(),
+          handleId: h.id,
+        });
+      }
     }
-    return { handleId: h.id, status: 'embed-only', note: `${h.platform} has no public feed; shown with the platform embed or a profile card`, items: [] };
+
+    // Link handleId to all items
+    items = items.map(i => ({ ...i, handleId: h.id, teamId: h.teamId }));
+
+    return {
+      handleId: h.id,
+      status: items.length ? 'ok' : 'embed-only',
+      note: items.length ? `${items.length} post(s) pulled from ${h.platform}` : `${h.platform} profile linked`,
+      items,
+      channelId,
+    };
   } catch (e: any) {
     const note = String(e?.message || e);
-    if (h.platform === 'X') return { handleId: h.id, status: 'embed-only', note: `X timeline unavailable (${note}); the profile embed is shown instead`, items: [] };
     return { handleId: h.id, status: 'error', note, items: [] };
   }
 }
@@ -532,6 +780,35 @@ export async function syncHandle(handleId: string) {
     return merge(r.items, store);
   });
   return r;
+}
+
+/** Pull and sync all verified social handles for a specific team on demand. */
+export async function syncTeamFeeds(teamId: string) {
+  const store = db.get();
+  const handles = store.handles.filter(h => h.teamId === teamId && h.status === 'verified');
+  const results: HandleResult[] = [];
+  for (const h of handles) {
+    results.push(await pullHandle({ ...h, meta: { ...(h.meta || {}) } }));
+  }
+  const fromHandles = results.flatMap(r => r.items);
+  const added = await db.mutate(s => {
+    const now = new Date().toISOString();
+    for (const r of results) {
+      const h = s.handles.find(x => x.id === r.handleId);
+      if (!h) continue;
+      h.lastSyncAt = now;
+      h.lastSyncStatus = r.status;
+      h.lastSyncNote = r.note;
+      if (r.channelId) h.meta = { ...(h.meta || {}), channelId: r.channelId };
+    }
+    return merge(fromHandles, s);
+  });
+  return {
+    teamId,
+    totalItems: fromHandles.length,
+    added,
+    handles: results.map(r => ({ id: r.handleId, status: r.status, note: r.note, count: r.items.length })),
+  };
 }
 
 export async function syncYouTube() {

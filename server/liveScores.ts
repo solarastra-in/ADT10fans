@@ -155,7 +155,7 @@ export function matchesToPoll(store: AppStore, now = Date.now()) {
 }
 
 export async function syncLiveScores(onCompleted?: (matchId: string) => Promise<unknown>) {
-  if (!liveScoresConfigured()) return { checked: 0, updated: 0, completed: 0, errors: [] as string[], skipped: 'CRICKET_API_KEY not set' };
+  if (!liveScoresConfigured()) return { checked: 0, updated: 0, completed: 0, skipped: 'CRICKET_API_KEY not set' };
   const targets = matchesToPoll(db.get());
   const errors: string[] = [];
   let completed = 0;

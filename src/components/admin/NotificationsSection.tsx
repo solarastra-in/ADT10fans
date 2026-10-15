@@ -38,9 +38,9 @@ export const NotificationsSection: React.FC<{
 
   const load = useCallback(async () => {
     const [n, t] = await Promise.allSettled([api.getAdminNotifications(), api.getFCMTokens()]);
-    if (n.status === 'fulfilled') setList(n.value.notifications || []);
+    if (n.status === 'fulfilled') setList(n.value?.notifications || []);
     if (t.status === 'fulfilled') {
-      setTokens({ totalTokens: t.value.totalTokens ?? 0, activeSubscribers: t.value.activeSubscribers ?? 0 });
+      setTokens({ totalTokens: t.value?.totalTokens ?? 0, activeSubscribers: t.value?.activeSubscribers ?? 0 });
       setTokenError(null);
     } else {
       setTokenError((t.reason as any)?.message || 'Could not load device tokens');

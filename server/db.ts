@@ -177,7 +177,7 @@ export interface FeedItem {
   views?: string;
   /** YouTube video id, so the video can be played inside the site. */
   videoId?: string;
-  sourceType?: 'youtube-rss' | 'news-rss' | 'admin' | 'ai' | 'social-syndication' | 'curator' | 'rss';
+  sourceType?: 'youtube-rss' | 'news-rss' | 'admin' | 'ai' | 'social-syndication' | 'curator' | 'rss' | 'native-harvester';
   handleId?: string | null;
 }
 

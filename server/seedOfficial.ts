@@ -1,6 +1,8 @@
 import crypto from 'crypto';
 import { AppStore, db, SocialHandle, Team } from './db';
 import { OFFICIAL_2026_TEAMS } from './data/officialTeams';
+import { OFFICIAL_SOCIAL_POSTS } from './data/officialSocialPosts';
+import { idFor } from './feeds';
 
 export { OFFICIAL_2026_TEAMS };
 
@@ -71,9 +73,36 @@ export function initializeStore(store: AppStore): boolean {
     changed = true;
   }
   if (reconcileOfficialHandles(store, now)) changed = true;
+  if (seedOfficialSocialPosts(store, now)) changed = true;
   if (!store.jobLog['game-secret'] && !process.env.GAME_SECRET) {
     store.jobLog['game-secret'] = crypto.randomBytes(24).toString('hex');
     changed = true;
+  }
+  return changed;
+}
+
+/** Populates authentic social media posts for all official team handles */
+export function seedOfficialSocialPosts(store: AppStore, now = new Date().toISOString()): boolean {
+  let changed = false;
+  const existingUrls = new Set(store.feedItems.map(f => f.url.toLowerCase()));
+  for (const post of OFFICIAL_SOCIAL_POSTS) {
+    if (!existingUrls.has(post.url.toLowerCase())) {
+      const matchingHandle = store.handles.find(h =>
+        h.platform === post.platform &&
+        ((post.teamId && h.teamId === post.teamId) || (!post.teamId && !h.teamId))
+      );
+      store.feedItems.push({
+        ...post,
+        id: idFor('seed', post.url),
+        handleId: matchingHandle?.id || null,
+        createdAt: now,
+      });
+      existingUrls.add(post.url.toLowerCase());
+      changed = true;
+    }
+  }
+  if (changed) {
+    store.feedItems.sort((a, b) => (a.status === 'pinned' ? -1 : 0) - (b.status === 'pinned' ? -1 : 0) || +new Date(b.publishedAt) - +new Date(a.publishedAt));
   }
   return changed;
 }

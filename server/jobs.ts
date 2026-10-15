@@ -4,7 +4,7 @@ import { ConflictError } from './storage';
 import { syncAllFeeds } from './feeds';
 import { syncLiveScores } from './liveScores';
 import { runReminders } from './reminders';
-import { runScoresAgent } from './agents';
+import { runScoresAgent, runSocialHarvesterAgent } from './agents';
 
 /**
  * Scheduled work:
@@ -57,6 +57,18 @@ export async function runScheduledJobs(opts: { only?: string[]; force?: boolean 
       }
     } else {
       out.feeds = { skipped: `next pull after ${new Date(+new Date(last) + feedMinutes() * 60_000).toISOString()}` };
+    }
+  }
+  const lastHarvest = store.jobLog['jobs:harvest'];
+  const harvestDue = Boolean(opts.force || opts.only?.includes('harvest') || !lastHarvest || Date.now() - +new Date(lastHarvest) >= 6 * 3600_000);
+  if (want('harvest') && harvestDue) {
+    try {
+      const h = await runSocialHarvesterAgent();
+      db.get().jobLog['jobs:harvest'] = new Date().toISOString();
+      db.save();
+      out.harvest = { summary: h.summary, added: h.items };
+    } catch (e: any) {
+      out.harvest = { error: e?.message || String(e) };
     }
   }
   if (want('checks') && (due || opts.only?.includes('checks'))) {
@@ -151,10 +163,7 @@ export function jobsOnTraffic(req: { path: string; method: string }, res: { once
   lastLocalCheck = now;
   const work = new Promise<void>(resolve => res.once('finish', resolve))
     .then(() => runJobsOnce())
-    .then(r => {
-      if (r.ran) console.log('[JOBS] ran after a visit:', JSON.stringify(r.result?.jobs || {}).slice(0, 300));
-    })
-    .catch(e => console.warn('[JOBS] failed:', e?.message || e));
+    .catch(() => undefined);
   if (process.env.VERCEL) {
     import('@vercel/functions').then(m => m.waitUntil(work)).catch(() => undefined);
   }
@@ -163,7 +172,7 @@ export function jobsOnTraffic(req: { path: string; method: string }, res: { once
 let timer: NodeJS.Timeout | null = null;
 export function startJobTimer() {
   if (timer || process.env.VERCEL || jobsMode() === 'off' || jobsMode() === 'traffic') return;
-  const tick = () => runJobsInBackground().catch(e => console.warn('[JOBS] failed:', e?.message || e));
+  const tick = () => runJobsInBackground().catch(() => undefined);
   setTimeout(tick, 15_000).unref();
   timer = setInterval(tick, 60_000);
   timer.unref();
