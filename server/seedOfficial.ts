@@ -1,8 +1,6 @@
 import crypto from 'crypto';
 import { AppStore, db, SocialHandle, Team } from './db';
 import { OFFICIAL_2026_TEAMS } from './data/officialTeams';
-import { OFFICIAL_SOCIAL_POSTS } from './data/officialSocialPosts';
-import { idFor } from './feeds';
 
 export { OFFICIAL_2026_TEAMS };
 
@@ -34,35 +32,6 @@ export const OFFICIAL_HANDLES: HandleSeed[] = [
   { teamId: 'aces', platform: 'Facebook', handle: 'arabianacesofficial', url: 'https://www.facebook.com/arabianacesofficial/', meta: {}, evidence: 'Confirmed by the franchise' },
   { teamId: 'aces', platform: 'TikTok', handle: '@arabianaces', url: 'https://www.tiktok.com/@arabianaces', meta: {}, evidence: 'Confirmed by the franchise' },
   { teamId: 'aces', platform: 'LinkedIn', handle: 'arabianaces', url: 'https://www.linkedin.com/in/arabianaces/', meta: {}, evidence: 'Confirmed by the franchise' },
-  { teamId: 'aces', platform: 'YouTube', handle: '@ArabianAcesT10', url: 'https://www.youtube.com/@ArabianAcesT10', meta: { channelId: 'UC_arabian_aces_t10' }, evidence: 'Confirmed by the franchise' },
-
-  // United Tigers
-  { teamId: 'tigers', platform: 'X', handle: '@UnitedTigersT10', url: 'https://x.com/UnitedTigersT10', meta: {}, evidence: 'Confirmed by franchise' },
-  { teamId: 'tigers', platform: 'Instagram', handle: '@unitedtigerst10', url: 'https://www.instagram.com/unitedtigerst10/', meta: {}, evidence: 'Confirmed by franchise' },
-  { teamId: 'tigers', platform: 'Threads', handle: '@unitedtigerst10', url: 'https://www.threads.com/@unitedtigerst10', meta: {}, evidence: 'Confirmed by franchise' },
-  { teamId: 'tigers', platform: 'YouTube', handle: '@UnitedTigersT10', url: 'https://www.youtube.com/@UnitedTigersT10', meta: { channelId: 'UC_united_tigers_t10' }, evidence: 'Confirmed by franchise' },
-  { teamId: 'tigers', platform: 'Facebook', handle: 'UnitedTigersT10', url: 'https://www.facebook.com/UnitedTigersT10', meta: {}, evidence: 'Confirmed by franchise' },
-
-  // Yas Lions
-  { teamId: 'lions', platform: 'X', handle: '@YasLionsT10', url: 'https://x.com/YasLionsT10', meta: {}, evidence: 'Confirmed by franchise' },
-  { teamId: 'lions', platform: 'Instagram', handle: '@yaslionst10', url: 'https://www.instagram.com/yaslionst10/', meta: {}, evidence: 'Confirmed by franchise' },
-  { teamId: 'lions', platform: 'Threads', handle: '@yaslionst10', url: 'https://www.threads.com/@yaslionst10', meta: {}, evidence: 'Confirmed by franchise' },
-  { teamId: 'lions', platform: 'YouTube', handle: '@YasLionsT10', url: 'https://www.youtube.com/@YasLionsT10', meta: { channelId: 'UC_yas_lions_t10' }, evidence: 'Confirmed by franchise' },
-  { teamId: 'lions', platform: 'TikTok', handle: '@yaslionst10', url: 'https://www.tiktok.com/@yaslionst10', meta: {}, evidence: 'Confirmed by franchise' },
-
-  // Emirates Eagles
-  { teamId: 'eagles', platform: 'X', handle: '@EmiratesEaglesT10', url: 'https://x.com/EmiratesEaglesT10', meta: {}, evidence: 'Confirmed by franchise' },
-  { teamId: 'eagles', platform: 'Instagram', handle: '@emirateseaglest10', url: 'https://www.instagram.com/emirateseaglest10/', meta: {}, evidence: 'Confirmed by franchise' },
-  { teamId: 'eagles', platform: 'Threads', handle: '@emirateseaglest10', url: 'https://www.threads.com/@emirateseaglest10', meta: {}, evidence: 'Confirmed by franchise' },
-  { teamId: 'eagles', platform: 'YouTube', handle: '@EmiratesEaglesT10', url: 'https://www.youtube.com/@EmiratesEaglesT10', meta: { channelId: 'UC_emirates_eagles_t10' }, evidence: 'Confirmed by franchise' },
-  { teamId: 'eagles', platform: 'Facebook', handle: 'EmiratesEaglesT10', url: 'https://www.facebook.com/EmiratesEaglesT10', meta: {}, evidence: 'Confirmed by franchise' },
-
-  // Royal Desert Champions
-  { teamId: 'champions', platform: 'X', handle: '@RoyalChampionsT10', url: 'https://x.com/RoyalChampionsT10', meta: {}, evidence: 'Confirmed by franchise' },
-  { teamId: 'champions', platform: 'Instagram', handle: '@royaldesertchampions', url: 'https://www.instagram.com/royaldesertchampions/', meta: {}, evidence: 'Confirmed by franchise' },
-  { teamId: 'champions', platform: 'Threads', handle: '@royaldesertchampions', url: 'https://www.threads.com/@royaldesertchampions', meta: {}, evidence: 'Confirmed by franchise' },
-  { teamId: 'champions', platform: 'YouTube', handle: '@RoyalDesertChampionsT10', url: 'https://www.youtube.com/@RoyalDesertChampionsT10', meta: { channelId: 'UC_royal_champions_t10' }, evidence: 'Confirmed by franchise' },
-  { teamId: 'champions', platform: 'TikTok', handle: '@royalchampions', url: 'https://www.tiktok.com/@royalchampions', meta: {}, evidence: 'Confirmed by franchise' },
 ];
 
 const DEFAULT_VENUE = 'Zayed Cricket Stadium, Abu Dhabi';
@@ -102,7 +71,7 @@ export function initializeStore(store: AppStore): boolean {
     changed = true;
   }
   if (reconcileOfficialHandles(store, now)) changed = true;
-  if (seedOfficialSocialPosts(store, now)) changed = true;
+  if (addSuggestedHandles(store, now)) changed = true;
   if (!store.jobLog['game-secret'] && !process.env.GAME_SECRET) {
     store.jobLog['game-secret'] = crypto.randomBytes(24).toString('hex');
     changed = true;
@@ -110,32 +79,56 @@ export function initializeStore(store: AppStore): boolean {
   return changed;
 }
 
-/** Populates authentic social media posts for all official team handles */
-export function seedOfficialSocialPosts(store: AppStore, now = new Date().toISOString()): boolean {
+
+/**
+ * Accounts someone proposed for the other teams (October 2026) but that could not be confirmed.
+ * They go to Admin → Approvals as suggestions; an admin approves the real ones (they are then pulled
+ * like any other account) and rejects the rest. Never shown to fans until approved.
+ */
+export const SUGGESTED_HANDLES: { teamId: string; platform: SocialHandle['platform']; handle: string; url: string }[] = [
+  { teamId: 'aces', platform: 'YouTube', handle: '@ArabianAcesT10', url: 'https://www.youtube.com/@ArabianAcesT10' },
+  { teamId: 'tigers', platform: 'X', handle: '@UnitedTigersT10', url: 'https://x.com/UnitedTigersT10' },
+  { teamId: 'tigers', platform: 'Instagram', handle: '@unitedtigerst10', url: 'https://www.instagram.com/unitedtigerst10/' },
+  { teamId: 'tigers', platform: 'Threads', handle: '@unitedtigerst10', url: 'https://www.threads.com/@unitedtigerst10' },
+  { teamId: 'tigers', platform: 'YouTube', handle: '@UnitedTigersT10', url: 'https://www.youtube.com/@UnitedTigersT10' },
+  { teamId: 'tigers', platform: 'Facebook', handle: 'UnitedTigersT10', url: 'https://www.facebook.com/UnitedTigersT10' },
+  { teamId: 'lions', platform: 'X', handle: '@YasLionsT10', url: 'https://x.com/YasLionsT10' },
+  { teamId: 'lions', platform: 'Instagram', handle: '@yaslionst10', url: 'https://www.instagram.com/yaslionst10/' },
+  { teamId: 'lions', platform: 'Threads', handle: '@yaslionst10', url: 'https://www.threads.com/@yaslionst10' },
+  { teamId: 'lions', platform: 'YouTube', handle: '@YasLionsT10', url: 'https://www.youtube.com/@YasLionsT10' },
+  { teamId: 'lions', platform: 'TikTok', handle: '@yaslionst10', url: 'https://www.tiktok.com/@yaslionst10' },
+  { teamId: 'eagles', platform: 'Instagram', handle: '@emirateseaglest10', url: 'https://www.instagram.com/emirateseaglest10/' },
+  { teamId: 'eagles', platform: 'Threads', handle: '@emirateseaglest10', url: 'https://www.threads.com/@emirateseaglest10' },
+  { teamId: 'eagles', platform: 'YouTube', handle: '@EmiratesEaglesT10', url: 'https://www.youtube.com/@EmiratesEaglesT10' },
+  { teamId: 'eagles', platform: 'Facebook', handle: 'EmiratesEaglesT10', url: 'https://www.facebook.com/EmiratesEaglesT10' },
+  { teamId: 'champions', platform: 'Instagram', handle: '@royaldesertchampions', url: 'https://www.instagram.com/royaldesertchampions/' },
+  { teamId: 'champions', platform: 'Threads', handle: '@royaldesertchampions', url: 'https://www.threads.com/@royaldesertchampions' },
+  { teamId: 'champions', platform: 'YouTube', handle: '@RoyalDesertChampionsT10', url: 'https://www.youtube.com/@RoyalDesertChampionsT10' },
+  { teamId: 'champions', platform: 'TikTok', handle: '@royalchampions', url: 'https://www.tiktok.com/@royalchampions' },
+];
+
+/** Puts each suggestion in the approval queue once (a rejected or removed one is not suggested again). */
+export function addSuggestedHandles(store: AppStore, now = new Date().toISOString()): boolean {
   let changed = false;
-  const existingByUrl = new Map(store.feedItems.map(f => [f.url.toLowerCase(), f]));
-  for (const post of OFFICIAL_SOCIAL_POSTS) {
-    const existing = existingByUrl.get(post.url.toLowerCase());
-    const matchingHandle = store.handles.find(h =>
-      h.platform === post.platform &&
-      ((post.teamId && h.teamId === post.teamId) || (!post.teamId && !h.teamId))
-    );
-    if (!existing) {
-      store.feedItems.push({
-        ...post,
-        id: idFor('seed', post.url),
-        handleId: matchingHandle?.id || null,
-        createdAt: now,
-      });
-      existingByUrl.set(post.url.toLowerCase(), post as any);
-      changed = true;
-    } else if (!existing.handleId && matchingHandle) {
-      existing.handleId = matchingHandle.id;
-      changed = true;
-    }
-  }
-  if (changed) {
-    store.feedItems.sort((a, b) => (a.status === 'pinned' ? -1 : 0) - (b.status === 'pinned' ? -1 : 0) || +new Date(b.publishedAt) - +new Date(a.publishedAt));
+  for (const s of SUGGESTED_HANDLES) {
+    if (!store.teams.some(t => t.id === s.teamId)) continue;
+    const key = handleKey(s.url);
+    if (store.jobLog[`handle-removed:${key}`]) continue;
+    if (store.handles.some(h => handleKey(h.url) === key)) continue;
+    if (store.approvals.some(a => a.kind === 'handle' && handleKey(String(a.payload?.url || '')) === key)) continue;
+    const id = 'h-' + crypto.randomUUID().replace(/-/g, '').slice(0, 10);
+    store.handles.push({ id, teamId: s.teamId, platform: s.platform, handle: s.handle, url: s.url, status: 'pending', source: 'suggested', meta: {}, foundAt: now } as SocialHandle);
+    const team = store.teams.find(t => t.id === s.teamId);
+    store.approvals.unshift({
+      id: 'ap-' + crypto.randomUUID().replace(/-/g, '').slice(0, 10),
+      kind: 'handle',
+      title: `${team?.name || s.teamId} · ${s.platform} ${s.handle}`,
+      detail: `Suggested but not confirmed. Open ${s.url}: approve only if the account exists and is the team's official account.`,
+      payload: { handleId: id, teamId: s.teamId, platform: s.platform, url: s.url },
+      status: 'pending',
+      createdAt: now,
+    });
+    changed = true;
   }
   return changed;
 }

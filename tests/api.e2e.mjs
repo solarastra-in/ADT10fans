@@ -95,6 +95,18 @@ ok('session token is opaque', A !== admin.user.id && A.length >= 40);
 const fan1 = await login('fan1@test.dev');
 const F1 = fan1.token;
 ok('new fan starts with 0 points and no team', fan1.user.points === 0 && fan1.user.teamId === null && fan1.user.role === 'fan');
+const dashA = (await get('/api/admin/dashboard', A)).json;
+const suggestions = dashA.pendingApprovals.filter(a => a.kind === 'handle');
+ok('19 unconfirmed team accounts wait in Approvals', suggestions.length === 19, suggestions.length);
+ok('suggested accounts are not shown to fans', (await get('/api/handles')).json.handles.length === 15);
+ok('X usernames longer than X allows were not suggested', !suggestions.some(a => /· X @(EmiratesEaglesT10|RoyalChampionsT10)/.test(a.title)));
+const lionsX = suggestions.find(a => /Yas Lions · X/.test(a.title));
+const lionsIg = suggestions.find(a => /Yas Lions · Instagram/.test(a.title));
+await post(`/api/admin/approvals/${lionsX.id}/decide`, { decision: 'approve' }, A);
+await post(`/api/admin/approvals/${lionsIg.id}/decide`, { decision: 'reject' }, A);
+ok('an approved suggestion becomes a public official account', (await get('/api/handles?teamId=lions')).json.handles.some(h => h.platform === 'X'));
+await post('/api/admin/teams/seed-official', { overwrite: false }, A);
+ok('a rejected suggestion is not suggested again', !(await get('/api/admin/dashboard', A)).json.pendingApprovals.some(a => /Yas Lions · Instagram/.test(a.title)) && !(await get('/api/handles?teamId=lions', A)).json.handles.some(h => h.platform === 'Instagram'));
 ok('fans cannot seed teams', (await post('/api/admin/teams/seed-official', {}, F1)).status === 403);
 ok('fans cannot read the confidential proposal', (await get('/api/admin/proposal', F1)).status === 403);
 ok('anonymous cannot sync feeds', (await post('/api/admin/feeds/sync')).status === 401);
@@ -108,7 +120,7 @@ ok('AI assistant without a key answers 503, never a canned reply', gm.status ===
 // ============ 3. Feeds: every team's handles are pulled and playable ============
 const sync = (await post('/api/admin/feeds/sync', {}, A)).json;
 ok('feed sync pulled YouTube videos from both channels', sync.videoCount === FIX.leagueVideos.length + FIX.bullsVideos.length, sync);
-ok('feed sync pulled league X posts', sync.socialCount === FIX.leagueTweets.length, sync);
+ok('feed sync pulled league X posts and Instagram posts', sync.socialCount === FIX.leagueTweets.length + 2, sync);
 ok('news came from Google and the Bing fallback', sync.newsCount === 3, sync);
 ok('failed news sources are reported, not filled in', sync.errors.some(e => e.startsWith('News')));
 const health = (await get('/api/admin/feeds/health', A)).json.handles;
@@ -118,9 +130,14 @@ ok('Bulls YouTube: ok', hs('bulls', 'YouTube').lastSyncStatus === 'ok' && hs('bu
 ok('league X: ok', hs(null, 'X').lastSyncStatus === 'ok');
 ok('Bulls X refused by X: falls back to the embed', hs('bulls', 'X').lastSyncStatus === 'embed-only' && /429/.test(hs('bulls', 'X').lastSyncNote));
 ok('Aces X empty: falls back to the embed', hs('aces', 'X').lastSyncStatus === 'embed-only');
-for (const p of ['Instagram', 'Threads', 'Facebook', 'TikTok', 'LinkedIn']) ok(`Aces ${p}: shown with its embed or profile card`, hs('aces', p).lastSyncStatus === 'embed-only');
+for (const p of ['Threads', 'Facebook', 'TikTok', 'LinkedIn']) ok(`Aces ${p}: shown with its embed or profile card`, hs('aces', p).lastSyncStatus === 'embed-only');
+ok('league Instagram: real posts from Meta\'s Business Discovery API', hs(null, 'Instagram').lastSyncStatus === 'ok' && hs(null, 'Instagram').items === 2, hs(null, 'Instagram'));
+ok('Bulls Instagram: the API error is shown, nothing is made up', hs('bulls', 'Instagram').lastSyncStatus === 'error' && /Invalid user id/.test(hs('bulls', 'Instagram').lastSyncNote) && hs('bulls', 'Instagram').items === 0);
+ok('Instagram errors never reveal the access token', !JSON.stringify(health).includes('test-meta-token'));
+const igPosts = (await get('/api/feeds?platform=Instagram')).json.items;
+ok('Instagram posts keep the real link, caption, date and likes', igPosts.length === 2 && igPosts.some(i => i.url === 'https://www.instagram.com/reel/TESTig00002/' && i.kind === 'video' && i.publishedAt.startsWith('2026-10-11')) && igPosts.some(i => i.likes === 321 && i.title === '[test] Draft night recap'));
 const videos = (await get('/api/feeds?kind=video')).json.items;
-ok('videos have a playable YouTube id and thumbnail', videos.length === 5 && videos.every(v => /^[\w-]{11}$/.test(v.videoId) && v.image.startsWith('https://')));
+ok('videos have a playable YouTube id and thumbnail', videos.filter(v => v.platform === 'YouTube').length === 5 && videos.filter(v => v.platform === 'YouTube').every(v => /^[\w-]{11}$/.test(v.videoId) && v.image.startsWith('https://')));
 ok('Bulls videos are tagged to the Bulls', (await get('/api/feeds?teamId=bulls&kind=video')).json.items.length === 2);
 const all = (await get('/api/feeds?limit=100')).json;
 ok('every feed item links to its real source over https', all.items.every(i => /^https:\/\//.test(i.url)));
@@ -130,6 +147,32 @@ const page1 = (await get('/api/feeds?limit=2')).json;
 const page2 = (await get(`/api/feeds?limit=2&before=${encodeURIComponent(page1.items[1].publishedAt)}`)).json;
 ok('feeds page with "before"', page1.hasMore && page2.items.length > 0 && !page2.items.some(i => page1.items.some(j => j.id === i.id)));
 ok('syncing again adds nothing new', (await post('/api/admin/feeds/sync', {}, A)).json.added === 0);
+
+// Social harvester: AI search suggests links; only posts the platform confirms are kept.
+const noKey = await post('/api/admin/feeds/harvest', {}, A);
+ok('without a Gemini key the harvester says what it needs', /Gemini API key/.test(noKey.json.summary));
+await post('/api/admin/env', { overrides: { GEMINI_API_KEY: 'harvest-test-key' } }, A);
+const harvest = await post('/api/admin/feeds/harvest', {}, A);
+ok('harvester keeps only the 2 confirmed posts out of 6 suggestions', harvest.json.items === 2 && /4 of 6 search result\(s\) dropped/.test(harvest.json.summary), harvest.json);
+ok('harvester explains why links were dropped', /another account posted it/.test(harvest.json.summary) && /not an official account/.test(harvest.json.summary) && /could not confirm/.test(harvest.json.summary) && /not accepted from search/.test(harvest.json.summary));
+const found = (await get('/api/feeds?limit=100', A)).json.items.filter(i => i.sourceType === 'discovery');
+const xFound = found.find(i => i.platform === 'X');
+ok('confirmed X post uses the text and date from X, never the AI\'s', xFound && xFound.title === '[test] Confirmed post & real text from X' && xFound.publishedAt.startsWith('2026-10-12') && xFound.source === '@T10League');
+const ttFound = found.find(i => i.platform === 'TikTok');
+ok('confirmed TikTok video has its thumbnail and the date encoded in its id', ttFound && ttFound.title === '[test] TikTok video confirmed' && ttFound.image.startsWith('https://') && /^20\d\d-/.test(ttFound.publishedAt));
+ok('invented and unofficial links were not stored', !(await get('/api/feeds?limit=100', A)).json.items.some(i => /1990000000000000003|RandomFanPage|MadeUp123/.test(i.url)));
+ok('harvesting again keeps the posts without duplicates', (await post('/api/admin/feeds/harvest', {}, A)).json.items === 0 && (await get('/api/feeds?limit=100', A)).json.items.filter(i => i.sourceType === 'discovery').length === 2);
+await post('/api/admin/env', { overrides: { GEMINI_API_KEY: '' } }, A);
+
+// Feed address (RSS bridge) on any account, and the public team refresh button.
+ok('a feed address must be https', (await post('/api/handles', { id: handles.find(h => h.teamId === 'aces' && h.platform === 'TikTok').id, platform: 'TikTok', url: 'https://www.tiktok.com/@arabianaces', teamId: 'aces', feedUrl: 'http://insecure.test/feed' }, A)).status === 400);
+const pub1 = await call('POST', '/api/feeds/pull', { teamId: 'bulls' }, null, { ip: '10.77.0.1' });
+ok('visitors cannot refresh a team that was pulled minutes ago', pub1.status === 200 && pub1.json.skipped === true);
+ok('visitors cannot start a full pull of every account', (await call('POST', '/api/feeds/pull', {}, null, { ip: '10.77.0.2' })).status === 400);
+ok('the feed webhook is off without its own key', (await post('/api/feeds/webhook', { url: 'https://example.test/spam' })).status === 503);
+await post('/api/admin/env', { overrides: { FEED_WEBHOOK_SECRET: 'hook-key-123456' } }, A);
+ok('the feed webhook refuses a wrong key', (await call('POST', '/api/feeds/webhook', { url: 'https://example.test/spam' }, null, { headers: { 'X-Webhook-Secret': 'nope' } })).status === 401);
+await post('/api/admin/env', { overrides: { FEED_WEBHOOK_SECRET: '' } }, A);
 const link = await post('/api/admin/feeds/from-link', { url: `https://youtu.be/${FIX.oembedVideo}` }, A);
 ok('admin adds a video by link; title comes from oEmbed', link.status === 200 && link.json.item.title.includes('added by link') && link.json.item.videoId === FIX.oembedVideo);
 ok('a link with no readable title needs one typed in', (await post('/api/admin/feeds/from-link', { url: 'https://www.tiktok.com/@abudhabit10/video/7400000000000000000' }, A)).status === 400);

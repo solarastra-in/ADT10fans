@@ -1,6 +1,7 @@
+import crypto from 'crypto';
 import { Router } from 'express';
 import { db, FeedItem } from '../db';
-import { canManageTeam, getAuthUser, hasPermission, requireAdmin, requireSuperAdmin } from '../auth';
+import { canManageTeam, getAuthUser, hasPermission, rateLimit, requireAdmin, requireSuperAdmin } from '../auth';
 import { bad, isHttpsUrl, isoOrEmpty, newId, optionalUrl, str, userOf, wrap } from '../http';
 import { getCuratorConfig, fetchCurator, lookupOEmbed, extractPostMetadata, bulkIngestUrls, merge, platformOfUrl, syncAllFeeds, syncTeamFeeds, youtubeIdFromUrl } from '../feeds';
 import { runSocialHarvesterAgent } from '../agents';
@@ -40,14 +41,22 @@ feedsRouter.get('/feeds', (req, res) => {
  * POST /api/feeds/pull
  * On-demand pull from official social handles for a team or for all teams (Curator.io replacement engine).
  */
-feedsRouter.post('/feeds/pull', wrap(async (req, res) => {
+feedsRouter.post('/feeds/pull', rateLimit('feeds-pull', 6, 10 * 60_000), wrap(async (req, res) => {
   const teamId = str(req.body?.teamId, 60) || undefined;
-  if (teamId) {
-    const result = await syncTeamFeeds(teamId);
-    return res.json({ success: true, ...result });
+  const viewer = getAuthUser(req);
+  const isAdmin = Boolean(viewer && hasPermission(viewer, 'social'));
+  if (!teamId) {
+    if (!isAdmin) return bad(res, 'Choose a team', 400);
+    return res.json({ success: true, ...(await syncAllFeeds()) });
   }
-  const result = await syncAllFeeds();
-  res.json({ success: true, ...result });
+  const store = db.get();
+  if (!store.teams.some(t => t.id === teamId)) return bad(res, 'Team not found', 404);
+  // Visitors can refresh a team at most every 5 minutes; accounts are also pulled every 10 minutes anyway.
+  const last = Math.max(0, ...store.handles.filter(h => h.teamId === teamId && h.lastSyncAt).map(h => +new Date(h.lastSyncAt!)));
+  if (!isAdmin && Date.now() - last < 5 * 60_000) {
+    return res.json({ success: true, skipped: true, lastPulledAt: new Date(last).toISOString(), totalItems: 0, added: 0, summary: 'Already up to date' });
+  }
+  res.json({ success: true, ...(await syncTeamFeeds(teamId)) });
 }));
 
 const syncFeeds = wrap(async (_req, res) => {
@@ -83,7 +92,7 @@ feedsRouter.post('/admin/feeds/from-link', requireAdmin('social'), wrap(async (r
   if (teamId && !db.get().teams.some(t => t.id === teamId)) return bad(res, 'Unknown team');
   if (!canManageTeam(user, teamId)) return bad(res, 'You can only add posts for your own team', 403);
   const meta = await extractPostMetadata(url);
-  const title = str(req.body?.title, 300) || meta.title;
+  const title = str(req.body?.title, 300) || (meta.titleFound ? meta.title : '');
   if (!title) return bad(res, 'We could not read a title for that link. Type one in.');
   const item: FeedItem = {
     id: newId('feed'),
@@ -136,15 +145,18 @@ feedsRouter.post('/admin/feeds/bulk-ingest', requireAdmin('social'), wrap(async 
  * Accepts: { url, title?, summary?, image?, platform?, teamId?, secret? }
  */
 feedsRouter.post('/feeds/webhook', wrap(async (req, res) => {
-  const secret = process.env.CRON_SECRET || process.env.GAME_SECRET || '';
-  const provided = req.headers['x-webhook-secret'] || req.query.secret || req.body?.secret;
-  if (secret && provided !== secret) {
-    return bad(res, 'Unauthorized webhook: provide matching secret', 401);
-  }
+  // Off until a key is saved in Admin → Environment (FEED_WEBHOOK_SECRET); the key must come in the
+  // X-Webhook-Secret header. Without this anyone could put links on the site.
+  const secret = process.env.FEED_WEBHOOK_SECRET || '';
+  if (!secret) return bad(res, 'The feed webhook is off. Set a webhook key in Admin → Environment to turn it on.', 503);
+  const given = Buffer.from(String(req.headers['x-webhook-secret'] || ''));
+  const want = Buffer.from(secret);
+  if (given.length !== want.length || !crypto.timingSafeEqual(given, want)) return bad(res, 'Wrong or missing X-Webhook-Secret header', 401);
   const url = str(req.body?.url, 1000);
   if (!isHttpsUrl(url)) return bad(res, 'url must be a valid https:// link');
   const meta = await extractPostMetadata(url);
-  const title = str(req.body?.title, 300) || meta.title;
+  const title = str(req.body?.title, 300) || (meta.titleFound ? meta.title : '');
+  if (!title) return bad(res, 'No title could be read from that link; send one in "title"');
   const teamId = str(req.body?.teamId, 60) || null;
   const item: FeedItem = {
     id: newId('hook'),

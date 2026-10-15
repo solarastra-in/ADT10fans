@@ -149,13 +149,13 @@ export interface SocialHandle {
   handle: string;
   url: string;
   status: 'verified' | 'pending';
-  source: 'official' | 'discovery' | 'admin' | 'ai-suggestion' | 'legacy';
+  source: 'official' | 'discovery' | 'admin' | 'ai-suggestion' | 'legacy' | 'suggested';
   meta?: Record<string, any>;
   verifiedAt?: string;
   foundAt: string;
   /** Result of the last automatic pull for this handle. */
   lastSyncAt?: string;
-  lastSyncStatus?: 'ok' | 'empty' | 'error' | 'embed-only';
+  lastSyncStatus?: 'ok' | 'empty' | 'error' | 'embed-only' | 'needs-setup';
   lastSyncNote?: string;
 }
 
@@ -177,7 +177,7 @@ export interface FeedItem {
   views?: string;
   /** YouTube video id, so the video can be played inside the site. */
   videoId?: string;
-  sourceType?: 'youtube-rss' | 'news-rss' | 'admin' | 'ai' | 'social-syndication' | 'curator' | 'rss' | 'native-harvester';
+  sourceType?: 'youtube-rss' | 'news-rss' | 'admin' | 'ai' | 'social-syndication' | 'curator' | 'rss' | 'native-harvester' | 'instagram-graph' | 'discovery';
   handleId?: string | null;
 }
 
@@ -724,7 +724,7 @@ export interface AppStore {
   adminUsers: AdminUserRecord[];
 }
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export function superAdminRecord(): AdminUserRecord {
   return {
@@ -877,6 +877,12 @@ export function migrate(raw: any): AppStore {
     if (out.settings.curatorHashtags === 'AbuDhabiT10,ArabianAces,T10League') out.settings.curatorHashtags = '';
     if (out.settings.curatorContainerId === 'curator-feed-default-feed-layout') out.settings.curatorContainerId = '';
     out.settings.adminEmails = (out.settings.adminEmails || []).filter((e: string) => e.toLowerCase() !== SUPER_ADMIN_EMAIL);
+  }
+  if (version < 4) {
+    // A version of the "native harvester" (October 2026) stored invented posts (ids starting "seed-",
+    // stock photos, placeholder links) and unchecked links an AI search returned. Remove both; the
+    // harvester now keeps only posts the platform itself confirms.
+    out.feedItems = out.feedItems.filter((f: FeedItem) => !isFabricatedFeedItem(f) && !String(f.id).startsWith('seed-') && f.sourceType !== 'native-harvester');
   }
   for (const u of out.users as any[]) {
     if (u.avatar && STOCK_IMAGE.test(u.avatar)) u.avatar = '';

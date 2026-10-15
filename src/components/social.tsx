@@ -210,6 +210,36 @@ function TikTokCreator({ username }: { username: string }) {
   );
 }
 
+/** The platform's live embed for an account (X timeline, Facebook page, TikTok creator), loaded on tap. */
+function LiveEmbed({ handle, team, name }: { handle: SocialHandle; team?: Team | null; name: string }) {
+  const t = useT();
+  const screen = handle.handle.replace(/^@/, '');
+  switch (handle.platform) {
+    case 'YouTube':
+      return handle.meta?.channelId ? null : <ProfileCard handle={handle} team={team} />;
+    case 'X':
+      return (
+        <Gate label={t('Show posts from {handle}', { handle: handle.handle })} platform="X">
+          {() => <XTimeline screenName={screen} />}
+        </Gate>
+      );
+    case 'Facebook':
+      return (
+        <Gate label={t('Show the {name} Facebook page', { name })} platform="Facebook">
+          {() => <FacebookPage url={handle.url} name={name} />}
+        </Gate>
+      );
+    case 'TikTok':
+      return (
+        <Gate label={t('Show TikTok videos from {handle}', { handle: handle.handle })} platform="TikTok">
+          {() => <TikTokCreator username={screen} />}
+        </Gate>
+      );
+    default:
+      return <ProfileCard handle={handle} team={team} />;
+  }
+}
+
 /** A handle as it appears in the site: verified profile header and its authentic pulled social posts. */
 export function HandleEmbed({ handle, team, items }: { handle: SocialHandle; team?: Team | null; items?: FeedItem[] }) {
   const t = useT();
@@ -270,10 +300,8 @@ export function HandleEmbed({ handle, team, items }: { handle: SocialHandle; tea
           </div>
         </div>
       ) : (
-        <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 text-center text-xs text-slate-400">
-          <p className="font-semibold text-slate-300">{t('Channel linked & monitored')}</p>
-          <p className="mt-0.5 text-slate-500">{t('Posts from {handle} are synced automatically into the team stream.', { handle: handle.handle })}</p>
-        </div>
+        // No stored posts yet: show the platform's own live embed (loads on tap) or the profile card.
+        <LiveEmbed handle={handle} team={team} name={name} />
       )}
     </div>
   );

@@ -27,7 +27,9 @@ const SOURCE_LABEL: Record<string, string> = {
   curator: 'Curator.io',
   admin: 'Admin link',
   ai: 'AI draft',
-  'native-harvester': 'Native Harvester',
+  'native-harvester': 'Old harvester (unchecked)',
+  'instagram-graph': 'Instagram API',
+  discovery: 'Harvester (confirmed)',
   rss: 'RSS Feed',
 };
 
@@ -176,17 +178,17 @@ export const FeedsSection: React.FC<{ feedItems: FeedItem[]; teams: Team[]; onRe
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="font-extrabold text-white inline-flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-amber-400" /> Native Social Harvester (Curator Alternative)
+              <Sparkles className="w-4 h-4 text-amber-400" /> Social harvester
             </h3>
             <div className="flex items-center gap-2">
-              <Chip tone="green">Self-Hosted Aggregator</Chip>
+              
               <Button size="sm" variant="secondary" icon={<Webhook className="w-3.5 h-3.5" />} onClick={() => setShowWebhookGuide(!showWebhookGuide)}>
                 {showWebhookGuide ? 'Hide Webhook API' : 'Webhook API'}
               </Button>
             </div>
           </div>
           <p className="text-xs text-slate-300 leading-relaxed">
-            Continuously discovers and ingests public updates from verified franchise social accounts (Instagram, X, TikTok, YouTube, Facebook, and RSS). Replaces the need for third-party paid subscriptions.
+            Every 10 minutes the official accounts are pulled: YouTube channels, X timelines, Instagram (with a Meta token in Environment) and any account with a feed address. Every hour the harvester also searches for new X and TikTok posts and keeps only those the platform confirms were posted by the team's account. Everything kept stays on the site. Feed health below shows what each account returned.
           </p>
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <div className="w-full sm:w-60">
@@ -205,11 +207,11 @@ export const FeedsSection: React.FC<{ feedItems: FeedItem[]; teams: Team[]; onRe
       {showWebhookGuide && (
         <Card className="border border-slate-700 bg-slate-900/90 space-y-2 text-xs">
           <h4 className="font-bold text-white inline-flex items-center gap-1.5"><Webhook className="w-4 h-4 text-emerald-400" /> Automated Social Ingestion via Webhook (Zapier / IFTTT / Make)</h4>
-          <p className="text-slate-300">You can forward posts automatically from any social automation tool to this endpoint:</p>
+          <p className="text-slate-300">Automation tools can add post links here. It is off until you save a <b>Feed webhook key</b> in Environment; send that key in the <code>X-Webhook-Secret</code> header.</p>
           <pre className="p-2.5 rounded-lg bg-black/70 font-mono text-emerald-300 overflow-x-auto text-[11px]">POST /api/feeds/webhook</pre>
           <p className="text-slate-400">JSON payload example:</p>
           <pre className="p-2.5 rounded-lg bg-black/70 font-mono text-slate-200 overflow-x-auto text-[11px]">{JSON.stringify({ url: "https://www.instagram.com/p/...", teamId: "aces", title: "Matchday announcement" }, null, 2)}</pre>
-          <p className="text-slate-400">The server automatically resolves post cover images, captions, and author tags via OpenGraph and oEmbed.</p>
+          <p className="text-slate-400">Titles and images are read from the post itself (oEmbed or the page's preview tags).</p>
         </Card>
       )}
 
@@ -289,7 +291,8 @@ export const FeedsSection: React.FC<{ feedItems: FeedItem[]; teams: Team[]; onRe
         </Select>
         <Select value={sourceFilter} onChange={e => setSourceFilter(e.target.value)} aria-label="Filter by source">
           <option value="all">All sources</option>
-          <option value="native-harvester">Native Harvester</option>
+          <option value="discovery">Harvester (confirmed)</option>
+          <option value="instagram-graph">Instagram API</option>
           <option value="rss">RSS Feed</option>
           <option value="youtube-rss">YouTube RSS</option>
           <option value="news-rss">News RSS</option>

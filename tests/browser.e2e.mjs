@@ -99,7 +99,12 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
   ok(`${w}px tapping a video plays it in the page`, /embed\/TESTvid\w{4}\?autoplay=1/.test(src), src);
 
   // 3. Team social handles: each platform loads its official embed on tap.
-  const channels = async () => anon.page.locator('button, [role="tab"]', { hasText: 'Videos & social' }).first().click();
+  const channels = async () => {
+    await anon.page.locator('button, [role="tab"]', { hasText: 'Social & Videos' }).first().click();
+    // Teams with confirmed accounts have a Posts / Embeds switch; open the embeds.
+    const embeds = anon.page.getByRole('button', { name: 'By Channel', exact: true });
+    if (await embeds.waitFor({ timeout: 3000 }).then(() => true, () => false)) await embeds.click();
+  };
   await go(anon.page, '/teams/bulls');
   await channels();
   const bullsEmbeds = await anon.page.locator('[data-testid="handle-embed"]').evaluateAll(els => els.map(e => e.getAttribute('data-platform')));

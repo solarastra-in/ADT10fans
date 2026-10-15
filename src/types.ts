@@ -141,7 +141,7 @@ export interface SocialHandle {
   verifiedAt?: string;
   foundAt: string;
   lastSyncAt?: string;
-  lastSyncStatus?: 'ok' | 'empty' | 'error' | 'embed-only';
+  lastSyncStatus?: 'ok' | 'empty' | 'error' | 'embed-only' | 'needs-setup';
   lastSyncNote?: string;
 }
 

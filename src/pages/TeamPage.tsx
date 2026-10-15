@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ExternalLink, Heart, LayoutGrid, MessageSquarePlus, Radio, RefreshCw, Search, Sparkles } from 'lucide-react';
 import { api } from '../api';
 import { useApp, useLoad } from '../state';
@@ -28,6 +28,11 @@ export default function TeamPage({ id }: { id: string }) {
   const [selectedHandleId, setSelectedHandleId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [socialView, setSocialView] = useState<'wall' | 'channels'>('wall');
+  // With no stored posts yet, open on the live channel embeds instead of an empty wall.
+  const postsCount = (feed.data?.items || []).length;
+  useEffect(() => {
+    if (!feed.loading && postsCount === 0) setSocialView('channels');
+  }, [feed.loading, postsCount]);
   const [pulling, setPulling] = useState(false);
   const teamMatches = useMemo(() => matches.filter(m => m.teamA === id || m.teamB === id), [matches, id]);
   if (!team) return <NotFoundPage />;
@@ -39,8 +44,7 @@ export default function TeamPage({ id }: { id: string }) {
     setPulling(true);
     try {
       const res = await api.pullSocialFeeds(id);
-      const pulledCount = res.totalItems ?? res.added ?? 0;
-      toast(t('Successfully pulled {n} posts from official {team} handles!', { n: pulledCount, team: team.name }), 'success');
+      toast((res as any).skipped ? t('Already up to date. Official accounts are pulled every few minutes.') : t('{n} new posts from {team}', { n: res.added || 0, team: team.name }), 'success');
       await Promise.all([feed.reload(), handles.reload()]);
     } catch (e: any) {
       toast(e?.message || t('Failed to refresh social feed'), 'error');
@@ -185,8 +189,8 @@ export default function TeamPage({ id }: { id: string }) {
                       {t('{n} verified channels', { n: verified.length })}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400 mt-1">
-                    {t('Real-time feed curated directly from {team} handles on X, Instagram, Threads, YouTube, TikTok and Facebook.', { team: team.name })}
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {t('Pulled every few minutes from {n} official {team} accounts and kept here.', { n: verified.length, team: team.name })}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0 flex-wrap">
