@@ -419,6 +419,7 @@ export const hi: Record<string, string> = {
   "Share your invite link from your profile. When a friend signs up with it and plays their first game (Dream XI, a daily game, a prediction or a forum post), you both get {n} points.": "अपनी प्रोफ़ाइल से इनवाइट लिंक शेयर करें. जब कोई दोस्त उससे साइन अप करके अपना पहला गेम खेलता है (Dream XI, रोज़ाना गेम, अनुमान या फ़ोरम पोस्ट), तो आप दोनों को {n} पॉइंट मिलते हैं.",
   "Share your link. When a friend signs up with it and plays their first game, you both get {n} points.": "अपना लिंक शेयर करें. जब कोई दोस्त उससे साइन अप करके पहला गेम खेलता है, आप दोनों को {n} पॉइंट मिलते हैं.",
   "Show QR": "QR दिखाएं",
+  "Show latest Instagram posts from {handle}": "{handle} की ताज़ा Instagram पोस्ट दिखाएं",
   "Show TikTok videos from {handle}": "{handle} के TikTok वीडियो दिखाएं",
   "Show here": "यहीं दिखाएं",
   "Show posts from {handle}": "{handle} की पोस्ट दिखाएं",

@@ -85,7 +85,7 @@ Everything shown is a real post from an official account. Every post kept is sto
 |---|---|---|
 | YouTube | Channel RSS, every 10 minutes | None |
 | X | Public timeline every 10 minutes when X allows it. Otherwise the harvester (below) finds posts, and the X timeline embed is shown | Gemini key for the harvester |
-| Instagram | Meta's official Business Discovery API, every 10 minutes | Meta token, once (below) |
+| Instagram | Meta's official Business Discovery API, every 10 minutes. Until that is set up, Instagram's own profile embed shows the latest posts | Meta token, once (below) |
 | TikTok | Harvester (below); the creator embed is always shown | Gemini key |
 | Facebook, Threads, LinkedIn | Live embed or profile card; these platforms offer no public feed without an approved app | Optional feed address |
 | Any account | A **feed address** (RSS/Atom) on the account, e.g. from an RSS bridge service | Admin → Handles → edit → Feed address |
@@ -218,6 +218,6 @@ User journeys and what covers them: [docs/CUJS.md](docs/CUJS.md). Ideas that cam
   - SMTP and Curator secrets
   - sync errors
   - the confidential proposal
-- **Embeds:** third-party embeds load only when a fan taps them, and YouTube uses the youtube-nocookie player.
+- **Embeds:** an account's live embed (YouTube uploads, X timeline, Instagram profile, Facebook page, TikTok creator) loads when it scrolls into view on a team or social page; single-post embeds load only when tapped. YouTube uses the youtube-nocookie player.
 
 © 2026 Azlir Sports.

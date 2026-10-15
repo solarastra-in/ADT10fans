@@ -8,10 +8,9 @@ import type { FeedItem, SocialHandle, Team } from '../types';
  * Social content inside the site.
  *
  * Videos play in place (YouTube, privacy-enhanced youtube-nocookie.com). Profiles use each
- * platform's own embed (X timeline, Facebook page plugin, TikTok creator embed); Instagram,
- * Threads and LinkedIn have no profile embed, so they show a profile card, and their single posts
- * embed when an admin adds them by link. Third-party embeds only load when the fan taps them,
- * so no tracking scripts run until then.
+ * platform's own embed (X timeline, Facebook page plugin, TikTok creator embed, Instagram
+ * profile embed). Threads and LinkedIn have no profile embed, so they show a profile card. When an account
+ * has no stored posts, its live embed loads once it scrolls into view; single-post embeds load on tap.
  */
 
 export function XLogo({ className = 'w-4 h-4' }: { className?: string }) {
@@ -68,13 +67,34 @@ function loadScript(src: string, id: string): Promise<void> {
   });
 }
 
-/** Click-to-load wrapper so third-party embeds only load when wanted. */
-function Gate({ label, children, platform, minHeight = 220 }: { label: string; children: () => React.ReactNode; platform: string; minHeight?: number }) {
+/**
+ * Wrapper for third-party embeds. Single posts load when tapped; an account's live feed
+ * (`auto`) loads by itself once it scrolls into view, so a team page shows each channel's
+ * latest content without any taps. The button stays as a fallback where IntersectionObserver
+ * is missing.
+ */
+function Gate({ label, children, platform, minHeight = 220, auto = false }: { label: string; children: () => React.ReactNode; platform: string; minHeight?: number; auto?: boolean }) {
   const t = useT();
   const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!auto || open || !ref.current || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(
+      entries => {
+        if (entries.some(e => e.isIntersecting)) {
+          setOpen(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin: '300px 0px' }
+    );
+    io.observe(ref.current);
+    return () => io.disconnect();
+  }, [auto, open]);
   if (open) return <>{children()}</>;
   return (
     <button
+      ref={ref}
       type="button"
       onClick={() => setOpen(true)}
       className="w-full rounded-xl border border-dashed border-slate-700 bg-slate-950/60 hover:bg-slate-900 flex flex-col items-center justify-center gap-2 text-sm text-slate-300 font-bold"
@@ -122,7 +142,7 @@ export function ChannelPlayer({ channelId, title }: { channelId: string; title: 
   const t = useT();
   const list = `UU${channelId.slice(2)}`;
   return (
-    <Gate label={t('Play latest videos from {name}', { name: title })} platform="YouTube" minHeight={200}>
+    <Gate label={t('Play latest videos from {name}', { name: title })} platform="YouTube" minHeight={200} auto>
       {() => (
         <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-black">
           <iframe
@@ -219,25 +239,48 @@ function LiveEmbed({ handle, team, name }: { handle: SocialHandle; team?: Team |
       return handle.meta?.channelId ? null : <ProfileCard handle={handle} team={team} />;
     case 'X':
       return (
-        <Gate label={t('Show posts from {handle}', { handle: handle.handle })} platform="X">
+        <Gate label={t('Show posts from {handle}', { handle: handle.handle })} platform="X" auto>
           {() => <XTimeline screenName={screen} />}
         </Gate>
       );
     case 'Facebook':
       return (
-        <Gate label={t('Show the {name} Facebook page', { name })} platform="Facebook">
+        <Gate label={t('Show the {name} Facebook page', { name })} platform="Facebook" auto>
           {() => <FacebookPage url={handle.url} name={name} />}
         </Gate>
       );
     case 'TikTok':
       return (
-        <Gate label={t('Show TikTok videos from {handle}', { handle: handle.handle })} platform="TikTok">
+        <Gate label={t('Show TikTok videos from {handle}', { handle: handle.handle })} platform="TikTok" auto>
           {() => <TikTokCreator username={screen} />}
         </Gate>
+      );
+    case 'Instagram':
+      return (
+        <div className="space-y-2">
+          <Gate label={t('Show latest Instagram posts from {handle}', { handle: handle.handle })} platform="Instagram" auto>
+            {() => <InstagramProfile username={screen} name={name} />}
+          </Gate>
+          <ProfileCard handle={handle} team={team} />
+        </div>
       );
     default:
       return <ProfileCard handle={handle} team={team} />;
   }
+}
+
+/** Instagram's own profile embed: the account header and a grid of its latest public posts. */
+function InstagramProfile({ username, name }: { username: string; name: string }) {
+  return (
+    <iframe
+      src={`https://www.instagram.com/${encodeURIComponent(username)}/embed/`}
+      title={`${name} on Instagram`}
+      className="w-full rounded-xl bg-white"
+      style={{ height: 620, border: 'none' }}
+      loading="lazy"
+      data-testid="ig-profile-iframe"
+    />
+  );
 }
 
 /** A handle as it appears in the site: verified profile header and its authentic pulled social posts. */

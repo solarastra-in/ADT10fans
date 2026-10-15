@@ -419,6 +419,7 @@ export const ur: Record<string, string> = {
   "Share your invite link from your profile. When a friend signs up with it and plays their first game (Dream XI, a daily game, a prediction or a forum post), you both get {n} points.": "اپنی پروفائل سے دعوتی لنک شیئر کریں۔ جب کوئی دوست اس سے سائن اپ کر کے اپنی پہلی گیم کھیلے (Dream XI، روزانہ گیم، پیش گوئی یا فورم پوسٹ) تو آپ دونوں کو {n} پوائنٹس ملتے ہیں۔",
   "Share your link. When a friend signs up with it and plays their first game, you both get {n} points.": "اپنا لنک شیئر کریں۔ جب کوئی دوست اس سے سائن اپ کر کے پہلی گیم کھیلے، آپ دونوں کو {n} پوائنٹس ملتے ہیں۔",
   "Show QR": "QR دکھائیں",
+  "Show latest Instagram posts from {handle}": "{handle} کی تازہ Instagram پوسٹس دکھائیں",
   "Show TikTok videos from {handle}": "{handle} کی TikTok ویڈیوز دکھائیں",
   "Show here": "یہیں دکھائیں",
   "Show posts from {handle}": "{handle} کی پوسٹس دکھائیں",

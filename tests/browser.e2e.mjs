@@ -95,10 +95,15 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
   await go(anon.page, '/videos');
   const play = anon.page.locator('[data-testid="yt-play"]').first();
   await play.click();
-  const src = await anon.page.locator('iframe[src*="youtube-nocookie.com/embed/"]').first().getAttribute('src');
+  const src = await anon.page.locator('[data-testid="yt-iframe"]').first().getAttribute('src');
   ok(`${w}px tapping a video plays it in the page`, /embed\/TESTvid\w{4}\?autoplay=1/.test(src), src);
 
-  // 3. Team social handles: each platform loads its official embed on tap.
+  // 3. Team social handles: each account's live embed loads by itself once scrolled into view.
+  const reveal = async (platform, testid) => {
+    const box = anon.page.locator(`[data-testid="handle-embed"][data-platform="${platform}"]`).first();
+    await box.scrollIntoViewIfNeeded();
+    return anon.page.locator(testid).first().waitFor({ state: 'attached', timeout: 5000 }).then(() => true, () => false);
+  };
   const channels = async () => {
     await anon.page.locator('button, [role="tab"]', { hasText: 'Social & Videos' }).first().click();
     // Teams with confirmed accounts have a Posts / Embeds switch; open the embeds.
@@ -109,16 +114,17 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
   await channels();
   const bullsEmbeds = await anon.page.locator('[data-testid="handle-embed"]').evaluateAll(els => els.map(e => e.getAttribute('data-platform')));
   ok(`${w}px Bulls page shows each official channel`, ['YouTube', 'X', 'Instagram', 'Threads'].every(p => bullsEmbeds.includes(p)), bullsEmbeds);
-  await anon.page.locator('[data-embed-gate="YouTube"]').first().click();
+  ok(`${w}px Bulls YouTube channel loads without a tap`, await reveal('YouTube', '[data-testid="yt-channel-iframe"]'));
   ok(`${w}px Bulls YouTube channel plays its uploads`, (await anon.page.locator('[data-testid="yt-channel-iframe"]').getAttribute('src')).includes('list=UU2XL7xVAund-zNH6XI8Rb0w'));
-  await anon.page.locator('[data-embed-gate="X"]').first().click();
+  ok(`${w}px Bulls X timeline loads without a tap`, await reveal('X', '[data-testid="x-timeline"], [data-testid="x-timeline-failed"]'));
   ok(`${w}px Bulls X timeline embeds @UAEBullsT10`, (await anon.page.locator('[data-testid="x-timeline"] a, [data-testid="x-timeline-failed"] a').first().getAttribute('href')).endsWith('/UAEBullsT10'));
+  ok(`${w}px Bulls Instagram profile embed is the official account`, (await reveal('Instagram', '[data-testid="ig-profile-iframe"]')) && (await anon.page.locator('[data-testid="ig-profile-iframe"]').first().getAttribute('src')) === 'https://www.instagram.com/delhibullst10/embed/');
   ok(`${w}px Instagram/Threads open the real profiles`, (await anon.page.locator('[data-testid="profile-card"]').evaluateAll(els => els.map(e => e.getAttribute('href')))).every(u => /^https:\/\/www\.(instagram|threads)\.com\/@?delhibullst10/.test(u)));
   await go(anon.page, '/teams/aces');
   await channels();
-  await anon.page.locator('[data-embed-gate="Facebook"]').first().click();
+  ok(`${w}px Aces Facebook page loads without a tap`, await reveal('Facebook', '[data-testid="fb-iframe"]'));
   ok(`${w}px Aces Facebook page plugin points at the official page`, decodeURIComponent(await anon.page.locator('[data-testid="fb-iframe"]').getAttribute('src')).includes('facebook.com/arabianacesofficial'));
-  await anon.page.locator('[data-embed-gate="TikTok"]').first().click();
+  ok(`${w}px Aces TikTok loads without a tap`, await reveal('TikTok', '[data-testid="tiktok-embed"]'));
   ok(`${w}px Aces TikTok creator embed`, (await anon.page.locator('[data-testid="tiktok-embed"] blockquote').getAttribute('cite')) === 'https://www.tiktok.com/@arabianaces');
   ok(`${w}px Aces page fits after embeds open`, await noOverflow(anon.page));
   await go(anon.page, '/teams/lions');
