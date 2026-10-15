@@ -202,6 +202,163 @@ export const OFFICIAL_SOCIAL_POSTS: Omit<FeedItem, 'id' | 'createdAt'>[] = [
   },
 
   // ==========================================
+  // UNITED TIGERS (tigers)
+  // Handles: @UnitedTigersT10 (X, YT), @unitedtigerst10 (IG, Threads)
+  // ==========================================
+  {
+    teamId: 'tigers',
+    platform: 'X',
+    kind: 'post',
+    category: 'social',
+    title: 'The Tigers roar in Abu Dhabi! 🐅🔥 Ready to dominate 2026',
+    summary: 'Our squad is primed and hungry for silverware. Zayed Cricket Stadium, get ready for sheer batting devastation! #UnitedTigers #AbuDhabiT10 #RoarWithUs',
+    url: 'https://x.com/UnitedTigersT10/status/1841790123491829012',
+    image: 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=800&q=80',
+    source: '@UnitedTigersT10',
+    status: 'pinned',
+    publishedAt: new Date(Date.now() - 5 * 3600_000).toISOString(),
+    likes: 3120,
+    sourceType: 'social-syndication',
+  },
+  {
+    teamId: 'tigers',
+    platform: 'Instagram',
+    kind: 'post',
+    category: 'social',
+    title: 'Precision, Power, Pace! United Tigers training drills 🏏⚡',
+    summary: 'Every ball counts in the 10-over shootout. Intense prep under the Abu Dhabi lights! #UnitedTigers #CricketTraining #ADT10',
+    url: 'https://www.instagram.com/p/DAq_TigersCamp2026/',
+    image: 'https://images.unsplash.com/photo-1531415074868-036b107e775a?auto=format&fit=crop&w=800&q=80',
+    source: '@unitedtigerst10',
+    status: 'live',
+    publishedAt: new Date(Date.now() - 16 * 3600_000).toISOString(),
+    likes: 6410,
+    sourceType: 'native-harvester',
+  },
+  {
+    teamId: 'tigers',
+    platform: 'YouTube',
+    kind: 'video',
+    category: 'social',
+    title: 'United Tigers 2026 Season Anthem & Official Jersey Unveil',
+    summary: 'Step inside the Tigers den! Experience the heart-pounding beats of our new anthem and official kit reveal.',
+    url: 'https://www.youtube.com/watch?v=9bZkp7q19f0',
+    videoId: '9bZkp7q19f0',
+    image: 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=800&q=80',
+    source: '@UnitedTigersT10',
+    status: 'live',
+    publishedAt: new Date(Date.now() - 44 * 3600_000).toISOString(),
+    views: '54,000 views',
+    likes: 4200,
+    sourceType: 'youtube-rss',
+  },
+
+  // ==========================================
+  // YAS LIONS (lions)
+  // Handles: @YasLionsT10 (X, YT), @yaslionst10 (IG, Threads, TikTok)
+  // ==========================================
+  {
+    teamId: 'lions',
+    platform: 'X',
+    kind: 'post',
+    category: 'social',
+    title: 'Pride of Yas Island! The Lions squad has touched down 🦁👑',
+    summary: 'From the Yas Marina waterfront to Zayed Cricket Stadium, the pride is united. Are you ready for 10 overs of pure power cricket? #YasLions #PrideOfYas #AbuDhabiT10',
+    url: 'https://x.com/YasLionsT10/status/1841890123849182091',
+    image: 'https://images.unsplash.com/photo-1624526267942-ab0ff8a3e972?auto=format&fit=crop&w=800&q=80',
+    source: '@YasLionsT10',
+    status: 'pinned',
+    publishedAt: new Date(Date.now() - 8 * 3600_000).toISOString(),
+    likes: 4180,
+    sourceType: 'social-syndication',
+  },
+  {
+    teamId: 'lions',
+    platform: 'Instagram',
+    kind: 'post',
+    category: 'social',
+    title: 'Roaring into 2026: Official Yas Lions Matchday Look! ✨🦁',
+    summary: 'Royal gold and emerald green. The king of the jungle is ready to claim the T10 throne! #YasLions #MatchDayLook #ADT10',
+    url: 'https://www.instagram.com/p/DAq_YasLionsKit/',
+    image: 'https://images.unsplash.com/photo-1587280501635-68a0e82cd5ff?auto=format&fit=crop&w=800&q=80',
+    source: '@yaslionst10',
+    status: 'live',
+    publishedAt: new Date(Date.now() - 22 * 3600_000).toISOString(),
+    likes: 8930,
+    sourceType: 'native-harvester',
+  },
+
+  // ==========================================
+  // EMIRATES EAGLES (eagles)
+  // Handles: @EmiratesEaglesT10 (X, YT), @emirateseaglest10 (IG, Threads)
+  // ==========================================
+  {
+    teamId: 'eagles',
+    platform: 'X',
+    kind: 'post',
+    category: 'social',
+    title: 'Soaring Higher! Emirates Eagles announce full tactical lineup 🦅💨',
+    summary: 'High strike rates and pinpoint bowling. The Eagles are taking flight in the 2026 Abu Dhabi T10 tournament! #EmiratesEagles #SoarHigh #CricketFastestFormat',
+    url: 'https://x.com/EmiratesEaglesT10/status/1841980123849120918',
+    image: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=800&q=80',
+    source: '@EmiratesEaglesT10',
+    status: 'pinned',
+    publishedAt: new Date(Date.now() - 10 * 3600_000).toISOString(),
+    likes: 2950,
+    sourceType: 'social-syndication',
+  },
+  {
+    teamId: 'eagles',
+    platform: 'Instagram',
+    kind: 'post',
+    category: 'social',
+    title: 'Flight Mode: Activated! Pre-match fielding drills 🦅🎯',
+    summary: 'Every run saved is gold in 60 balls. Sharpening the reflexes for opening night at Zayed Cricket Stadium! #EmiratesEagles #FieldingMastery',
+    url: 'https://www.instagram.com/p/DAq_EaglesFielding/',
+    image: 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=800&q=80',
+    source: '@emirateseaglest10',
+    status: 'live',
+    publishedAt: new Date(Date.now() - 30 * 3600_000).toISOString(),
+    likes: 5120,
+    sourceType: 'native-harvester',
+  },
+
+  // ==========================================
+  // ROYAL DESERT CHAMPIONS (champions)
+  // Handles: @RoyalChampionsT10 (X, YT), @royaldesertchampions (IG, Threads)
+  // ==========================================
+  {
+    teamId: 'champions',
+    platform: 'X',
+    kind: 'post',
+    category: 'social',
+    title: 'Crown in Sight! Royal Desert Champions set to defend our honor 👑⚔️',
+    summary: 'A squad forged in royalty and steel. The Desert Champions are ready to conquer the 2026 Abu Dhabi T10! #DesertChampions #RoyalCricket #ADT10',
+    url: 'https://x.com/RoyalChampionsT10/status/1842090123849182910',
+    image: 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?auto=format&fit=crop&w=800&q=80',
+    source: '@RoyalChampionsT10',
+    status: 'pinned',
+    publishedAt: new Date(Date.now() - 12 * 3600_000).toISOString(),
+    likes: 3840,
+    sourceType: 'social-syndication',
+  },
+  {
+    teamId: 'champions',
+    platform: 'Instagram',
+    kind: 'post',
+    category: 'social',
+    title: 'Majestic in Maroon & Gold! Champions 2026 Armor 🛡️✨',
+    summary: 'Embossed with the iconic desert falcon crest. Order your replica jersey now on our official team portal! #DesertChampions #JerseyReveal',
+    url: 'https://www.instagram.com/p/DAq_ChampionsArmor/',
+    image: 'https://images.unsplash.com/photo-1531415074868-036b107e775a?auto=format&fit=crop&w=800&q=80',
+    source: '@royaldesertchampions',
+    status: 'live',
+    publishedAt: new Date(Date.now() - 25 * 3600_000).toISOString(),
+    likes: 7280,
+    sourceType: 'native-harvester',
+  },
+
+  // ==========================================
   // LEAGUE OFFICIAL (T10 League)
   // Handles: @T10League (X), @T10LeagueOfficial (YT), @t10league (IG, FB), @abudhabit10 (TikTok)
   // ==========================================

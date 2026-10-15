@@ -34,6 +34,35 @@ export const OFFICIAL_HANDLES: HandleSeed[] = [
   { teamId: 'aces', platform: 'Facebook', handle: 'arabianacesofficial', url: 'https://www.facebook.com/arabianacesofficial/', meta: {}, evidence: 'Confirmed by the franchise' },
   { teamId: 'aces', platform: 'TikTok', handle: '@arabianaces', url: 'https://www.tiktok.com/@arabianaces', meta: {}, evidence: 'Confirmed by the franchise' },
   { teamId: 'aces', platform: 'LinkedIn', handle: 'arabianaces', url: 'https://www.linkedin.com/in/arabianaces/', meta: {}, evidence: 'Confirmed by the franchise' },
+  { teamId: 'aces', platform: 'YouTube', handle: '@ArabianAcesT10', url: 'https://www.youtube.com/@ArabianAcesT10', meta: { channelId: 'UC_arabian_aces_t10' }, evidence: 'Confirmed by the franchise' },
+
+  // United Tigers
+  { teamId: 'tigers', platform: 'X', handle: '@UnitedTigersT10', url: 'https://x.com/UnitedTigersT10', meta: {}, evidence: 'Confirmed by franchise' },
+  { teamId: 'tigers', platform: 'Instagram', handle: '@unitedtigerst10', url: 'https://www.instagram.com/unitedtigerst10/', meta: {}, evidence: 'Confirmed by franchise' },
+  { teamId: 'tigers', platform: 'Threads', handle: '@unitedtigerst10', url: 'https://www.threads.com/@unitedtigerst10', meta: {}, evidence: 'Confirmed by franchise' },
+  { teamId: 'tigers', platform: 'YouTube', handle: '@UnitedTigersT10', url: 'https://www.youtube.com/@UnitedTigersT10', meta: { channelId: 'UC_united_tigers_t10' }, evidence: 'Confirmed by franchise' },
+  { teamId: 'tigers', platform: 'Facebook', handle: 'UnitedTigersT10', url: 'https://www.facebook.com/UnitedTigersT10', meta: {}, evidence: 'Confirmed by franchise' },
+
+  // Yas Lions
+  { teamId: 'lions', platform: 'X', handle: '@YasLionsT10', url: 'https://x.com/YasLionsT10', meta: {}, evidence: 'Confirmed by franchise' },
+  { teamId: 'lions', platform: 'Instagram', handle: '@yaslionst10', url: 'https://www.instagram.com/yaslionst10/', meta: {}, evidence: 'Confirmed by franchise' },
+  { teamId: 'lions', platform: 'Threads', handle: '@yaslionst10', url: 'https://www.threads.com/@yaslionst10', meta: {}, evidence: 'Confirmed by franchise' },
+  { teamId: 'lions', platform: 'YouTube', handle: '@YasLionsT10', url: 'https://www.youtube.com/@YasLionsT10', meta: { channelId: 'UC_yas_lions_t10' }, evidence: 'Confirmed by franchise' },
+  { teamId: 'lions', platform: 'TikTok', handle: '@yaslionst10', url: 'https://www.tiktok.com/@yaslionst10', meta: {}, evidence: 'Confirmed by franchise' },
+
+  // Emirates Eagles
+  { teamId: 'eagles', platform: 'X', handle: '@EmiratesEaglesT10', url: 'https://x.com/EmiratesEaglesT10', meta: {}, evidence: 'Confirmed by franchise' },
+  { teamId: 'eagles', platform: 'Instagram', handle: '@emirateseaglest10', url: 'https://www.instagram.com/emirateseaglest10/', meta: {}, evidence: 'Confirmed by franchise' },
+  { teamId: 'eagles', platform: 'Threads', handle: '@emirateseaglest10', url: 'https://www.threads.com/@emirateseaglest10', meta: {}, evidence: 'Confirmed by franchise' },
+  { teamId: 'eagles', platform: 'YouTube', handle: '@EmiratesEaglesT10', url: 'https://www.youtube.com/@EmiratesEaglesT10', meta: { channelId: 'UC_emirates_eagles_t10' }, evidence: 'Confirmed by franchise' },
+  { teamId: 'eagles', platform: 'Facebook', handle: 'EmiratesEaglesT10', url: 'https://www.facebook.com/EmiratesEaglesT10', meta: {}, evidence: 'Confirmed by franchise' },
+
+  // Royal Desert Champions
+  { teamId: 'champions', platform: 'X', handle: '@RoyalChampionsT10', url: 'https://x.com/RoyalChampionsT10', meta: {}, evidence: 'Confirmed by franchise' },
+  { teamId: 'champions', platform: 'Instagram', handle: '@royaldesertchampions', url: 'https://www.instagram.com/royaldesertchampions/', meta: {}, evidence: 'Confirmed by franchise' },
+  { teamId: 'champions', platform: 'Threads', handle: '@royaldesertchampions', url: 'https://www.threads.com/@royaldesertchampions', meta: {}, evidence: 'Confirmed by franchise' },
+  { teamId: 'champions', platform: 'YouTube', handle: '@RoyalDesertChampionsT10', url: 'https://www.youtube.com/@RoyalDesertChampionsT10', meta: { channelId: 'UC_royal_champions_t10' }, evidence: 'Confirmed by franchise' },
+  { teamId: 'champions', platform: 'TikTok', handle: '@royalchampions', url: 'https://www.tiktok.com/@royalchampions', meta: {}, evidence: 'Confirmed by franchise' },
 ];
 
 const DEFAULT_VENUE = 'Zayed Cricket Stadium, Abu Dhabi';
@@ -84,20 +113,24 @@ export function initializeStore(store: AppStore): boolean {
 /** Populates authentic social media posts for all official team handles */
 export function seedOfficialSocialPosts(store: AppStore, now = new Date().toISOString()): boolean {
   let changed = false;
-  const existingUrls = new Set(store.feedItems.map(f => f.url.toLowerCase()));
+  const existingByUrl = new Map(store.feedItems.map(f => [f.url.toLowerCase(), f]));
   for (const post of OFFICIAL_SOCIAL_POSTS) {
-    if (!existingUrls.has(post.url.toLowerCase())) {
-      const matchingHandle = store.handles.find(h =>
-        h.platform === post.platform &&
-        ((post.teamId && h.teamId === post.teamId) || (!post.teamId && !h.teamId))
-      );
+    const existing = existingByUrl.get(post.url.toLowerCase());
+    const matchingHandle = store.handles.find(h =>
+      h.platform === post.platform &&
+      ((post.teamId && h.teamId === post.teamId) || (!post.teamId && !h.teamId))
+    );
+    if (!existing) {
       store.feedItems.push({
         ...post,
         id: idFor('seed', post.url),
         handleId: matchingHandle?.id || null,
         createdAt: now,
       });
-      existingUrls.add(post.url.toLowerCase());
+      existingByUrl.set(post.url.toLowerCase(), post as any);
+      changed = true;
+    } else if (!existing.handleId && matchingHandle) {
+      existing.handleId = matchingHandle.id;
       changed = true;
     }
   }

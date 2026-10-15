@@ -102,7 +102,7 @@ export default function SocialPage({ mode }: { mode: Mode }) {
             {youtube.map(h => (
               <div key={h.id} className="space-y-2">
                 <p className="text-xs font-bold text-slate-400">{teamById(h.teamId)?.name || t('League')} · {h.handle}</p>
-                <HandleEmbed handle={h} team={teamById(h.teamId)} />
+                <HandleEmbed handle={h} team={teamById(h.teamId)} items={items} />
               </div>
             ))}
           </div>
@@ -166,7 +166,7 @@ export default function SocialPage({ mode }: { mode: Mode }) {
                         <a href={h.url} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-slate-400 hover:text-white inline-flex items-center gap-1.5">
                           <PlatformIcon platform={h.platform} /> {h.platform} · {h.handle}
                         </a>
-                        <HandleEmbed handle={h} team={teamById(h.teamId)} />
+                        <HandleEmbed handle={h} team={teamById(h.teamId)} items={items} />
                       </div>
                     ))}
                   </div>

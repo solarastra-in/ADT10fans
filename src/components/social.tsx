@@ -210,35 +210,73 @@ function TikTokCreator({ username }: { username: string }) {
   );
 }
 
-/** A handle as it appears in the site: the best in-site experience each platform allows. */
-export function HandleEmbed({ handle, team }: { handle: SocialHandle; team?: Team | null }) {
+/** A handle as it appears in the site: verified profile header and its authentic pulled social posts. */
+export function HandleEmbed({ handle, team, items }: { handle: SocialHandle; team?: Team | null; items?: FeedItem[] }) {
   const t = useT();
   const name = team?.name || 'Abu Dhabi T10';
-  const screen = handle.handle.replace(/^@/, '');
-  switch (handle.platform) {
-    case 'YouTube':
-      return handle.meta?.channelId ? <ChannelPlayer channelId={handle.meta.channelId} title={`${name} on YouTube`} /> : <ProfileCard handle={handle} team={team} />;
-    case 'X':
-      return (
-        <Gate label={t('Show posts from {handle}', { handle: handle.handle })} platform="X">
-          {() => <XTimeline screenName={screen} />}
-        </Gate>
-      );
-    case 'Facebook':
-      return (
-        <Gate label={t('Show the {name} Facebook page', { name })} platform="Facebook">
-          {() => <FacebookPage url={handle.url} name={name} />}
-        </Gate>
-      );
-    case 'TikTok':
-      return (
-        <Gate label={t('Show TikTok videos from {handle}', { handle: handle.handle })} platform="TikTok">
-          {() => <TikTokCreator username={screen} />}
-        </Gate>
-      );
-    default:
-      return <ProfileCard handle={handle} team={team} />;
-  }
+  const meta = PLATFORM_META[handle.platform] || PLATFORM_META.Web;
+
+  // Filter items matching this handle by id, source handle name, or platform + team
+  const handlePosts = (items || []).filter(i =>
+    i.handleId === handle.id ||
+    i.source.toLowerCase() === handle.handle.toLowerCase() ||
+    (i.platform === handle.platform && (i.teamId === handle.teamId || (!i.teamId && !handle.teamId)) && i.category === 'social')
+  );
+
+  return (
+    <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-4 space-y-3" data-testid="handle-embed" data-platform={handle.platform}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className="w-10 h-10 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center shrink-0">
+            <PlatformIcon platform={handle.platform} className="w-5 h-5" />
+          </span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="font-black text-white text-sm truncate">{handle.handle}</span>
+              <span className="px-1.5 py-0.5 rounded-full bg-emerald-400/15 border border-emerald-400/30 text-emerald-400 text-[10px] font-black uppercase tracking-wide">
+                {t('Verified Handle')}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 truncate">
+              {handlePosts.length > 0
+                ? t('{n} post(s) pulled from {platform}', { n: handlePosts.length, platform: meta.label })
+                : t('Official {platform} channel', { platform: meta.label })}
+            </p>
+          </div>
+        </div>
+        <a
+          href={handle.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-bold text-amber-400 hover:text-amber-300 hover:border-slate-700 transition-colors shrink-0"
+        >
+          {t('Visit {platform}', { platform: meta.label })} <ExternalLink className="w-3 h-3" />
+        </a>
+      </div>
+
+      {handle.platform === 'YouTube' && handle.meta?.channelId && (
+        <ChannelPlayer channelId={handle.meta.channelId} title={`${name} on YouTube`} />
+      )}
+
+      {handlePosts.length > 0 ? (
+        <div className="space-y-3 pt-1">
+          <div className="text-[11px] font-black uppercase text-slate-400 tracking-wider">
+            {t('Pulled Posts from {handle}', { handle: handle.handle })}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {handlePosts.map(post => (
+              <FeedCard key={post.id} item={post} team={team} />
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 text-center text-xs text-slate-400">
+          <p className="font-semibold text-slate-300">{t('Channel linked & monitored')}</p>
+          <p className="mt-0.5 text-slate-500">{t('Posts from {handle} are synced automatically into the team stream.', { handle: handle.handle })}</p>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function ProfileCard({ handle, team }: { handle: SocialHandle; team?: Team | null }) {
