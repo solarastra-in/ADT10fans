@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { AppStore, db, FeedItem, SocialHandle } from './db';
-import { OFFICIAL_SOCIAL_POSTS } from './data/officialSocialPosts';
+import { fetchInstagram, instagramConfigured } from './socialSources';
 
 /**
  * Pulls public content for the verified handles and the news searches.
@@ -25,7 +25,8 @@ import { OFFICIAL_SOCIAL_POSTS } from './data/officialSocialPosts';
 const UA = 'Mozilla/5.0 (compatible; ADT10FansBot/1.0; +https://abudhabit10.com)';
 const MAX_NEWS = 150;
 const MAX_VIDEOS = 300;
-const MAX_POSTS = 400;
+/** Social posts are kept so fans can scroll back through the season (pinned posts are never dropped). */
+const MAX_POSTS = 1500;
 
 function decodeEntities(s: string) {
   return s
@@ -343,6 +344,8 @@ export interface ExtractedMetadata {
   kind: FeedItem['kind'];
   videoId?: string;
   publishedAt?: string;
+  /** False when no real title could be read (the title is then a generic placeholder). */
+  titleFound?: boolean;
 }
 
 export function platformOfUrl(url: string): FeedItem['platform'] {
@@ -376,9 +379,9 @@ export async function extractPostMetadata(url: string): Promise<ExtractedMetadat
       const j = JSON.parse(await fetchText(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(`https://www.youtube.com/watch?v=${yt}`)}`, 6000));
       metadata.title = j.title || `YouTube Video`;
       metadata.author = j.author_name;
-      return { title: metadata.title || `YouTube Video`, image: metadata.image, author: metadata.author, platform: 'YouTube', kind: 'video', videoId: yt };
+      return { title: metadata.title || `YouTube Video`, image: metadata.image, author: metadata.author, platform: 'YouTube', kind: 'video', videoId: yt, titleFound: Boolean(j.title) };
     } catch {
-      return { title: `YouTube Video (${yt})`, image: metadata.image, platform: 'YouTube', kind: 'video', videoId: yt };
+      return { title: `YouTube Video (${yt})`, image: metadata.image, platform: 'YouTube', kind: 'video', videoId: yt, titleFound: false };
     }
   }
 
@@ -445,6 +448,7 @@ export async function extractPostMetadata(url: string): Promise<ExtractedMetadat
     kind: metadata.kind || (platform === 'Web' ? 'article' : 'post'),
     videoId: metadata.videoId,
     publishedAt: metadata.publishedAt || new Date().toISOString(),
+    titleFound: Boolean(metadata.title || metadata.summary),
   };
 }
 
@@ -553,7 +557,7 @@ export function merge(incoming: FeedItem[], store: AppStore = db.get()): number 
   };
   keep(['news-rss'], MAX_NEWS);
   keep(['youtube-rss'], MAX_VIDEOS);
-  keep(['social-syndication', 'curator', 'native-harvester', 'rss'], MAX_POSTS);
+  keep(['social-syndication', 'curator', 'native-harvester', 'rss', 'instagram-graph', 'discovery'], MAX_POSTS);
   store.feedItems.sort((a, b) => (a.status === 'pinned' ? -1 : 0) - (b.status === 'pinned' ? -1 : 0) || +new Date(b.publishedAt) - +new Date(a.publishedAt));
   return added;
 }
@@ -573,6 +577,7 @@ export async function bulkIngestUrls(
     cleanUrls.map(async url => {
       try {
         const meta = await extractPostMetadata(url);
+        if (!meta.titleFound) throw new Error('could not read a title; add it on its own with "Add by link" and type one in');
         items.push({
           id: idFor('bulk', url),
           teamId,
@@ -615,67 +620,73 @@ export const FEED_PLATFORMS_WITH_PULL = new Set<SocialHandle['platform']>([
   'RSS',
 ]);
 
-async function pullHandle(h: SocialHandle): Promise<HandleResult> {
-  try {
-    let items: FeedItem[] = [];
-    let channelId: string | undefined;
+/** A feed address (RSS/Atom) set on an account, e.g. from an RSS bridge service. */
+const feedUrlOf = (h: SocialHandle) => {
+  const u = String(h.meta?.feedUrl || '').trim();
+  return /^https:\/\//.test(u) ? u : h.platform === 'RSS' ? h.url : '';
+};
 
+/**
+ * Pulls one account. Only real responses become items; when a platform cannot be read the
+ * status says so (and why), and the site shows that platform's own embed or a profile card.
+ */
+async function pullHandle(h: SocialHandle): Promise<HandleResult> {
+  const items: FeedItem[] = [];
+  const notes: string[] = [];
+  let channelId: string | undefined;
+  let status: HandleResult['status'] = 'embed-only';
+  let failed = false;
+  const tag = (list: FeedItem[]) => list.map(i => ({ ...i, handleId: h.id, teamId: h.teamId }));
+
+  const feedUrl = feedUrlOf(h);
+  if (feedUrl) {
+    try {
+      const got = parseRssXml(await fetchText(feedUrl, 9000), h).map(i => (h.platform !== 'RSS' && i.platform === 'Web' ? { ...i, platform: h.platform as FeedItem['platform'] } : i));
+      items.push(...tag(got));
+      notes.push(`feed address: ${got.length} item(s)`);
+    } catch (e: any) {
+      failed = true;
+      notes.push(`feed address failed (${e?.message || e})`);
+    }
+  }
+
+  try {
     if (h.platform === 'YouTube') {
-      try {
-        const yt = await fetchYouTube(h);
-        items.push(...yt.items);
-        channelId = yt.channelId;
-      } catch {
-        /* fallback to known channel/video seeds below */
-      }
+      const yt = await fetchYouTube(h);
+      items.push(...tag(yt.items));
+      channelId = yt.channelId;
+      notes.push(`${yt.items.length} video(s)`);
     } else if (h.platform === 'X') {
       try {
-        const xItems = await fetchX(h);
-        items.push(...xItems);
-      } catch {
-        /* fallback to official handle posts below */
+        const got = await fetchX(h);
+        items.push(...tag(got));
+        notes.push(got.length ? `${got.length} post(s) from the public timeline` : 'X returned no posts without sign-in; the timeline embed is shown and the harvester looks for posts');
+      } catch (e: any) {
+        notes.push(`X timeline unavailable (${e?.message || e}); the timeline embed is shown and the harvester looks for posts`);
       }
-    } else if (h.platform === 'RSS' || h.url.endsWith('.xml') || h.url.includes('/feed') || h.url.includes('/rss')) {
-      try {
-        const rssItems = await fetchRss(h);
-        items.push(...rssItems);
-      } catch {
-        /* fallback below */
+    } else if (h.platform === 'Instagram') {
+      if (instagramConfigured()) {
+        const got = await fetchInstagram(h);
+        items.push(...tag(got));
+        notes.push(`${got.length} post(s) from Instagram`);
+      } else {
+        status = 'needs-setup';
+        notes.push('Add a Meta access token and your Instagram account id in Admin → Environment to pull posts automatically; until then the profile card is shown');
       }
+    } else if (h.platform === 'TikTok') {
+      notes.push('TikTok has no public feed; the creator embed is shown and the harvester looks for videos');
+    } else if (h.platform !== 'RSS') {
+      notes.push(`${h.platform} has no public feed; shown with its embed or a profile card${feedUrl ? '' : ' (add a feed address to pull posts)'}`);
     }
-
-    // Pull authentic verified handle posts (native Curator.io replacement engine)
-    const matchingSeeds = OFFICIAL_SOCIAL_POSTS.filter(p => {
-      const matchTeam = p.teamId === h.teamId || (!p.teamId && !h.teamId);
-      const matchPlatform = p.platform === h.platform;
-      return matchTeam && matchPlatform;
-    });
-
-    for (const seed of matchingSeeds) {
-      if (!items.some(i => i.url.toLowerCase() === seed.url.toLowerCase())) {
-        items.push({
-          ...seed,
-          id: idFor('seed', seed.url),
-          createdAt: new Date().toISOString(),
-          handleId: h.id,
-        });
-      }
-    }
-
-    // Link handleId to all items
-    items = items.map(i => ({ ...i, handleId: h.id, teamId: h.teamId }));
-
-    return {
-      handleId: h.id,
-      status: items.length ? 'ok' : 'embed-only',
-      note: items.length ? `${items.length} post(s) pulled from ${h.platform}` : `${h.platform} profile linked`,
-      items,
-      channelId,
-    };
   } catch (e: any) {
-    const note = String(e?.message || e);
-    return { handleId: h.id, status: 'error', note, items: [] };
+    failed = true;
+    notes.push(String(e?.message || e));
   }
+
+  if (items.length) status = 'ok';
+  else if (failed) status = 'error';
+  else if (status !== 'needs-setup' && (h.platform === 'YouTube' || h.platform === 'RSS' || (h.platform === 'Instagram' && instagramConfigured()))) status = 'empty';
+  return { handleId: h.id, status, note: notes.join('; '), items, channelId };
 }
 
 export interface SyncSummary {

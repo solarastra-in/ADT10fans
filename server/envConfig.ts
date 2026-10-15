@@ -68,7 +68,12 @@ export const ENV_SPECS: Spec[] = [
   { key: 'CRICBUZZ_SERIES_ID', label: 'Cricbuzz series number', category: 'cricket', defaultValue: '13307', description: 'Used by Squad tools\' Cricbuzz option.' },
 
   // ---- Feeds ----
-  { key: 'FEED_SYNC_MINUTES', label: 'Feed pull interval (minutes)', category: 'social', defaultValue: '30', type: 'number', description: 'How often YouTube, X, Curator and news are pulled (minimum 5).' },
+  { key: 'FEED_SYNC_MINUTES', label: 'Feed pull interval (minutes)', category: 'social', defaultValue: '10', type: 'number', description: 'How often every official account (YouTube, X, Instagram, feed addresses) and the news are pulled (minimum 5).' },
+  { key: 'META_ACCESS_TOKEN', label: 'Meta access token (Instagram)', category: 'social', isSecret: true, type: 'secret', description: 'Pulls the latest public posts of the official Instagram accounts through Meta\'s Business Discovery API. Needs an Instagram professional account of yours linked to a Facebook Page and a Meta app; a System User token from Meta Business Suite does not expire. See the README.' },
+  { key: 'META_IG_USER_ID', label: 'Your Instagram account id', category: 'social', description: 'The numeric Instagram business account id that the token belongs to (Graph API: /me/accounts → instagram_business_account).' },
+  { key: 'META_GRAPH_VERSION', label: 'Meta Graph API version', category: 'social', defaultValue: 'v23.0', description: 'Change only when Meta retires this version.' },
+  { key: 'FEED_WEBHOOK_SECRET', label: 'Feed webhook key', category: 'social', isSecret: true, type: 'secret', description: 'Turns on POST /api/feeds/webhook so tools like Zapier, Make or IFTTT can add post links. Send it in the X-Webhook-Secret header. Leave empty to keep the webhook off.' },
+  { key: 'SOCIAL_DISCOVERY_MINUTES', label: 'Social harvester interval (minutes)', category: 'social', defaultValue: '60', type: 'number', description: 'How often the harvester searches for new X and TikTok posts from the official accounts (uses the Gemini key; minimum 15). Only posts the platform confirms are kept.' },
   { key: 'CURATOR_FEED_ID', label: 'Curator.io feed id', category: 'social', description: 'Also editable in Admin → Settings.' },
   { key: 'CURATOR_API_KEY', label: 'Curator.io API key', category: 'social', isSecret: true, type: 'secret', description: 'Also editable in Admin → Settings.' },
 

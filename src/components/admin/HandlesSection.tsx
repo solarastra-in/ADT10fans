@@ -5,9 +5,9 @@ import { api } from '../../api';
 import { Actions, Button, Card, Chip, EmptyState, Errors, Field, Notice, SectionHeader, Select, Sheet, TextInput, isHttpsUrl, statusTone, useRunner } from './ui';
 import { HANDLE_PLATFORMS, teamName } from './shared';
 
-type Draft = { id?: string; teamId: string; platform: SocialHandle['platform']; handle: string; url: string; status: SocialHandle['status'] };
+type Draft = { id?: string; teamId: string; platform: SocialHandle['platform']; handle: string; url: string; status: SocialHandle['status']; feedUrl: string };
 
-const blank = (teamId = ''): Draft => ({ teamId, platform: 'X', handle: '', url: '', status: 'verified' });
+const blank = (teamId = ''): Draft => ({ teamId, platform: 'X', handle: '', url: '', status: 'verified', feedUrl: '' });
 
 export const HandlesSection: React.FC<{
   handles: SocialHandle[];
@@ -43,6 +43,7 @@ export const HandlesSection: React.FC<{
     if (!draft.url.trim()) e.url = 'URL is required.';
     else if (!isHttpsUrl(draft.url)) e.url = 'URL must start with https://';
     if (!draft.handle.trim()) e.handle = 'Handle / display name is required.';
+    if (draft.feedUrl.trim() && !isHttpsUrl(draft.feedUrl.trim())) e.feedUrl = 'Feed address must start with https://';
     setErrors(e);
     if (Object.keys(e).length) return;
     const res = await run(
@@ -55,7 +56,8 @@ export const HandlesSection: React.FC<{
           handle: draft.handle.trim(),
           url: draft.url.trim(),
           status: draft.status,
-        }),
+          feedUrl: draft.feedUrl.trim(),
+        } as any),
       r => (r.sync ? `Handle saved. First pull: ${r.sync.note}.` : 'Handle saved.')
     );
     if (res) {
@@ -181,7 +183,7 @@ export const HandlesSection: React.FC<{
                     icon={<Edit3 className="w-4 h-4" />}
                     onClick={() => {
                       setErrors({});
-                      setDraft({ id: h.id, teamId: h.teamId || '', platform: h.platform, handle: h.handle, url: h.url, status: h.status });
+                      setDraft({ id: h.id, teamId: h.teamId || '', platform: h.platform, handle: h.handle, url: h.url, status: h.status, feedUrl: String(h.meta?.feedUrl || '') });
                     }}
                   >
                     Edit
@@ -237,6 +239,14 @@ export const HandlesSection: React.FC<{
             </Field>
             <Field label="Handle" required error={errors.handle} hint="e.g. @UAEBullsT10">
               <TextInput value={draft.handle} onChange={e => setDraft({ ...draft, handle: e.target.value })} error={!!errors.handle} />
+            </Field>
+            <Field
+              label="Feed address (optional)"
+              error={errors.feedUrl}
+              className="sm:col-span-2"
+              hint="An RSS or Atom address with this account's posts, e.g. from an RSS bridge service. Pulled with the other feeds; use it for platforms that offer no public feed."
+            >
+              <TextInput type="url" inputMode="url" placeholder="https://" value={draft.feedUrl} onChange={e => setDraft({ ...draft, feedUrl: e.target.value })} error={!!errors.feedUrl} />
             </Field>
             <Field label="Status">
               <Select value={draft.status} onChange={e => setDraft({ ...draft, status: e.target.value as SocialHandle['status'] })}>

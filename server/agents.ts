@@ -1,7 +1,8 @@
 import crypto from 'crypto';
 import { db, AgentRun, FeedItem, SocialHandle } from './db';
 import { geminiConfigured, suggestOfficialHandles, generateMarketingContent, harvestSocialPostsWithSearch } from './gemini';
-import { syncYouTube, syncNews, extractPostMetadata, merge, idFor } from './feeds';
+import { syncYouTube, syncNews, merge } from './feeds';
+import { verifyPostLink } from './socialSources';
 
 type Result = { items: number; summary: string; status: AgentRun['status'] };
 
@@ -175,87 +176,64 @@ export async function runOpsAgent(): Promise<Result> {
 }
 
 /**
- * Built-in Social Harvester (Curator alternative):
- * Discovers and pulls real social posts for teams across Instagram, X, TikTok, Facebook, YouTube, and Web.
+ * Social harvester (a built-in alternative to Curator.io).
+ *
+ * 1. Pulls every verified account that has a real source (YouTube RSS, X public timeline, Instagram
+ *    via Meta's Business Discovery API, any account with a feed address). See feeds.ts / socialSources.ts.
+ * 2. For X and TikTok, which offer no reliable public feed, asks the AI search for recent post links
+ *    from each team's official accounts, then keeps a link only after the platform's oEmbed endpoint
+ *    confirms the post exists and was published by that account. Text, thumbnail and date come from
+ *    the platform. Links that cannot be confirmed are dropped and counted.
+ * Everything kept is stored, so posts stay visible after they leave the platforms' "latest" lists.
  */
 export async function runSocialHarvesterAgent(targetTeamId?: string): Promise<Result> {
   const startedAt = new Date().toISOString();
-  const store = db.get();
-  const teams = targetTeamId ? store.teams.filter(t => t.id === targetTeamId) : store.teams;
-  if (!teams.length) {
-    return record('Social Harvester', startedAt, { items: 0, status: 'warning', summary: 'No teams configured to harvest.' });
-  }
-
-  let totalAdded = 0;
+  const snapshot = db.get();
+  const groups: { teamId: string | null; name: string }[] = [
+    ...(targetTeamId ? [] : [{ teamId: null, name: 'Abu Dhabi T10 league' }]),
+    ...snapshot.teams.filter(t => !targetTeamId || t.id === targetTeamId).map(t => ({ teamId: t.id as string | null, name: t.name })),
+  ];
   const notes: string[] = [];
+  const found: FeedItem[] = [];
+  let suggested = 0;
+  let rejected = 0;
+  const reasons = new Map<string, number>();
 
-  for (const team of teams) {
-    const handles = store.handles.filter(h => h.teamId === team.id && h.status === 'verified');
-    if (!handles.length) continue;
-
-    try {
-      const posts = await harvestSocialPostsWithSearch(
-        team.name,
-        handles.map(h => ({ platform: h.platform, handle: h.handle, url: h.url }))
-      );
-
-      const items: FeedItem[] = [];
-      const now = new Date().toISOString();
-
-      for (const p of posts) {
-        const matchingHandle = handles.find(h => h.platform === p.platform) || handles[0];
-        let metaImage = p.image;
-        let metaTitle = p.title;
-        let metaSummary = p.summary;
-        try {
-          const extracted = await extractPostMetadata(p.url);
-          if (extracted.image) metaImage = extracted.image;
-          if (extracted.title) metaTitle = extracted.title;
-          if (extracted.summary) metaSummary = extracted.summary;
-        } catch {
-          /* fallback to search result */
-        }
-
-        items.push({
-          id: idFor('harv', p.url),
-          teamId: team.id,
-          platform: p.platform,
-          kind: p.platform === 'YouTube' || /video|reel|shorts/i.test(p.url) ? 'video' : 'post',
-          category: 'social',
-          title: metaTitle || `${team.name} Update`,
-          url: p.url,
-          image: metaImage || null,
-          source: matchingHandle?.handle || team.name,
-          summary: metaSummary || '',
-          status: 'live',
-          publishedAt: p.publishedAt && !isNaN(+new Date(p.publishedAt)) ? new Date(p.publishedAt).toISOString() : now,
-          createdAt: now,
-          sourceType: 'native-harvester',
-          handleId: matchingHandle?.id || null,
-        });
-      }
-
-      const added = merge(items);
-      totalAdded += added;
-      if (posts.length > 0) {
-        notes.push(`${team.short}: ${added} added (${posts.length} discovered)`);
-      } else {
-        notes.push(`${team.short}: checked`);
-      }
-    } catch {
-      notes.push(`${team.short}: skipped`);
-    }
+  if (!geminiConfigured()) {
+    return record('Social Harvester', startedAt, { items: 0, status: 'warning', summary: 'Add a Gemini API key in Admin → Environment to let the harvester look for X and TikTok posts. Feeds with a real source are pulled by the regular feed sync.' });
   }
-
-  db.save();
-  const summary = totalAdded > 0
-    ? `Harvested ${totalAdded} social post(s). ${notes.join(', ')}`
-    : `Social Harvester ran. All channels up to date. (${notes.join(', ')})`;
-
-  return record('Social Harvester', startedAt, {
-    items: totalAdded,
-    status: 'success',
-    summary,
+  // Teams with an X or TikTok account, taken in turn; each run stops after ~30 s (Vercel allows 60 s
+  // per request) and the next run carries on from the next team.
+  const searchable = groups.filter(g => snapshot.handles.some(h => h.teamId === g.teamId && h.status === 'verified' && (h.platform === 'X' || h.platform === 'TikTok')));
+  const start = targetTeamId ? 0 : Number(snapshot.jobLog['harvest:next'] || 0) % Math.max(1, searchable.length);
+  const order = [...searchable.slice(start), ...searchable.slice(0, start)];
+  const budgetEnds = Date.now() + Number(process.env.HARVEST_BUDGET_MS || 30_000);
+  let done = 0;
+  for (const g of order) {
+    if (done > 0 && Date.now() > budgetEnds) break;
+    done++;
+    const handles = snapshot.handles.filter(h => h.teamId === g.teamId && h.status === 'verified' && (h.platform === 'X' || h.platform === 'TikTok'));
+    const links = await harvestSocialPostsWithSearch(g.name, handles.map(h => ({ platform: h.platform, handle: h.handle, url: h.url })));
+    suggested += links.length;
+    let kept = 0;
+    for (const link of links.slice(0, 15)) {
+      const v = await verifyPostLink(link.url, handles);
+      if (v.ok) {
+        found.push(v.item);
+        kept++;
+      } else {
+        rejected++;
+        reasons.set(v.reason.replace(/@\w+/g, '@…'), (reasons.get(v.reason.replace(/@\w+/g, '@…')) || 0) + 1);
+      }
+    }
+    notes.push(`${g.name}: ${kept} of ${links.length} confirmed`);
+  }
+  const added = await db.mutate(store => {
+    if (!targetTeamId && searchable.length) store.jobLog['harvest:next'] = String((start + done) % searchable.length);
+    return merge(found, store);
   });
+  const why = [...reasons.entries()].map(([r, n]) => `${n}× ${r}`).join('; ');
+  const summary = `${added} new post(s) kept, ${found.length} confirmed by the platforms, ${rejected} of ${suggested} search result(s) dropped.${notes.length ? ` ${notes.join(', ')}.` : ' No team has an X or TikTok account to search.'}${done < order.length ? ` ${order.length - done} more team(s) next run.` : ''}${why ? ` Dropped because: ${why}.` : ''}`;
+  return record('Social Harvester', startedAt, { items: added, status: suggested && !found.length ? 'warning' : 'success', summary });
 }
 

@@ -15,7 +15,9 @@ import { runScoresAgent, runSocialHarvesterAgent } from './agents';
  *
  * Runs from /api/cron/run (Vercel Cron, GitHub Actions) or, on a long-running server, a timer.
  */
-const feedMinutes = () => Math.max(5, Number(process.env.FEED_SYNC_MINUTES) || 30);
+const feedMinutes = () => Math.max(5, Number(process.env.FEED_SYNC_MINUTES) || 10);
+/** The AI search for X/TikTok posts costs a Gemini call per team, so it runs less often. */
+const discoveryMinutes = () => Math.max(15, Number(process.env.SOCIAL_DISCOVERY_MINUTES) || 60);
 
 export function lastJobRun(): string | null {
   return db.get().jobLog['jobs:last-run'] || null;
@@ -60,7 +62,7 @@ export async function runScheduledJobs(opts: { only?: string[]; force?: boolean 
     }
   }
   const lastHarvest = store.jobLog['jobs:harvest'];
-  const harvestDue = Boolean(opts.force || opts.only?.includes('harvest') || !lastHarvest || Date.now() - +new Date(lastHarvest) >= 6 * 3600_000);
+  const harvestDue = Boolean(opts.force || opts.only?.includes('harvest') || !lastHarvest || Date.now() - +new Date(lastHarvest) >= discoveryMinutes() * 60_000);
   if (want('harvest') && harvestDue) {
     try {
       const h = await runSocialHarvesterAgent();

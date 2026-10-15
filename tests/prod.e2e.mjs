@@ -16,6 +16,7 @@ const get = async p => {
 const home = await get('/');
 ok('home page renders', home.status === 200 && home.text.includes('<div id="root">'));
 ok('no dev template placeholder left', !home.text.includes('<!--app-head-->'));
+ok('each page has exactly one title and one description', (home.text.match(/<title>/g) || []).length === 1 && (home.text.match(/name="description"/g) || []).length === 1);
 const scripts = [...home.text.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map(m => m[1]);
 ok('page references built assets', scripts.length >= 2, home.text.slice(0, 500));
 for (const s of scripts) {

@@ -20,6 +20,8 @@ const store = {
     { id: 'yt-dyn-1', teamId: null, platform: 'YouTube', kind: 'video', category: 'social', title: 'Highlights', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', image: null, source: 'x', summary: '', status: 'live', publishedAt: now, createdAt: now },
     { id: 'post-x-1', teamId: null, platform: 'X', kind: 'post', category: 'social', title: 'Post', url: 'https://x.com/T10League/status/1812345', image: null, source: 'x', summary: '', status: 'live', publishedAt: now, createdAt: now },
     { id: 'img-1', teamId: null, platform: 'Web', kind: 'article', category: 'news', title: 'Story', url: 'https://news.test.invalid/a', image: 'https://images.unsplash.com/photo-2', source: 'x', summary: '', status: 'live', publishedAt: now, createdAt: now },
+    { id: 'seed-0123456789ab', teamId: 'aces', platform: 'X', kind: 'post', category: 'social', title: 'Head Coach arrives! (invented)', url: 'https://x.com/arabianacesT10/status/1841452093847298048', image: null, source: '@arabianacesT10', summary: '', status: 'pinned', publishedAt: now, createdAt: now, likes: 2450, sourceType: 'social-syndication' },
+    { id: 'harv-abc', teamId: 'bulls', platform: 'X', kind: 'post', category: 'social', title: 'Unchecked AI link', url: 'https://x.com/UAEBullsT10/status/1999999999999999999', image: null, source: '@UAEBullsT10', summary: '', status: 'live', publishedAt: now, createdAt: now, sourceType: 'native-harvester' },
     { id: 'feed-real-admin', teamId: null, platform: 'Web', kind: 'article', category: 'news', title: 'Real admin post', url: 'https://news.test.invalid/real', image: null, source: 'Admin', summary: '', status: 'live', publishedAt: now, createdAt: now, sourceType: 'admin' },
   ],
   forumThreads: [

@@ -4,8 +4,8 @@ import { api } from '../../api';
 import type { FeedHealthRow } from '../../types';
 import { Button, Card, Chip, Notice, useRunner } from './ui';
 
-const TONE: Record<string, 'green' | 'amber' | 'red' | 'slate'> = { ok: 'green', 'embed-only': 'slate', empty: 'amber', error: 'red' };
-const LABEL: Record<string, string> = { ok: 'Pulling', 'embed-only': 'Embed only', empty: 'No posts', error: 'Failing' };
+const TONE: Record<string, 'green' | 'amber' | 'red' | 'slate'> = { ok: 'green', 'embed-only': 'slate', empty: 'amber', error: 'red', 'needs-setup': 'amber' };
+const LABEL: Record<string, string> = { ok: 'Pulling', 'embed-only': 'Embed only', empty: 'No posts', error: 'Failing', 'needs-setup': 'Needs setup' };
 
 /** What each verified handle returned on its last pull, so problems are visible without reading logs. */
 export const FeedHealthPanel: React.FC = () => {

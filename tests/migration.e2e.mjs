@@ -16,6 +16,8 @@ ok('placeholder videos removed', !feeds.some(f => /dQw4w9WgXcQ/.test(f.url)));
 ok('generated posts with fake status ids removed', !feeds.some(f => /status\/1[89]\d{5}$/.test(f.url)));
 ok('stock-photo posts removed', !feeds.some(f => /unsplash/.test(f.image || '')));
 ok('real admin-added post kept', feeds.some(f => f.id === 'feed-real-admin'));
+ok('invented posts from the old harvester data file removed', !feeds.some(f => f.id.startsWith('seed-') || /1841452093847298048/.test(f.url)));
+ok('unchecked AI-found links removed', !feeds.some(f => f.sourceType === 'native-harvester'));
 const handles = (await get('/api/handles')).handles;
 ok('unchecked legacy handle hidden from fans', !handles.some(h => h.url.includes('fake-team-account')));
 ok('checked league and Bulls handles are added (the store has no Aces team)', handles.length === 9, handles.length);

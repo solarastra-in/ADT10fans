@@ -239,6 +239,8 @@ teamsRouter.post('/handles', requireAdmin('social'), wrap(async (req, res) => {
   const existing = (b.id && store.handles.find(h => h.id === b.id)) || store.handles.find(h => handleKey(h.url) === handleKey(url));
   if (existing && !canManageTeam(user, existing.teamId)) return bad(res, 'You can only edit your own team’s handles', 403);
   const status: SocialHandle['status'] = b.status === 'pending' ? 'pending' : 'verified';
+  const feedUrl = b.feedUrl === undefined ? undefined : str(b.feedUrl, 1000);
+  if (feedUrl && !isHttpsUrl(feedUrl)) return bad(res, 'Feed address must start with https://');
   const derived = url.replace(/\/+$/, '').split('/').pop() || url;
   let target: SocialHandle;
   if (existing) {
@@ -250,13 +252,13 @@ teamsRouter.post('/handles', requireAdmin('social'), wrap(async (req, res) => {
       handle: str(b.handle, 80) || existing.handle,
       status,
       verifiedAt: status === 'verified' ? existing.verifiedAt || now : undefined,
-      meta: urlChanged ? {} : existing.meta,
+      meta: { ...(urlChanged ? {} : existing.meta || {}), ...(feedUrl !== undefined ? { feedUrl: feedUrl || undefined } : {}) },
     });
     if (urlChanged) purgeHandleItems(store, existing.id);
     target = existing;
   } else {
     const known = OFFICIAL_HANDLES.find(o => handleKey(o.url) === handleKey(url));
-    target = { id: newId('h'), teamId, platform: b.platform, handle: str(b.handle, 80) || (b.platform === 'Facebook' || b.platform === 'LinkedIn' ? derived : derived.startsWith('@') ? derived : `@${derived}`), url, status, source: 'admin', meta: known ? { ...(known.meta || {}), evidence: known.evidence } : {}, verifiedAt: status === 'verified' ? now : undefined, foundAt: now };
+    target = { id: newId('h'), teamId, platform: b.platform, handle: str(b.handle, 80) || (b.platform === 'Facebook' || b.platform === 'LinkedIn' ? derived : derived.startsWith('@') ? derived : `@${derived}`), url, status, source: 'admin', meta: { ...(known ? { ...(known.meta || {}), evidence: known.evidence } : {}), ...(feedUrl ? { feedUrl } : {}) }, verifiedAt: status === 'verified' ? now : undefined, foundAt: now };
     store.handles.push(target);
   }
   delete store.jobLog[`handle-removed:${handleKey(url)}`];

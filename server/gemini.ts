@@ -21,7 +21,8 @@ function getAI(): GoogleGenAI {
   // Recreated when the key changes (it can be replaced in Admin → Environment).
   if (!aiInstance || aiKey !== process.env.GEMINI_API_KEY) {
     aiKey = process.env.GEMINI_API_KEY;
-    aiInstance = new GoogleGenAI({ apiKey: aiKey });
+    // GEMINI_API_BASE lets the tests point the client at a local stand-in.
+    aiInstance = new GoogleGenAI({ apiKey: aiKey, ...(process.env.GEMINI_API_BASE ? { httpOptions: { baseUrl: process.env.GEMINI_API_BASE } } : {}) });
   }
   return aiInstance;
 }
@@ -154,10 +155,11 @@ export async function harvestSocialPostsWithSearch(
     const response = await ai.models.generateContent({
       model: geminiModel(),
       contents:
-        `Find recent real public posts, tweets, reels, videos, or announcements from or about the Abu Dhabi T10 franchise "${teamName}". ` +
-        (accounts ? `Official handles to check: ${accounts}. ` : '') +
-        `Only return real URLs found on the web (e.g. from x.com, instagram.com, youtube.com, tiktok.com, facebook.com, or official news articles). ` +
-        `Return ONLY a JSON array of objects: [{"title":"...","url":"https://...","platform":"X|Instagram|YouTube|TikTok|Facebook|Web","summary":"...","publishedAt":"YYYY-MM-DD"}]`,
+        `Search the web for the most recent public posts by these official accounts of ${teamName} (Abu Dhabi T10 cricket): ${accounts}. ` +
+        `Return only direct links to individual posts that you found in search results: X/Twitter links of the form https://x.com/<account>/status/<id> ` +
+        `and TikTok links of the form https://www.tiktok.com/@<account>/video/<id>, posted by exactly those accounts. Do not invent or guess links; ` +
+        `return an empty list if you find none. Each link is checked with the platform before it is used. ` +
+        `Return ONLY a JSON array: [{"url":"https://...","platform":"X|TikTok","title":"..."}]`,
       config: { tools: [{ googleSearch: {} }] },
     });
     const raw = response.text || '';
@@ -166,7 +168,7 @@ export async function harvestSocialPostsWithSearch(
     const parsed = JSON.parse(m[0]);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
-      (p: any) => p && typeof p.url === 'string' && /^https:\/\/[^\s/]+/.test(p.url) && typeof p.title === 'string'
+      (p: any) => p && typeof p.url === 'string' && /^https:\/\/[^\s/]+/.test(p.url)
     );
   } catch (err: any) {
     const msg = String(err?.message || err || '');

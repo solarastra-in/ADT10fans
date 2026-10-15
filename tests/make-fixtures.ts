@@ -149,5 +149,39 @@ put(api('currentMatches', { offset: '0' }), JSON.stringify({
   ],
 }));
 
+// ---------- Instagram (Meta Business Discovery) ----------
+const IG_TOKEN = 'test-meta-token';
+const IG_USER = '17841400000000000';
+const igUrl = (username: string) => {
+  const fields = `business_discovery.username(${username}){username,media.limit(25){caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count}}`;
+  return `https://graph.facebook.com/v23.0/${IG_USER}?fields=${encodeURIComponent(fields)}&access_token=${IG_TOKEN}`;
+};
+put(igUrl('t10league'), JSON.stringify({
+  business_discovery: {
+    username: 't10league',
+    media: {
+      data: [
+        { caption: '[test] Draft night recap\nAll six squads are set.', media_type: 'IMAGE', media_url: 'https://scontent.cdninstagram.com/test-1.jpg', permalink: 'https://www.instagram.com/p/TESTig00001/', timestamp: '2026-10-10T12:00:00+0000', like_count: 321, comments_count: 4 },
+        { caption: '[test] Six of the best', media_type: 'VIDEO', media_url: 'https://scontent.cdninstagram.com/test-2.mp4', thumbnail_url: 'https://scontent.cdninstagram.com/test-2.jpg', permalink: 'https://www.instagram.com/reel/TESTig00002/', timestamp: '2026-10-11T12:00:00+0000', like_count: 99 },
+      ],
+    },
+  },
+}));
+// The Bulls account answers with an API error (e.g. it is a personal account).
+put(igUrl('delhibullst10'), JSON.stringify({ error: { message: '[test] Invalid user id', type: 'OAuthException', code: 110 } }));
+
+// ---------- Post confirmation (oEmbed) for the harvester ----------
+const xo = (url: string) => `https://publish.twitter.com/oembed?omit_script=1&dnt=true&url=${encodeURIComponent(url)}`;
+put(xo('https://x.com/T10League/status/1990000000000000001'), JSON.stringify({
+  author_name: 'Abu Dhabi T10', author_url: 'https://twitter.com/T10League',
+  html: '<blockquote class="twitter-tweet"><p lang="en" dir="ltr">[test] Confirmed post &amp; real text from X</p>&mdash; Abu Dhabi T10 (@T10League) <a href="https://twitter.com/T10League/status/1990000000000000001">October 12, 2026</a></blockquote>',
+}));
+// Claimed to be @T10League but X says another account posted it.
+put(xo('https://x.com/T10League/status/1990000000000000002'), JSON.stringify({ author_name: 'Someone', author_url: 'https://twitter.com/SomeoneElse', html: '<blockquote><p>x</p></blockquote>' }));
+// 1990000000000000003 has no fixture: X answers 404 (the AI invented it).
+put(`https://www.tiktok.com/oembed?url=${encodeURIComponent('https://www.tiktok.com/@abudhabit10/video/7560000000000000000')}`, JSON.stringify({
+  title: '[test] TikTok video confirmed', author_unique_id: 'abudhabit10', author_name: 'Abu Dhabi T10', thumbnail_url: 'https://p16-sign.tiktokcdn.com/test.jpg',
+}));
+
 fs.writeFileSync(path.join(dir, 'fixture-ids.json'), JSON.stringify(FIXTURE, null, 2));
 console.log(`fixtures written to ${dir}`);

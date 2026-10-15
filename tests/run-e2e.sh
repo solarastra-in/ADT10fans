@@ -24,7 +24,8 @@ cleanup() {
 trap cleanup EXIT
 
 export FEED_FIXTURES_DIR="$ROOT/fixtures" CRON_SECRET=test-cron-secret CRICKET_API_KEY=test-cricket-key \
-  GAME_SECRET=test-game-secret SCHEDULED_JOBS=off ADMIN_EMAILS=admin@test.dev GEMINI_API_KEY= FCM_VAPID_KEY=
+  GAME_SECRET=test-game-secret SCHEDULED_JOBS=off ADMIN_EMAILS=admin@test.dev GEMINI_API_KEY= FCM_VAPID_KEY= \
+  META_ACCESS_TOKEN=test-meta-token META_IG_USER_ID=17841400000000000
 npx tsx tests/make-fixtures.ts "$FEED_FIXTURES_DIR" >/dev/null || { echo "fixtures failed"; exit 1; }
 
 # start <name> <data dir> <command...>  -> sets PORT_<name>
@@ -41,6 +42,10 @@ start() {
 
 run_api() {
   node tests/i18n-check.mjs
+  GEMINI_PORT=$((40000 + RANDOM % 10000))
+  setsid node tests/fake-gemini.mjs $GEMINI_PORT > "$ROOT/gemini.log" 2>&1 &
+  PIDS+=($!)
+  export GEMINI_API_BASE="http://127.0.0.1:$GEMINI_PORT"
   start dev "$ROOT/data-api" npx tsx server.ts
   BASE="http://localhost:$PORT_dev" node tests/api.e2e.mjs || { echo "--- server log"; tail -50 "$ROOT/dev.log"; exit 1; }
   node tests/legacy-store.mjs "$ROOT/data-legacy"

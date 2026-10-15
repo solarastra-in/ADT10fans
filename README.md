@@ -77,6 +77,46 @@ Each page gets its own title, description, canonical link, Open Graph tags and s
 6. **Predictions, Prizes, Prize draws, Polls, Fan Spaces, Growth:** create what fans should see. Empty sections show a short "coming soon" message.
 7. **Door check-in:** scan Fan Space passes with a phone camera, or type the code.
 
+## Social feeds: how posts get onto the site
+
+Everything shown is a real post from an official account. Every post kept is stored, so it stays on the site after it drops off the platform's "latest" list (up to 1,500 social posts; pinned posts are never dropped).
+
+| Platform | How posts are pulled | Setup |
+|---|---|---|
+| YouTube | Channel RSS, every 10 minutes | None |
+| X | Public timeline every 10 minutes when X allows it. Otherwise the harvester (below) finds posts, and the X timeline embed is shown | Gemini key for the harvester |
+| Instagram | Meta's official Business Discovery API, every 10 minutes | Meta token, once (below) |
+| TikTok | Harvester (below); the creator embed is always shown | Gemini key |
+| Facebook, Threads, LinkedIn | Live embed or profile card; these platforms offer no public feed without an approved app | Optional feed address |
+| Any account | A **feed address** (RSS/Atom) on the account, e.g. from an RSS bridge service | Admin → Handles → edit → Feed address |
+
+**Social harvester** (Admin → Feeds, also hourly by itself):
+
+1. Gemini web search suggests recent X and TikTok post links from each team's official accounts.
+2. Each link is confirmed with the platform's own oEmbed service: the post must exist and must be by that exact account.
+3. Only confirmed posts are kept, with the text, thumbnail and date the platform returns, never what the AI wrote.
+
+Links that fail are dropped, and the run summary says how many and why. If a search returns nothing, nothing is added.
+
+**Instagram setup (once, about 15 minutes).** Meta's Business Discovery API returns the latest public posts of any Instagram business or creator account, which covers the league and the teams. It works through an Instagram professional account of your own:
+
+1. Make an Instagram account you control a professional (Business or Creator) account and link it to a Facebook Page.
+2. At developers.facebook.com, create an app of type *Business* and add the Instagram product.
+3. In Meta Business Suite → Settings → Users → **System users**:
+   - Create a system user.
+   - Give it the app, the Page and the Instagram account.
+   - Generate a token with `instagram_basic`, `pages_show_list` and `pages_read_engagement`.
+
+   A system-user token does not expire. If Meta asks for App Review for these permissions, complete it before switching the app to Live.
+4. Get your Instagram account id. In the Graph API Explorer, call `me/accounts?fields=instagram_business_account` and copy the `id` inside `instagram_business_account`.
+5. In Admin → Environment, save:
+   - **Meta access token**
+   - **Your Instagram account id**
+
+   The next pull, within 10 minutes, fills in Instagram posts. Admin → Feeds → Feed health shows each account's result or the API's error message.
+
+**Webhook** (optional): with a **Feed webhook key** saved in Admin → Environment, tools like Zapier, Make or IFTTT can `POST /api/feeds/webhook` with `{ "url": "…", "teamId": "aces" }` and the header `X-Webhook-Secret: <key>`.
+
 ## Deploying
 
 ```bash
