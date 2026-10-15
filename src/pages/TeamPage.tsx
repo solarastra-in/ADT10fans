@@ -35,24 +35,8 @@ export default function TeamPage({ id }: { id: string }) {
   }, [feed.loading, postsCount]);
   const [pulling, setPulling] = useState(false);
   const teamMatches = useMemo(() => matches.filter(m => m.teamA === id || m.teamB === id), [matches, id]);
-  if (!team) return <NotFoundPage />;
-  const { live, upcoming, done } = sortMatches(teamMatches);
+
   const verified = (handles.data?.handles || []).filter(h => h.status === 'verified');
-  const mine = user?.teamId === team.id;
-
-  const handlePullSocial = async () => {
-    setPulling(true);
-    try {
-      const res = await api.pullSocialFeeds(id);
-      toast((res as any).skipped ? t('Already up to date. Official accounts are pulled every few minutes.') : t('{n} new posts from {team}', { n: res.added || 0, team: team.name }), 'success');
-      await Promise.all([feed.reload(), handles.reload()]);
-    } catch (e: any) {
-      toast(e?.message || t('Failed to refresh social feed'), 'error');
-    } finally {
-      setPulling(false);
-    }
-  };
-
   const allPosts = feed.data?.items || [];
   const socialPosts = allPosts.filter(i => i.category === 'social');
 
@@ -87,6 +71,23 @@ export default function TeamPage({ id }: { id: string }) {
       return true;
     });
   }, [allPosts, selectedHandleId, verified, platformFilter, searchQuery]);
+
+  if (!team) return <NotFoundPage />;
+  const { live, upcoming, done } = sortMatches(teamMatches);
+  const mine = user?.teamId === team.id;
+
+  const handlePullSocial = async () => {
+    setPulling(true);
+    try {
+      const res = await api.pullSocialFeeds(id);
+      toast((res as any).skipped ? t('Already up to date. Official accounts are pulled every few minutes.') : t('{n} new posts from {team}', { n: res.added || 0, team: team.name }), 'success');
+      await Promise.all([feed.reload(), handles.reload()]);
+    } catch (e: any) {
+      toast(e?.message || t('Failed to refresh social feed'), 'error');
+    } finally {
+      setPulling(false);
+    }
+  };
 
   return (
     <div className="space-y-6">

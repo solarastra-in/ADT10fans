@@ -89,11 +89,21 @@ function __dirnameSafe() {
   }
 }
 
-const looksLikeFile = (p: string) => /\.[a-z0-9]{2,5}$/i.test(p);
+const isCodeOrAsset = (p: string) =>
+  p.startsWith('/@') ||
+  p.startsWith('/node_modules/') ||
+  p.startsWith('/src/') ||
+  p.startsWith('/assets/') ||
+  /\.[a-z0-9_-]{2,10}$/i.test(p);
 
 async function servePage(req: Request, res: Response, next: NextFunction) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
-  if (req.path.startsWith('/api/') || looksLikeFile(req.path)) return next();
+  if (req.path.startsWith('/api/') || isCodeOrAsset(req.path)) return next();
+  const accept = req.headers.accept || '';
+  const secDest = (req.headers['sec-fetch-dest'] as string) || '';
+  if (secDest === 'script' || secDest === 'style' || secDest === 'image' || (accept && !accept.includes('text/html') && !accept.includes('*/*'))) {
+    return next();
+  }
   try {
     if (!loadTemplate) loadTemplate = productionTemplate();
     const template = await loadTemplate(req.originalUrl);
