@@ -235,7 +235,8 @@ ok('referral summary shows it', (await get('/api/me/referral', F1)).json.joinedA
 
 const quiz = (await post('/api/admin/contests', { title: 'T10 trivia', type: 'trivia', instant: true, questions: [{ prompt: 'How many overs a side?', options: ['10', '20'], answer: '10', points: 20, explain: 'T10 is ten overs.' }] }, A)).json.contest;
 const qa = await post(`/api/contests/${quiz.id}/enter`, { answers: { [quiz.questions[0].id]: '10' } }, F3);
-ok('instant quiz scores at once and explains', qa.json.pointsAwarded === 20 && qa.json.results[0].explain);
+ok('instant quiz scores at once and marks the answer right', qa.json.pointsAwarded === 20 && qa.json.results[0].correct === true);
+ok('an open quiz never reveals its answers (a second account could collect them)', qa.json.results[0].answer === undefined && qa.json.results[0].explain === undefined && (await get('/api/contests', F1)).json.contests.find(c => c.id === quiz.id).questions.every(q => q.answer === undefined));
 ok('instant quiz can be played once', (await post(`/api/contests/${quiz.id}/enter`, { answers: { [quiz.questions[0].id]: '10' } }, F3)).status === 400);
 ok('instant quiz needs answers', (await post('/api/admin/contests', { title: 'x', instant: true, questions: [{ prompt: 'q?', options: ['a', 'b'] }] }, A)).status === 400);
 
@@ -576,6 +577,62 @@ const evil = (await post('/api/forum/threads', { title: '<script>alert(1)</scrip
 const evilPage = (await html(`/forum/${evil.id}`)).text;
 ok('user text is escaped in server-rendered pages and JSON-LD', !evilPage.includes('<script>alert(1)') && !evilPage.includes('<img src=x') && !/<\/script><img/.test(evilPage));
 ok('robots.txt blocks admin and API', /Disallow: \/admin/.test((await html('/robots.txt')).text) && /Disallow: \/api\//.test((await html('/robots.txt')).text));
+
+// ============ 14b. Points ledger, prize checkout and loopholes ============
+{
+  const ip = { ip: '10.77.0.1' };
+  const L = await login('ledger@test.dev');
+  const LT = L.token;
+  await post('/api/checkin', {}, LT);
+  let hist = (await get('/api/me/points', LT)).json;
+  ok('points history records the check-in', hist.points === 10 && hist.history[0].source === 'checkin' && hist.history[0].delta === 10 && hist.bySource.checkin === 10 && hist.earlier === 0);
+  ok('points history needs sign-in', (await get('/api/me/points')).status === 401);
+
+  // Posting then deleting used to free up the day's forum allowance, so points could be farmed.
+  const earned = [];
+  for (let i = 0; i < 4; i++) {
+    const r = await call('POST', '/api/forum/threads', { title: `Farming attempt ${i}`, content: 'Trying to farm forum points here' }, LT, ip);
+    earned.push(r.json.pointsAdded);
+    await del(`/api/forum/threads/${r.json.thread.id}`, LT);
+  }
+  ok('forum posts stop earning at the daily cap even after deleting', earned.join(',') === '15,15,15,5', earned);
+  const fifth = await call('POST', '/api/forum/threads', { title: 'One more thread', content: 'This one should earn nothing now' }, LT, ip);
+  ok('deleting a post takes its points back', fifth.json.pointsAdded === 0 && (await me(LT)).points === 10);
+  hist = (await get('/api/me/points', LT)).json;
+  ok('removed posts show as taken back in the history', hist.bySource['forum-thread'] === 50 && hist.bySource['forum-removed'] === -50);
+
+  // Admin adjustments: reason required, recorded with who made it.
+  ok('adjustment needs a reason', (await post(`/api/admin/points/${L.user.id}/adjust`, { delta: 300 }, A)).status === 400);
+  ok('fans cannot adjust points', (await post(`/api/admin/points/${L.user.id}/adjust`, { delta: 300, reason: 'Giving myself points' }, LT)).status === 403);
+  const adj = await post(`/api/admin/points/${L.user.id}/adjust`, { delta: 300, reason: 'Matchday quiz winner (paper entry)' }, A);
+  ok('admin adds points with a reason', adj.status === 200 && adj.json.points === 310 && adj.json.balance === 310);
+  hist = (await get('/api/me/points', LT)).json;
+  ok('the fan sees the adjustment and its reason, not the admin email', hist.history[0].source === 'admin' && hist.history[0].note.includes('paper entry') && hist.history[0].by === undefined);
+
+  // Prize checkout: spend, refund, all in the ledger.
+  const pz = (await post('/api/admin/prizes', { title: 'Team scarf', pointsCost: 120, stock: 3, fulfilment: 'Collect at the Fan Zone desk' }, A)).json.prize;
+  const claim = await post(`/api/prizes/${pz.id}/redeem`, {}, LT);
+  ok('claim deducts from the balance only', claim.status === 200 && (await get('/api/prizes', LT)).json.balance === 190 && (await me(LT)).points === 310);
+  ok('one claim per prize per fan', (await post(`/api/prizes/${pz.id}/redeem`, {}, LT)).status === 409);
+  hist = (await get('/api/me/points', LT)).json;
+  ok('the claim is in the history with its code', hist.history[0].source === 'prize' && hist.history[0].delta === -120 && hist.history[0].note.includes(claim.json.redemption.code) && hist.pointsSpent === 120);
+  const look = (await get(`/api/admin/points?q=${claim.json.redemption.code}`, A)).json;
+  ok('admin finds the fan by claim code with full history', look.fans.length === 1 && look.detail.fan.email === 'ledger@test.dev' && look.detail.claims.length === 1 && look.detail.ledger.some(e => e.source === 'admin' && e.by));
+  await post(`/api/admin/redemptions/${claim.json.redemption.id}`, { status: 'cancelled', note: 'Size unavailable' }, A);
+  hist = (await get('/api/me/points', LT)).json;
+  ok('a cancelled claim refunds and is listed', hist.balance === 310 && hist.history[0].source === 'prize-refund' && hist.history[0].delta === 120);
+
+  // Invite rewards stop paying the inviter after the limit (fake accounts can't farm points).
+  await post('/api/admin/settings', { referralMaxRewarded: 1 }, A);
+  const code = (await get('/api/me/referral', F1)).json.code;
+  const f1Before = (await me(F1)).points;
+  const F5 = (await login('fan5@test.dev', code)).token;
+  const f5Post = await call('POST', '/api/forum/threads', { title: 'Hello from fan five', content: 'Just joined through an invite' }, F5, { ip: '10.77.0.2' });
+  ok('friend past the limit still gets their reward', f5Post.json.referralReward > 0 && (await me(F5)).points === f5Post.json.referralReward + 15);
+  ok('inviter past the limit is not paid again', (await me(F1)).points === f1Before);
+  ok('referral summary shows the limit', (await get('/api/me/referral', F1)).json.maxRewarded === 1);
+  await post('/api/admin/settings', { referralMaxRewarded: 10 }, A);
+}
 
 // ============ 15. Account deletion ============
 const t4 = (await post('/api/forum/threads', { title: 'Lions thread here', content: 'Lions fans assemble here please' }, F4)).json.thread;

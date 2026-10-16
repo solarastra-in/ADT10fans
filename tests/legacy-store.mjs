@@ -15,13 +15,21 @@ const store = {
   teams: [
     { id: 'bulls', name: 'UAE Bulls', short: 'UB', color: '#FACC15', secondaryColor: '#000000', iconPlayer: 'Kieron Pollard', sort: 1, squad: [player('bulls-kieron-pollard', 'Kieron Pollard', { stats: { runs: 9999 } }), player('bulls-admin-added', 'Admin Added Player')], createdAt: now, updatedAt: now },
   ],
-  handles: [{ id: 'h-fake', teamId: 'bulls', platform: 'X', handle: '@fake', url: 'https://x.com/fake-team-account', status: 'verified', source: 'official-preset', meta: {}, foundAt: now }],
+  handles: [
+    { id: 'h-fake', teamId: 'bulls', platform: 'X', handle: '@fake', url: 'https://x.com/fake-team-account', status: 'verified', source: 'official-preset', meta: {}, foundAt: now },
+    // Marked "official" by the 15 October 2026 commit without being checked.
+    { id: 'h-forced', teamId: 'bulls', platform: 'Facebook', handle: 'UAEBullsT10', url: 'https://www.facebook.com/UAEBullsT10', status: 'verified', source: 'official', meta: {}, foundAt: now, verifiedAt: now },
+    // Added by an admin, but given a made-up channel id.
+    { id: 'h-admin-yt', teamId: 'bulls', platform: 'YouTube', handle: '@AdminAddedChannel', url: 'https://www.youtube.com/@AdminAddedChannel', status: 'verified', source: 'admin', meta: { channelId: 'UC-AdminAddedChannel' }, foundAt: now, verifiedAt: now },
+  ],
+  approvals: [{ id: 'ap-forced', kind: 'handle', title: 'Bulls Facebook', detail: '', payload: { handleId: 'h-forced' }, status: 'approved', createdAt: now, decidedAt: now }],
   feedItems: [
     { id: 'yt-dyn-1', teamId: null, platform: 'YouTube', kind: 'video', category: 'social', title: 'Highlights', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', image: null, source: 'x', summary: '', status: 'live', publishedAt: now, createdAt: now },
     { id: 'post-x-1', teamId: null, platform: 'X', kind: 'post', category: 'social', title: 'Post', url: 'https://x.com/T10League/status/1812345', image: null, source: 'x', summary: '', status: 'live', publishedAt: now, createdAt: now },
     { id: 'img-1', teamId: null, platform: 'Web', kind: 'article', category: 'news', title: 'Story', url: 'https://news.test.invalid/a', image: 'https://images.unsplash.com/photo-2', source: 'x', summary: '', status: 'live', publishedAt: now, createdAt: now },
     { id: 'seed-0123456789ab', teamId: 'aces', platform: 'X', kind: 'post', category: 'social', title: 'Head Coach arrives! (invented)', url: 'https://x.com/arabianacesT10/status/1841452093847298048', image: null, source: '@arabianacesT10', summary: '', status: 'pinned', publishedAt: now, createdAt: now, likes: 2450, sourceType: 'social-syndication' },
     { id: 'harv-abc', teamId: 'bulls', platform: 'X', kind: 'post', category: 'social', title: 'Unchecked AI link', url: 'https://x.com/UAEBullsT10/status/1999999999999999999', image: null, source: '@UAEBullsT10', summary: '', status: 'live', publishedAt: now, createdAt: now, sourceType: 'native-harvester' },
+    { id: 'f-0a1b2c3d4e5f6a7b', teamId: 'bulls', platform: 'YouTube', kind: 'video', category: 'social', title: 'Bulls pre-season camp (invented)', url: 'https://www.youtube.com/watch?v=9bZkp7q19f0', image: null, source: '@BullsT10', summary: '', status: 'live', publishedAt: now, createdAt: now, sourceType: 'youtube-rss' },
     { id: 'feed-real-admin', teamId: null, platform: 'Web', kind: 'article', category: 'news', title: 'Real admin post', url: 'https://news.test.invalid/real', image: null, source: 'Admin', summary: '', status: 'live', publishedAt: now, createdAt: now, sourceType: 'admin' },
   ],
   forumThreads: [

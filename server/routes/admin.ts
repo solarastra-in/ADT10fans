@@ -135,6 +135,7 @@ adminRouter.post('/admin/settings', requireAdmin('settings'), (req, res) => {
   if (b.newsQueries !== undefined) s.newsQueries = str(b.newsQueries, 2000);
   if (b.maxSocialPerPlatform !== undefined) s.maxSocialPerPlatform = Math.min(20, Math.max(1, Math.round(num(b.maxSocialPerPlatform, 6))));
   if (b.referralRewardPoints !== undefined) s.referralRewardPoints = Math.min(1000, Math.max(0, Math.round(num(b.referralRewardPoints, 50))));
+  if (b.referralMaxRewarded !== undefined) s.referralMaxRewarded = Math.min(1000, Math.max(0, Math.round(num(b.referralMaxRewarded, 10))));
   if (b.lockReminderMinutes !== undefined) s.lockReminderMinutes = Math.min(240, Math.max(5, Math.round(num(b.lockReminderMinutes, 30))));
   if (b.curatorApiKey !== undefined && b.curatorApiKey !== '********') s.curatorApiKey = str(b.curatorApiKey, 200);
   if (b.adminEmails !== undefined) {

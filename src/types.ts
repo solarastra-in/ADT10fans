@@ -407,6 +407,45 @@ export interface PrizeItem {
   createdAt: string;
   claimed?: number;
 }
+export type PointsSource =
+  | 'checkin' | 'guess' | 'superover' | 'dream-xi' | 'prediction' | 'quiz'
+  | 'forum-thread' | 'forum-reply' | 'forum-removed' | 'badge' | 'referral'
+  | 'prize' | 'prize-refund' | 'admin';
+
+export interface PointsEntry {
+  id: string;
+  userId: string;
+  at: string;
+  delta: number;
+  bucket: 'earned' | 'spent';
+  source: PointsSource;
+  label: string;
+  note?: string;
+  ref?: string;
+  by?: string;
+}
+
+export interface PointsHistory {
+  points: number;
+  pointsSpent: number;
+  balance: number;
+  bySource: Partial<Record<PointsSource, number>>;
+  earlier: number;
+  history: PointsEntry[];
+}
+
+export interface AdminFanPoints {
+  id: string;
+  name: string;
+  email: string;
+  teamId: string | null;
+  createdAt: string;
+  points: number;
+  pointsSpent: number;
+  balance: number;
+  invited: number;
+}
+
 export interface PrizeRedemption {
   id: string;
   prizeId: string;
@@ -460,6 +499,7 @@ export interface SystemSettings {
   maxSocialPerPlatform: number;
   newsQueries: string;
   referralRewardPoints: number;
+  referralMaxRewarded: number;
   lockReminderMinutes: number;
   smtp: { host: string; port: number; user: string; pass: string; from: string; enabled: boolean };
 }
@@ -476,6 +516,7 @@ export interface PublicConfig {
   isSuperAdmin?: boolean;
   maxSocialPerPlatform: number;
   referralRewardPoints: number;
+  referralMaxRewarded: number;
   features: { googleSignIn: boolean; emailOtp: boolean; gemini: boolean; pushNotifications: boolean; liveScores: boolean; curator: boolean };
   fcmVapidKey: string;
   stats: { teams: number; players: number; fans: number; handles: number; matches: number; openContests: number; openDraws: number; prizes: number; forumThreads: number };

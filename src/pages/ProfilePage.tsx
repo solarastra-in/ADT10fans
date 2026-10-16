@@ -6,6 +6,7 @@ import { useT } from '../i18n';
 import { Link, navigate, usePageMeta } from '../router';
 import { Avatar, Button, Card, EmptyState, ErrorBox, Field, PageHeader, Pill, SectionTitle, Spinner, StatTile, TeamBadge, cx, inputCls, useFormat } from '../components/ui';
 import { InviteCard } from '../components/InviteCard';
+import { PointsHistory } from '../components/PointsHistory';
 
 const ICONS: Record<string, React.FC<{ className?: string }>> = { Target, Award, Users, CalendarCheck, Trophy, Gamepad2, Search, Flame, MessageSquare, MessagesSquare, UserPlus, Zap, Crown, Gift };
 
@@ -100,6 +101,11 @@ export default function ProfilePage() {
         <StatTile label={t('Check-in streak')} value={t('{n} days', { n: user.streak || 0 })} />
         <StatTile label={t('Badges')} value={`${data.stats.totalBadgesUnlocked}/${data.badges.length}`} />
       </div>
+
+      <section id="points" className="scroll-mt-24">
+        <SectionTitle title={t('Points history')} action={<Link to="/rules" className="text-xs font-bold text-amber-400">{t('How points work')}</Link>} />
+        <PointsHistory />
+      </section>
 
       <InviteCard />
 

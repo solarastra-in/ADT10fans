@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { AppStore, GamePlay, Player, Team, User } from './db';
+import { awardPoints } from './points';
 
 /**
  * Daily games. One play per fan per game per day (Dubai time). All outcomes are decided on the
@@ -110,7 +111,7 @@ export function submitGuess(store: AppStore, user: User, playerId: string, day =
     play.state.solved = true;
     play.finished = true;
     play.points = (GUESS_MAX + 1 - play.state.guesses.length) * 10;
-    user.points += play.points;
+    awardPoints(store, user, play.points, 'guess', `Solved in ${play.state.guesses.length} guess(es)`, day);
   } else if (play.state.guesses.length >= GUESS_MAX) {
     play.finished = true;
   }
@@ -183,7 +184,7 @@ export function playBall(store: AppStore, user: User, shot: Shot, day = dubaiDay
   if (view.balls.length >= 6 || view.wickets >= 2) {
     play.finished = true;
     play.points = view.runs + (view.runs >= view.target ? SUPER_OVER_BONUS : 0);
-    user.points += play.points;
+    awardPoints(store, user, play.points, 'superover', `${view.runs} run(s)${view.runs >= view.target ? `, beat the target of ${view.target}` : ''}`, day);
   }
   return { ...superOverView(store, play, day), last: { shot, outcome } };
 }

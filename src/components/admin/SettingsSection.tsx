@@ -22,6 +22,7 @@ type Draft = {
   maxSocialPerPlatform: string;
   newsQueries: string;
   referralRewardPoints: string;
+  referralMaxRewarded: string;
   lockReminderMinutes: string;
   smtpHost: string;
   smtpPort: string;
@@ -50,6 +51,7 @@ const toDraft = (s: Partial<SystemSettings> | null | undefined): Draft => ({
   maxSocialPerPlatform: s?.maxSocialPerPlatform !== undefined ? String(s.maxSocialPerPlatform) : '',
   newsQueries: s?.newsQueries || '',
   referralRewardPoints: String(s?.referralRewardPoints ?? 50),
+  referralMaxRewarded: String(s?.referralMaxRewarded ?? 10),
   lockReminderMinutes: String(s?.lockReminderMinutes ?? 30),
   smtpHost: s?.smtp?.host || '',
   smtpPort: s?.smtp?.port ? String(s.smtp.port) : '',
@@ -100,6 +102,8 @@ export const SettingsSection: React.FC<{ settings: SystemSettings; onRefreshAll:
     const max = toNumber(draft.maxSocialPerPlatform, -1);
     const refPts = toNumber(draft.referralRewardPoints, -1);
     if (!(Number.isInteger(refPts) && refPts >= 0 && refPts <= 1000)) er.referralRewardPoints = 'Use a whole number from 0 to 1000.';
+    const refMax = toNumber(draft.referralMaxRewarded, -1);
+    if (!(Number.isInteger(refMax) && refMax >= 0 && refMax <= 1000)) er.referralMaxRewarded = 'Use a whole number from 0 to 1000.';
     const lockMin = toNumber(draft.lockReminderMinutes, -1);
     if (!(Number.isInteger(lockMin) && lockMin >= 5 && lockMin <= 240)) er.lockReminderMinutes = 'Use a whole number from 5 to 240.';
     if (!(Number.isInteger(max) && max >= 1 && max <= 50)) er.maxSocialPerPlatform = 'Use a whole number from 1 to 50.';
@@ -142,6 +146,7 @@ export const SettingsSection: React.FC<{ settings: SystemSettings; onRefreshAll:
       curatorHashtags: draft.curatorHashtags.trim(),
       maxSocialPerPlatform: max,
       referralRewardPoints: refPts,
+      referralMaxRewarded: refMax,
       lockReminderMinutes: lockMin,
       newsQueries: draft.newsQueries
         .split('\n')
@@ -390,6 +395,10 @@ export const SettingsSection: React.FC<{ settings: SystemSettings; onRefreshAll:
 
           <Field label="Referral reward (points)" error={errors.referralRewardPoints} hint="Paid to both fans once the invited fan first plays. 0 turns rewards off.">
             <TextInput type="number" inputMode="numeric" min={0} max={1000} value={draft.referralRewardPoints} onChange={e => set({ referralRewardPoints: e.target.value })} error={!!errors.referralRewardPoints} />
+          </Field>
+
+          <Field label="Invites rewarded per fan" error={errors.referralMaxRewarded} hint="The inviter is paid for this many friends; friends after that still get their own reward. Stops fake accounts being used to farm points. 0 means no limit.">
+            <TextInput type="number" inputMode="numeric" min={0} max={1000} value={draft.referralMaxRewarded} onChange={e => set({ referralMaxRewarded: e.target.value })} error={!!errors.referralMaxRewarded} />
           </Field>
 
           <Field label="Lock reminder (minutes before start)" error={errors.lockReminderMinutes} hint="Fans with an unsaved Dream XI or open contest get a reminder this long before lock.">

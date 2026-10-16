@@ -4,7 +4,7 @@ import type {
   FantasyTeam, DreamXIRules, FantasyMatchSummary, LeaderRow, FantasyLeague, GamesToday, GuessState, SuperOverState, Shot,
   PrizeItem, PrizeRedemption, PollView, FanWarsRow, PublicFan, FanBase, ReferralSummary, CricketDataCandidate, FeedHealthRow,
   ProfileResponse, FanSpace, FanSpaceBooking, Approval, AgentRun, ForumReportView, Reaction, ProposalSettings,
-  YouthCupSchool, CreatorPartner, CommentaryAudioFeed, SuperfanPassportTier,
+  YouthCupSchool, CreatorPartner, CommentaryAudioFeed, SuperfanPassportTier, PointsHistory, PointsEntry, AdminFanPoints,
 } from './types';
 
 const TOKEN_KEY = 't10_auth_token';
@@ -105,6 +105,7 @@ export const api = {
   verifyOtp: (email: string, code: string, ref?: string) => post<{ token: string; user: User; created: boolean }>('/api/auth/otp/verify', { email, code, ref }),
   logout: () => post<Ok>('/api/auth/logout'),
   claimBadge: (badgeId: string) => post<Ok & { pointsAdded: number; user: User }>('/api/me/claim-badge', { badgeId }),
+  getMyPoints: () => req<PointsHistory>('/api/me/points'),
   checkin: () => post<Ok & { user: User; pointsAdded: number }>('/api/checkin'),
   selectTeam: (teamId: string) => post<Ok & { user: User }>('/api/me/team', { teamId }),
   getReferral: () => req<ReferralSummary>('/api/me/referral'),
@@ -179,6 +180,9 @@ export const api = {
   savePrize: (p: Partial<PrizeItem>) => post<Ok & { prize: PrizeItem; prizes: PrizeItem[] }>('/api/admin/prizes', p),
   deletePrize: (id: string) => del<Ok & { prizes: PrizeItem[] }>(`/api/admin/prizes/${id}`),
   updateRedemption: (id: string, status: 'fulfilled' | 'cancelled', note?: string) => post<Ok & { redemption: PrizeRedemption }>(`/api/admin/redemptions/${id}`, { status, note }),
+  getAdminPoints: (params: { q?: string; id?: string }) =>
+    req<{ fans: AdminFanPoints[]; detail: { id: string; fan: AdminFanPoints; bySource: PointsHistory['bySource']; ledger: PointsEntry[]; claims: PrizeRedemption[]; unitemised: number } | null }>(`/api/admin/points${qs(params)}`),
+  adjustPoints: (userId: string, delta: number, reason: string) => post<Ok & { applied: number; points: number; balance: number }>(`/api/admin/points/${encodeURIComponent(userId)}/adjust`, { delta, reason }),
   getDraws: () => req<{ draws: PrizeDraw[]; myEntries: string[] }>('/api/draws'),
   saveDraw: (draw: Partial<PrizeDraw>) => post<Ok & { draws: PrizeDraw[] }>('/api/admin/draws', draw),
   deleteDraw: (id: string) => del<Ok & { draws: PrizeDraw[] }>(`/api/admin/draws/${id}`),

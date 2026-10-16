@@ -20,7 +20,11 @@ ok('invented posts from the old harvester data file removed', !feeds.some(f => f
 ok('unchecked AI-found links removed', !feeds.some(f => f.sourceType === 'native-harvester'));
 const handles = (await get('/api/handles')).handles;
 ok('unchecked legacy handle hidden from fans', !handles.some(h => h.url.includes('fake-team-account')));
-ok('checked league and Bulls handles are added (the store has no Aces team)', handles.length === 9, handles.length);
+ok('checked league and Bulls handles are added (the store has no Aces team), plus the admin-added one', handles.length === 10, handles.length);
+ok('invented posts from the 15 October commit removed', !feeds.some(f => /9bZkp7q19f0/.test(f.url)));
+ok('unchecked handles marked official go back to approvals', !handles.some(h => h.id === 'h-forced'));
+const adminYt = handles.find(h => h.id === 'h-admin-yt');
+ok('admin-added handle kept, made-up channel id dropped', adminYt && adminYt.meta.channelId === undefined);
 const teams = (await get('/api/teams')).teams;
 ok('invented player stats removed', teams.every(t => t.squad.every(p => p.stats === undefined)));
 ok('admin squad edits kept', teams.find(t => t.id === 'bulls').squad.some(p => p.name === 'Admin Added Player'));

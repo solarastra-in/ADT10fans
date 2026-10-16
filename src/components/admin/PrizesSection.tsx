@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Check, Edit3, Plus, Trash2, X } from 'lucide-react';
 import { api } from '../../api';
 import type { PrizeItem, PrizeRedemption, Team } from '../../types';
+import { FanPointsPanel } from './FanPointsPanel';
 import { Actions, Button, Card, Checkbox, Chip, EmptyState, Errors, Field, Notice, SectionHeader, Select, Sheet, TextArea, TextInput, isHttpsUrl, statusTone, useRunner } from './ui';
 
 type Draft = { id?: string; title: string; description: string; image: string; pointsCost: string; stock: string; teamOnly: string; active: boolean; fulfilment: string };
@@ -14,6 +15,7 @@ export const PrizesSection: React.FC<{ teams: Team[] }> = ({ teams }) => {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [errors, setErrors] = useState<Errors>({});
   const [filter, setFilter] = useState<'pending' | 'all'>('pending');
+  const [claimQuery, setClaimQuery] = useState('');
   const { busy, notice, setNotice, run } = useRunner();
   const load = async () => {
     const r = await api.getAdminPrizes().catch(e => {
@@ -55,7 +57,8 @@ export const PrizesSection: React.FC<{ teams: Team[] }> = ({ teams }) => {
     if (await run(`c:${c.id}`, () => api.updateRedemption(c.id, status, note), status === 'fulfilled' ? 'Marked as fulfilled. The fan has been notified.' : 'Cancelled and points refunded.')) load();
   };
 
-  const list = claims.filter(c => filter === 'all' || c.status === 'pending');
+  const cq = claimQuery.trim().toLowerCase();
+  const list = claims.filter(c => (filter === 'all' || c.status === 'pending') && (!cq || c.code.toLowerCase().includes(cq) || c.userName.toLowerCase().includes(cq) || (c.userEmail || '').toLowerCase().includes(cq) || c.prizeTitle.toLowerCase().includes(cq)));
   return (
     <div className="space-y-5">
       <SectionHeader
@@ -91,15 +94,16 @@ export const PrizesSection: React.FC<{ teams: Team[] }> = ({ teams }) => {
         </div>
       )}
       <Card>
-        <div className="flex items-center justify-between gap-2 mb-3">
-          <h3 className="font-extrabold text-white">Claims</h3>
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <h3 className="font-extrabold text-white me-auto">Claims</h3>
+          <TextInput value={claimQuery} onChange={e => setClaimQuery(e.target.value)} placeholder="Claim code, fan or prize" aria-label="Search claims" className="max-w-[220px]" />
           <Select value={filter} onChange={e => setFilter(e.target.value as any)} aria-label="Filter claims" className="max-w-[200px]">
             <option value="pending">To fulfil ({claims.filter(c => c.status === 'pending').length})</option>
             <option value="all">All ({claims.length})</option>
           </Select>
         </div>
         {list.length === 0 ? (
-          <p className="text-sm text-slate-400">Nothing to fulfil.</p>
+          <p className="text-sm text-slate-400">{cq ? 'No claims match.' : 'Nothing to fulfil.'}</p>
         ) : (
           <ul className="divide-y divide-slate-800">
             {list.map(c => (
@@ -120,6 +124,7 @@ export const PrizesSection: React.FC<{ teams: Team[] }> = ({ teams }) => {
           </ul>
         )}
       </Card>
+      <FanPointsPanel teams={teams} />
       <Sheet open={!!draft} title={draft?.id ? 'Edit prize' : 'Add prize'} onClose={() => setDraft(null)} footer={<><Button onClick={() => setDraft(null)}>Cancel</Button><Button variant="primary" onClick={save} loading={busy === 'save'}>Save prize</Button></>}>
         {draft && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

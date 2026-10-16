@@ -24,6 +24,7 @@ function Rules() {
       <Section title={t('Points and Fan Wars')}>
         <p>{t('Everything on the site is free to play. You earn season points from Dream XI, the daily games, predictions, daily check-ins, the forum and badges. The points also count for the team you back in Fan Wars. You can pick a team and switch once per season.')}</p>
         <p>{t('Spending points on prizes never lowers your leaderboard score: you have season points (for rankings) and a balance to spend.')}</p>
+        <p>{t('Your profile shows every point you earned and spent, and why. If a post is removed, or a scorecard is corrected, the points it earned are adjusted and the change is listed there.')}</p>
       </Section>
       <Section id="dream-xi" title={t('Dream XI')}>
         {r && (
@@ -60,6 +61,7 @@ function Rules() {
       </Section>
       <Section id="predictions" title={t('Predictions')}>
         <p>{t('Each question shows its points. Predictions close at the time shown (usually the first ball). Points are added when the correct answers are confirmed. Instant quizzes are marked straight away and can be played once.')}</p>
+        <p>{t('Quiz answers are shown when the quiz closes.')}</p>
       </Section>
       <Section id="draws" title={t('Prize draws and prizes')}>
         <p>{t('Prize draws are free to enter. Some are limited to fans of one team or need a minimum number of season points. Winners are picked with a verifiable method; open "Verify" on a drawn prize to see the seed and entrant hash.')}</p>
@@ -67,9 +69,11 @@ function Rules() {
       </Section>
       <Section id="invites" title={t('Invite friends')}>
         <p>{t('Share your invite link from your profile. When a friend signs up with it and plays their first game (Dream XI, a daily game, a prediction or a forum post), you both get {n} points.', { n: config?.referralRewardPoints ?? 50 })}</p>
+        {(config?.referralMaxRewarded ?? 10) > 0 && <p>{t('You are rewarded for up to {max} friends this season; friends who join after that still get their own points.', { max: config?.referralMaxRewarded ?? 10 })}</p>}
       </Section>
       <Section id="forum" title={t('Forum')}>
         <p>{t('Be respectful. No abuse, hate, spam or betting promotion. Posts reported by several fans are hidden until a moderator reviews them. Forum points are capped at 50 a day.')}</p>
+        <p>{t('A thread earns 15 points and a reply 5. If a post is removed, its points are taken back.')}</p>
       </Section>
     </div>
   );
@@ -86,7 +90,7 @@ function Privacy() {
         <p>{t('To run your account, the games and leaderboards, to deliver prizes and passes, and to send the notifications you asked for. We do not sell personal data.')}</p>
       </Section>
       <Section title={t('Embedded content')}>
-        <p>{t('Videos and posts from YouTube, X, Facebook, Instagram and TikTok load from those services only when you tap them. Those services may set their own cookies once loaded. YouTube videos use the privacy-enhanced youtube-nocookie.com player.')}</p>
+        <p>{t('Videos and posts from YouTube, X, Facebook, Instagram and TikTok load from those services: an official account’s feed loads when you scroll to it, and single posts load when you tap them. Those services may set their own cookies once loaded. YouTube videos use the privacy-enhanced youtube-nocookie.com player.')}</p>
       </Section>
       <Section title={t('Your choices')}>
         <p>{t('You can edit your details or delete your account at any time from your profile. Deleting removes your account, points and entries; forum posts stay but show as "Former fan".')}</p>

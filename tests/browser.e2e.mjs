@@ -219,6 +219,9 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
   await go(fan.page, '/profile');
   const invite = await fan.page.locator('[data-testid="invite-link"]').first().inputValue();
   ok(`${w}px profile shows an invite link`, /\?ref=[A-Z0-9]{6}/.test(invite));
+  await fan.page.waitForSelector('[data-testid="points-row"]');
+  const rows = await fan.page.locator('[data-testid="points-history"] [data-testid="points-row"]').allInnerTexts();
+  ok(`${w}px profile lists every points change (forum thread and reply)`, rows.some(r => /Forum thread[\s\S]*\+15/.test(r)) && rows.some(r => /Forum reply[\s\S]*\+5/.test(r)), rows);
   ok(`${w}px profile fits the screen`, await noOverflow(fan.page));
   ok(`${w}px no script errors during the fan journey`, fan.errors.length === 0, fan.errors);
   await fan.ctx.close();
@@ -233,6 +236,12 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
     await adm.page.selectOption('#admin-section', s);
     await adm.page.waitForTimeout(250);
     await adm.page.waitForLoadState('networkidle').catch(() => undefined);
+    if (s === 'prizes') {
+      await adm.page.waitForSelector('[data-testid="fan-points-row"]');
+      await adm.page.locator('[data-testid="fan-points-row"]').first().click();
+      await adm.page.waitForSelector('[data-testid="fan-points-detail"] [data-testid="points-row"]');
+      ok(`${w}px admin sees a fan's points history`, (await adm.page.locator('[data-testid="fan-points-detail"] [data-testid="points-row"]').count()) > 0);
+    }
     ok(`${w}px admin "${s}" opens without errors and fits`, adm.errors.length === 0 && (await noOverflow(adm.page)), { errors: adm.errors, overflow: await adm.page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]) });
   }
   await adm.ctx.close();

@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { AppStore, User } from './db';
+import { awardPoints } from './points';
 
 /**
  * Invite a friend. Each fan has a short code; the invite link is /?ref=CODE. When the friend signs
@@ -47,8 +48,14 @@ export function checkReferralReward(store: AppStore, user: User): number {
   const inviter = store.users.find(u => u.id === user.referredBy);
   const pts = Math.max(0, Math.round(store.settings.referralRewardPoints || 0));
   user.referralRewardedAt = new Date().toISOString();
-  user.points += pts;
-  if (inviter) inviter.points += pts;
+  awardPoints(store, user, pts, 'referral', inviter ? `Joined with ${inviter.name}'s invite` : 'Joined with an invite', inviter?.id);
+  if (inviter) {
+    // The inviter is paid for a limited number of friends, so fake accounts can't farm points.
+    const cap = Math.max(0, Math.round(store.settings.referralMaxRewarded ?? 10));
+    const paidAlready = store.users.filter(u => u.referredBy === inviter.id && u.id !== user.id && u.referralRewardedAt && !u.referralInviterUnpaid).length;
+    if (cap && paidAlready >= cap) user.referralInviterUnpaid = true;
+    else awardPoints(store, inviter, pts, 'referral', `${user.name} joined with your invite and played`, user.id);
+  }
   return pts;
 }
 
@@ -61,7 +68,8 @@ export function referralSummary(store: AppStore, user: User) {
     rewardPoints: pts,
     invited: invited.length,
     joinedAndPlayed: rewarded.length,
-    pointsEarned: rewarded.length * pts,
+    pointsEarned: rewarded.filter(u => !u.referralInviterUnpaid).length * pts,
+    maxRewarded: store.settings.referralMaxRewarded ?? 10,
     friends: invited.slice(0, 50).map(u => ({ name: u.name, joinedAt: u.createdAt, rewarded: Boolean(u.referralRewardedAt) })),
   };
 }

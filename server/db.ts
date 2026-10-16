@@ -84,6 +84,8 @@ export interface User {
   referralCode?: string;
   referredBy?: string | null;
   referralRewardedAt?: string | null;
+  /** Set when this friend joined after the inviter reached the invite-reward limit. */
+  referralInviterUnpaid?: boolean;
   createdAt: string;
   lastActiveAt?: string;
   stats?: any;
@@ -424,6 +426,8 @@ export interface SystemSettings {
   newsQueries: string;
   /** Points a fan and the friend who invited them each get once the friend takes part. */
   referralRewardPoints: number;
+  /** How many invited friends earn the inviter points (the friend is always rewarded). 0 = no limit. */
+  referralMaxRewarded: number;
   /** Minutes before the first ball when the "lineups lock soon" reminder goes out. */
   lockReminderMinutes: number;
   smtp: { host: string; port: number; user: string; pass: string; from: string; enabled: boolean };
@@ -431,6 +435,28 @@ export interface SystemSettings {
 
 export type ReactionEmoji = '👏' | '🔥' | '😂' | '😮' | '💯';
 export const REACTIONS: ReactionEmoji[] = ['👏', '🔥', '😂', '😮', '💯'];
+
+export type PointsSource =
+  | 'checkin' | 'guess' | 'superover' | 'dream-xi' | 'prediction' | 'quiz'
+  | 'forum-thread' | 'forum-reply' | 'forum-removed' | 'badge' | 'referral'
+  | 'prize' | 'prize-refund' | 'admin';
+
+/** One change to a fan's points (see server/points.ts). */
+export interface PointsEntry {
+  id: string;
+  userId: string;
+  at: string;
+  /** Positive adds, negative takes away. */
+  delta: number;
+  /** 'earned' changes season points; 'spent' changes points spent on prizes. */
+  bucket: 'earned' | 'spent';
+  source: PointsSource;
+  note?: string;
+  /** What it was for: a match, contest, thread, claim, badge or friend id. */
+  ref?: string;
+  /** Admin email, for changes an admin made. */
+  by?: string;
+}
 
 export interface ForumComment {
   id: string;
@@ -446,6 +472,8 @@ export interface ForumComment {
   reactions?: Partial<Record<ReactionEmoji, string[]>>;
   hidden?: boolean;
   createdAt: string;
+  /** Points the author received for this post (taken back if it is removed). */
+  pointsAwarded?: number;
   editedAt?: string;
 }
 
@@ -471,6 +499,8 @@ export interface ForumThread {
   commentsCount: number;
   lastActivityAt: string;
   createdAt: string;
+  /** Points the author received for this post (taken back if it is removed). */
+  pointsAwarded?: number;
   editedAt?: string;
 }
 
@@ -703,6 +733,7 @@ export interface AppStore {
   drawEntries: DrawEntry[];
   prizes: PrizeItem[];
   redemptions: PrizeRedemption[];
+  pointsLedger: PointsEntry[];
   forumThreads: ForumThread[];
   forumComments: ForumComment[];
   forumReports: ForumReport[];
@@ -724,7 +755,7 @@ export interface AppStore {
   adminUsers: AdminUserRecord[];
 }
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export function superAdminRecord(): AdminUserRecord {
   return {
@@ -757,6 +788,7 @@ export function defaultSettings(): SystemSettings {
     maxSocialPerPlatform: 6,
     newsQueries: '',
     referralRewardPoints: 50,
+    referralMaxRewarded: 10,
     lockReminderMinutes: Math.max(5, Number(process.env.LOCK_REMINDER_MINUTES) || 30),
     smtp: { host: '', port: 587, user: '', pass: '', from: '', enabled: false },
   };
@@ -784,6 +816,7 @@ export function emptyStore(): AppStore {
     drawEntries: [],
     prizes: [],
     redemptions: [],
+    pointsLedger: [],
     forumThreads: [],
     forumComments: [],
     forumReports: [],
@@ -817,6 +850,35 @@ const STOCK_IMAGE = /unsplash\.com|dicebear\.com|picsum\.photos|placeholder\.com
  * Feed items earlier versions invented rather than pulled from a real source: placeholder status ids,
  * stock photos, a placeholder YouTube video, or the generator's source type.
  */
+/** Links of the invented posts removed by the v5 migration. */
+const FABRICATED_POST_URLS_2026_10_15 = [
+  'https://x.com/arabianacesT10/status/1841452093847298048',
+  'https://www.instagram.com/p/DAq_AcesKit2026/',
+  'https://x.com/arabianacesT10/status/1841328901247891200',
+  'https://www.threads.com/@arabianacesofficial/post/DAq_Threads01',
+  'https://www.instagram.com/p/DAq_NetPractice/',
+  'https://www.tiktok.com/@arabianaces/video/7289012489012',
+  'https://www.facebook.com/arabianacesofficial/posts/10928301928301',
+  'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+  'https://x.com/UAEBullsT10/status/1841567829102938102',
+  'https://www.instagram.com/p/DAq_BullsSpinTwins/',
+  'https://www.youtube.com/watch?v=7uV8h8Wk5oM',
+  'https://www.threads.com/@delhibullst10/post/DAq_BullsThreads',
+  'https://x.com/UnitedTigersT10/status/1841790123491829012',
+  'https://www.instagram.com/p/DAq_TigersCamp2026/',
+  'https://www.youtube.com/watch?v=9bZkp7q19f0',
+  'https://x.com/YasLionsT10/status/1841890123849182091',
+  'https://www.instagram.com/p/DAq_YasLionsKit/',
+  'https://x.com/EmiratesEaglesT10/status/1841980123849120918',
+  'https://www.instagram.com/p/DAq_EaglesFielding/',
+  'https://x.com/RoyalChampionsT10/status/1842090123849182910',
+  'https://www.instagram.com/p/DAq_ChampionsArmor/',
+  'https://x.com/T10League/status/1841678901239847101',
+  'https://www.instagram.com/p/DAq_LeagueTrophyTour/',
+  'https://www.youtube.com/watch?v=3JZ_D3ELPTg',
+  'https://www.tiktok.com/@abudhabit10/video/7291028301928',
+];
+
 export function isFabricatedFeedItem(f: any): boolean {
   if (!f || typeof f !== 'object') return true;
   if (f.sourceType === 'social-handle') return true;
@@ -883,6 +945,16 @@ export function migrate(raw: any): AppStore {
     // stock photos, placeholder links) and unchecked links an AI search returned. Remove both; the
     // harvester now keeps only posts the platform itself confirms.
     out.feedItems = out.feedItems.filter((f: FeedItem) => !isFabricatedFeedItem(f) && !String(f.id).startsWith('seed-') && f.sourceType !== 'native-harvester');
+  }
+  if (version < 5) {
+    // A commit from 15 October 2026 seeded 25 invented "official" posts (made-up post ids, stock
+    // photos, invented like counts, and unrelated YouTube videos presented as team videos). Remove
+    // them, and anything else that looks invented.
+    const invented = new Set(FABRICATED_POST_URLS_2026_10_15);
+    out.feedItems = out.feedItems.filter((f: FeedItem) => !invented.has(String(f.url)) && !isFabricatedFeedItem(f) && f.sourceType !== 'native-harvester');
+    for (const h of out.handles as any[]) {
+      if (h.meta?.channelId && !/^UC[\w-]{22}$/.test(h.meta.channelId)) delete h.meta.channelId;
+    }
   }
   for (const u of out.users as any[]) {
     if (u.avatar && STOCK_IMAGE.test(u.avatar)) u.avatar = '';

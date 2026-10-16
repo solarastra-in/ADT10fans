@@ -12,6 +12,7 @@ import { geminiConfigured } from '../gemini';
 import { liveScoresConfigured } from '../liveScores';
 import { fantasySeasonTotals } from '../fantasy';
 import { gameStats } from '../games';
+import { awardPoints, balanceOf, ledgerFor, summaryFor } from '../points';
 
 export const coreRouter = Router();
 
@@ -37,6 +38,7 @@ coreRouter.get('/config', (req, res) => {
       isSuperAdmin: isSuperAdmin(viewer),
       maxSocialPerPlatform: st.maxSocialPerPlatform || 6,
       referralRewardPoints: st.referralRewardPoints || 0,
+      referralMaxRewarded: st.referralMaxRewarded ?? 10,
       features: {
         googleSignIn: Boolean(firebaseProjectId()),
         emailOtp: emailOtpAvailable(),
@@ -167,6 +169,22 @@ coreRouter.get('/me/profile', requireUser, (req, res) => {
   });
 });
 
+/** The signed-in fan's points: totals, where they came from, and every change. */
+coreRouter.get('/me/points', requireUser, (req, res) => {
+  const user = userOf(req);
+  const store = db.get();
+  const itemised = store.pointsLedger.filter(e => e.userId === user.id && e.bucket === 'earned').reduce((s, e) => s + e.delta, 0);
+  res.json({
+    points: user.points,
+    pointsSpent: user.pointsSpent || 0,
+    balance: balanceOf(user),
+    bySource: summaryFor(store, user.id),
+    // Points earned before the history was kept (before 16 October 2026).
+    earlier: Math.max(0, user.points - itemised),
+    history: ledgerFor(store, user.id, 200).map(({ by, ...e }) => e),
+  });
+});
+
 coreRouter.post('/me/claim-badge', requireUser, (req, res) => {
   const user = userOf(req);
   const store = db.get();
@@ -176,7 +194,7 @@ coreRouter.post('/me/claim-badge', requireUser, (req, res) => {
   const key = `claimed:${user.id}:${target.id}`;
   if (store.claimedBadges[key]) return bad(res, 'Reward already claimed for this badge');
   store.claimedBadges[key] = true;
-  user.points += target.rewardPoints;
+  awardPoints(store, user, target.rewardPoints, 'badge', target.name, target.id);
   db.save();
   res.json({ success: true, pointsAdded: target.rewardPoints, user: selfUser(user) });
 });
@@ -243,7 +261,7 @@ coreRouter.post('/checkin', requireUser, (req, res) => {
   const yesterday = new Date(now.getTime() - 86400000);
   user.streak = last && dayKey(last) === dayKey(yesterday) ? user.streak + 1 : 1;
   const pts = 10 * Math.min(user.streak, 5);
-  user.points += pts;
+  awardPoints(db.get(), user, pts, 'checkin', `Day ${user.streak} of your streak`, dayKey(now));
   user.lastCheckin = now.toISOString();
   db.save();
   res.json({ success: true, user: selfUser(user), pointsAdded: pts });

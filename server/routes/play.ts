@@ -7,6 +7,7 @@ import { dispatchNotification } from '../notify';
 import { creditsFor, DREAM_XI, fantasySeasonTotals, lineupLocked, lineupPool, scoreMatchFantasy, scoringRules, validateLineup } from '../fantasy';
 import { GameError, guessView, playBall, submitGuess, superOverState, todayLeaderboard, dubaiDay, Shot } from '../games';
 import { notifyFantasyResults } from '../reminders';
+import { awardPoints } from '../points';
 
 export const playRouter = Router();
 
@@ -15,7 +16,9 @@ function contestLocked(c: Contest) {
   return c.status !== 'open' || (c.locksAt ? +new Date(c.locksAt) <= Date.now() : false);
 }
 export function stripAnswers(c: Contest, isAdmin: boolean): Contest {
-  if (isAdmin || c.status === 'settled') return c;
+  // Instant quizzes show their answers once they close (not while open, or a second account could
+  // collect them for the first).
+  if (isAdmin || c.status === 'settled' || (c.instant && contestLocked(c))) return c;
   return { ...c, questions: c.questions.map(({ answer, explain, ...q }) => q) as Contest['questions'] };
 }
 
@@ -50,13 +53,13 @@ playRouter.post('/contests/:id/enter', requireUser, rateLimit('contest', 30, 60_
   if (contest.instant) {
     if (existingIdx >= 0) return bad(res, 'You have already played this quiz');
     pointsAwarded = contest.questions.reduce((sum, q) => sum + (q.answer && answers[q.id] === q.answer ? q.points : 0), 0);
-    user.points += pointsAwarded;
+    awardPoints(store, user, pointsAwarded, 'quiz', contest.title, contest.id);
   }
   const entry = { userId: user.id, contestId: contest.id, answers, pointsAwarded, createdAt: new Date().toISOString() };
   if (existingIdx >= 0) store.contestEntries[existingIdx] = entry;
   else store.contestEntries.push(entry);
   db.save();
-  const results = contest.instant ? contest.questions.map(q => ({ id: q.id, correct: answers[q.id] === q.answer, answer: q.answer, explain: q.explain })) : undefined;
+  const results = contest.instant ? contest.questions.map(q => ({ id: q.id, correct: answers[q.id] === q.answer })) : undefined;
   res.json({ success: true, pointsAwarded: pointsAwarded || 0, user: selfUser(user), results });
 });
 
@@ -153,7 +156,7 @@ playRouter.post('/admin/contests/:id/settle', requireAdmin('contests'), wrap(asy
     e.pointsAwarded = pts;
     const u = store.users.find(x => x.id === e.userId);
     if (u && pts > 0) {
-      u.points += pts;
+      awardPoints(store, u, pts, 'prediction', contest.title, contest.id);
       winners++;
       total += pts;
     }

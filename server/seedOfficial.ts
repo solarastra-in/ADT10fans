@@ -71,6 +71,7 @@ export function initializeStore(store: AppStore): boolean {
     changed = true;
   }
   if (reconcileOfficialHandles(store, now)) changed = true;
+  if (demoteUncheckedOfficialHandles(store, now)) changed = true;
   if (addSuggestedHandles(store, now)) changed = true;
   if (!store.jobLog['game-secret'] && !process.env.GAME_SECRET) {
     store.jobLog['game-secret'] = crypto.randomBytes(24).toString('hex');
@@ -79,6 +80,41 @@ export function initializeStore(store: AppStore): boolean {
   return changed;
 }
 
+/**
+ * A handle marked "official" must be one of OFFICIAL_HANDLES. A commit on 15 October 2026 marked
+ * unchecked accounts as official (and auto-approved their approvals). Those go back to
+ * Admin → Approvals so an admin decides; accounts an admin approved or added are not touched.
+ */
+export function demoteUncheckedOfficialHandles(store: AppStore, now = new Date().toISOString()): boolean {
+  const checked = new Set(OFFICIAL_HANDLES.map(h => handleKey(h.url)));
+  const checkedByName = new Set(OFFICIAL_HANDLES.map(h => `${h.teamId}|${h.platform}|${h.handle.toLowerCase()}`));
+  let changed = false;
+  for (const h of store.handles) {
+    if (h.source !== 'official') continue;
+    if (checked.has(handleKey(h.url)) || checkedByName.has(`${h.teamId}|${h.platform}|${h.handle.toLowerCase()}`)) continue;
+    h.status = 'pending';
+    h.source = 'suggested';
+    h.verifiedAt = undefined;
+    const approval = store.approvals.find(a => a.kind === 'handle' && a.payload?.handleId === h.id);
+    if (approval) {
+      approval.status = 'pending';
+      approval.decidedAt = undefined;
+    } else {
+      const team = store.teams.find(t => t.id === h.teamId);
+      store.approvals.unshift({
+        id: 'ap-' + crypto.randomUUID().replace(/-/g, '').slice(0, 10),
+        kind: 'handle',
+        title: `${team?.name || 'League'} · ${h.platform} ${h.handle}`,
+        detail: `Suggested but not confirmed. Open ${h.url}: approve only if the account exists and is the team's official account.`,
+        payload: { handleId: h.id, teamId: h.teamId, platform: h.platform, url: h.url },
+        status: 'pending',
+        createdAt: now,
+      });
+    }
+    changed = true;
+  }
+  return changed;
+}
 
 /**
  * Accounts someone proposed for the other teams (October 2026) but that could not be confirmed.

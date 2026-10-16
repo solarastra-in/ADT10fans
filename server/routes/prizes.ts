@@ -4,6 +4,7 @@ import { db, PrizeDraw, PrizeItem } from '../db';
 import { getAuthUser, rateLimit, requireAdmin, requireUser, selfUser } from '../auth';
 import { bad, isColor, isoOrEmpty, newId, num, optionalUrl, str, userOf, wrap } from '../http';
 import { dispatchNotification } from '../notify';
+import { awardPoints, balanceOf, ledgerFor, refundPoints, spendPoints, summaryFor } from '../points';
 
 export const prizesRouter = Router();
 
@@ -128,7 +129,7 @@ prizesRouter.post('/draws/:id/execute', requireAdmin('draws'), wrap(async (req, 
 }));
 
 // ---------- prize catalogue (spend points) ----------
-const balance = (u: { points: number; pointsSpent?: number }) => Math.max(0, u.points - (u.pointsSpent || 0));
+const balance = balanceOf;
 
 prizesRouter.get('/prizes', (req, res) => {
   const user = getAuthUser(req);
@@ -152,10 +153,11 @@ prizesRouter.post('/prizes/:id/redeem', requireUser, rateLimit('redeem', 10, 60_
   if (claimed >= prize.stock) return bad(res, 'This prize has all been claimed', 409);
   if (store.redemptions.some(r => r.prizeId === prize.id && r.userId === user.id && r.status !== 'cancelled')) return bad(res, 'You have already claimed this prize', 409);
   if (balance(user) < prize.pointsCost) return bad(res, `You need ${prize.pointsCost} points; you have ${balance(user)} to spend.`, 402);
-  user.pointsSpent = (user.pointsSpent || 0) + prize.pointsCost;
   const code = Array.from(crypto.randomBytes(8), b => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
+  const redemptionId = newId('rdm');
+  spendPoints(store, user, prize.pointsCost, `${prize.title} (claim ${code})`, redemptionId);
   const redemption = {
-    id: newId('rdm'), prizeId: prize.id, prizeTitle: prize.title, userId: user.id, userName: user.name, userEmail: user.email,
+    id: redemptionId, prizeId: prize.id, prizeTitle: prize.title, userId: user.id, userName: user.name, userEmail: user.email,
     pointsCost: prize.pointsCost, code, status: 'pending' as const, createdAt: new Date().toISOString(),
   };
   store.redemptions.unshift(redemption);
@@ -165,7 +167,7 @@ prizesRouter.post('/prizes/:id/redeem', requireUser, rateLimit('redeem', 10, 60_
 
 prizesRouter.get('/admin/prizes', requireAdmin('prizes'), (_req, res) => {
   const store = db.get();
-  res.json({ prizes: store.prizes, redemptions: store.redemptions.slice(0, 500) });
+  res.json({ prizes: store.prizes, redemptions: store.redemptions.slice(0, 3000) });
 });
 
 prizesRouter.post('/admin/prizes', requireAdmin('prizes'), (req, res) => {
@@ -222,7 +224,7 @@ prizesRouter.post('/admin/redemptions/:id', requireAdmin('prizes'), wrap(async (
   r.updatedAt = new Date().toISOString();
   r.note = str(req.body?.note, 200) || undefined;
   const u = store.users.find(x => x.id === r.userId);
-  if (status === 'cancelled' && u) u.pointsSpent = Math.max(0, (u.pointsSpent || 0) - r.pointsCost);
+  if (status === 'cancelled' && u) refundPoints(store, u, r.pointsCost, `${r.prizeTitle} (claim ${r.code})${r.note ? `: ${r.note}` : ''}`, r.id, userOf(req).email);
   db.save();
   if (u) {
     await dispatchNotification({
@@ -237,3 +239,54 @@ prizesRouter.post('/admin/redemptions/:id', requireAdmin('prizes'), wrap(async (
   }
   res.json({ success: true, redemption: r });
 }));
+
+// ---------- fan points (admin) ----------
+
+/** Finds fans by name, email or claim code, with their points and recent history. */
+prizesRouter.get('/admin/points', requireAdmin('prizes'), (req, res) => {
+  const store = db.get();
+  const q = str(req.query.q, 120).toLowerCase();
+  let users = store.users;
+  if (q) {
+    const byCode = store.redemptions.filter(r => r.code.toLowerCase() === q).map(r => r.userId);
+    users = users.filter(u => byCode.includes(u.id) || u.email.toLowerCase().includes(q) || u.name.toLowerCase().includes(q) || u.id === q);
+  } else {
+    users = [...users].sort((a, b) => b.points - a.points);
+  }
+  const row = (u: (typeof users)[number]) => ({
+    id: u.id, name: u.name, email: u.email, teamId: u.teamId || null, createdAt: u.createdAt,
+    points: u.points, pointsSpent: u.pointsSpent || 0, balance: balanceOf(u),
+    invited: store.users.filter(x => x.referredBy === u.id).length,
+  });
+  const fans = users.slice(0, 25).map(row);
+  const wanted = str(req.query.id, 80) || (fans.length === 1 ? fans[0].id : '');
+  const detail = wanted ? store.users.find(u => u.id === wanted) : null;
+  res.json({
+    fans,
+    detail: detail
+      ? {
+          id: detail.id,
+          fan: row(detail),
+          bySource: summaryFor(store, detail.id),
+          ledger: ledgerFor(store, detail.id, 300),
+          claims: store.redemptions.filter(r => r.userId === detail.id),
+          // Points earned before the ledger existed (October 2026) are not itemised.
+          unitemised: detail.points - store.pointsLedger.filter(e => e.userId === detail.id && e.bucket === 'earned').reduce((s, e) => s + e.delta, 0),
+        }
+      : null,
+  });
+});
+
+/** Adds or removes points with a reason (corrections, fraud, goodwill). Recorded with the admin's email. */
+prizesRouter.post('/admin/points/:userId/adjust', requireAdmin('prizes'), (req, res) => {
+  const store = db.get();
+  const fan = store.users.find(u => u.id === req.params.userId);
+  if (!fan) return bad(res, 'Fan not found', 404);
+  const delta = Math.round(num(req.body?.delta, 0));
+  const reason = str(req.body?.reason, 200);
+  if (!delta || Math.abs(delta) > 100_000) return bad(res, 'Enter a whole number of points to add (or a negative number to remove)');
+  if (reason.length < 5) return bad(res, 'Give a reason (the fan sees it in their points history)');
+  const applied = awardPoints(store, fan, delta, 'admin', reason, undefined, userOf(req).email);
+  db.save();
+  res.json({ success: true, applied, points: fan.points, balance: balanceOf(fan) });
+});

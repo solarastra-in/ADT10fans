@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db, ForumComment, ForumThread, Poll, REACTIONS, ReactionEmoji } from '../db';
 import { canManageTeam, getAuthUser, hasPermission, publicUser, rateLimit, requireAdmin, requireUser, selfUser, teamScopeOf } from '../auth';
 import { bad, isoOrEmpty, newId, str, userOf } from '../http';
+import { awardPoints, earnedOnDay } from '../points';
 
 export const communityRouter = Router();
 
@@ -15,12 +16,21 @@ const DAILY_FORUM_POINTS_CAP = 50;
 const linkCount = (s: string) => (s.match(/https?:\/\//g) || []).length;
 const dayKey = (iso: string) => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Asia/Dubai' });
 
-function forumPointsToday(userId: string) {
-  const store = db.get();
+/**
+ * Points a post earns: its full value until the fan reaches today's cap, then what is left of the
+ * cap. Counted from the points ledger, so deleting a post does not free up the day's allowance.
+ */
+function forumPointsFor(userId: string, value: number) {
   const today = dayKey(new Date().toISOString());
-  const threads = store.forumThreads.filter(t => t.userId === userId && dayKey(t.createdAt) === today).length;
-  const replies = store.forumComments.filter(c => c.userId === userId && dayKey(c.createdAt) === today).length;
-  return threads * THREAD_POINTS + replies * REPLY_POINTS;
+  const already = earnedOnDay(db.get(), userId, ['forum-thread', 'forum-reply'], today);
+  return Math.max(0, Math.min(value, DAILY_FORUM_POINTS_CAP - already));
+}
+
+/** Takes back the points a removed post earned its author. */
+function takeBackPostPoints(post: { userId: string; pointsAwarded?: number; id: string }, why: string) {
+  const store = db.get();
+  const author = store.users.find(u => u.id === post.userId);
+  if (author && post.pointsAwarded) awardPoints(store, author, -post.pointsAwarded, 'forum-removed', why, post.id);
 }
 
 function reactionSummary(r: ForumThread['reactions'], userId?: string) {
@@ -67,16 +77,17 @@ communityRouter.post('/forum/threads', requireUser, rateLimit('thread', 5, 10 * 
   const matchId = req.body?.matchId && store.matches.some(m => m.id === req.body.matchId) ? req.body.matchId : null;
   const tags = (Array.isArray(req.body?.tags) ? req.body.tags : []).map((t: any) => str(t, 24)).filter(Boolean).slice(0, 5);
   const now = new Date().toISOString();
-  const earned = forumPointsToday(user.id) < DAILY_FORUM_POINTS_CAP ? THREAD_POINTS : 0;
+  const earned = forumPointsFor(user.id, THREAD_POINTS);
   const thread: ForumThread = {
     id: newId('thread'), title, content,
     category: FORUM_CATEGORIES.includes(req.body?.category) ? req.body.category : 'general',
     tags, teamId, matchId, userId: user.id, userName: user.name, userAvatar: user.avatar,
     userBadge: user.role === 'admin' ? (user.adminRole === 'team_official' ? 'Team official' : 'Admin') : undefined,
     pinned: false, upvotes: 0, upvotedBy: [], reactions: {}, views: 0, commentsCount: 0, lastActivityAt: now, createdAt: now,
+    pointsAwarded: earned,
   };
   store.forumThreads.unshift(thread);
-  user.points += earned;
+  awardPoints(store, user, earned, 'forum-thread', title, thread.id);
   db.save();
   res.json({ success: true, thread: threadView(thread, user.id), pointsAdded: earned, user: selfUser(user) });
 });
@@ -120,6 +131,7 @@ communityRouter.delete('/forum/threads/:id', requireUser, (req, res) => {
   const t = store.forumThreads.find(x => x.id === req.params.id);
   if (!t) return bad(res, 'Thread not found', 404);
   if (t.userId !== user.id && !canModerate(user, t.teamId)) return bad(res, 'You can only delete your own posts', 403);
+  takeBackPostPoints(t, `Thread removed: ${t.title}`);
   store.forumThreads = store.forumThreads.filter(x => x.id !== t.id);
   store.forumComments = store.forumComments.filter(c => c.threadId !== t.id);
   store.forumReports = store.forumReports.filter(r => r.threadId !== t.id);
@@ -136,16 +148,17 @@ communityRouter.post('/forum/threads/:id/comments', requireUser, rateLimit('comm
   const thread = store.forumThreads.find(t => t.id === req.params.id && !t.hidden);
   if (!thread) return bad(res, 'Thread not found', 404);
   if (thread.locked) return bad(res, 'This thread is locked', 423);
-  const earned = forumPointsToday(user.id) < DAILY_FORUM_POINTS_CAP ? REPLY_POINTS : 0;
+  const earned = forumPointsFor(user.id, REPLY_POINTS);
   const comment: ForumComment = {
     id: newId('comment'), threadId: thread.id, userId: user.id, userName: user.name, userAvatar: user.avatar,
     userBadge: user.role === 'admin' ? (user.adminRole === 'team_official' ? 'Team official' : 'Admin') : undefined,
     teamId: user.teamId || null, content, upvotes: 0, upvotedBy: [], reactions: {}, createdAt: new Date().toISOString(),
+    pointsAwarded: earned,
   };
   store.forumComments.push(comment);
   thread.commentsCount = store.forumComments.filter(c => c.threadId === thread.id && !c.hidden).length;
   thread.lastActivityAt = comment.createdAt;
-  user.points += earned;
+  awardPoints(store, user, earned, 'forum-reply', thread.title, comment.id);
   db.save();
   res.json({ success: true, comment: commentView(comment, user.id), thread: threadView(thread, user.id), pointsAdded: earned, user: selfUser(user) });
 });
@@ -157,6 +170,7 @@ communityRouter.delete('/forum/comments/:id', requireUser, (req, res) => {
   if (!c) return bad(res, 'Reply not found', 404);
   const t = store.forumThreads.find(x => x.id === c.threadId);
   if (c.userId !== user.id && !canModerate(user, t?.teamId)) return bad(res, 'You can only delete your own replies', 403);
+  takeBackPostPoints(c, 'Reply removed');
   store.forumComments = store.forumComments.filter(x => x.id !== c.id);
   if (t) t.commentsCount = store.forumComments.filter(x => x.threadId === t.id && !x.hidden).length;
   db.save();
@@ -276,6 +290,7 @@ communityRouter.delete('/admin/forum/threads/:id', requireAdmin('community'), (r
   const store = db.get();
   const t = store.forumThreads.find(x => x.id === req.params.id);
   if (t && !canManageTeam(userOf(req), t.teamId || null) && teamScopeOf(userOf(req)) !== null) return bad(res, 'You can only moderate your team’s threads', 403);
+  if (t) takeBackPostPoints(t, `Thread removed: ${t.title}`);
   store.forumThreads = store.forumThreads.filter(x => x.id !== req.params.id);
   store.forumComments = store.forumComments.filter(c => c.threadId !== req.params.id);
   db.save();
@@ -286,6 +301,7 @@ communityRouter.delete('/admin/forum/comments/:id', requireAdmin('community'), (
   const c = store.forumComments.find(x => x.id === req.params.id);
   const t = c && store.forumThreads.find(x => x.id === c.threadId);
   if (t && !canManageTeam(userOf(req), t.teamId || null) && teamScopeOf(userOf(req)) !== null) return bad(res, 'You can only moderate your team’s threads', 403);
+  if (c) takeBackPostPoints(c, 'Reply removed');
   store.forumComments = store.forumComments.filter(x => x.id !== req.params.id);
   if (t) t.commentsCount = store.forumComments.filter(x => x.threadId === t.id && !x.hidden).length;
   db.save();

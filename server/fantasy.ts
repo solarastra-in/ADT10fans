@@ -1,4 +1,5 @@
 import { AppStore, FantasyBreakdownLine, FantasyTeam, Match, Player, Team } from './db';
+import { awardPoints } from './points';
 
 /**
  * Dream XI: the fantasy game.
@@ -272,7 +273,10 @@ export function scoreMatchFantasy(store: AppStore, matchId: string): ScoreMatchR
     const user = store.users.find(u => u.id === ft.userId);
     const previous = ft.scoredAt ? Math.round((ft.points || 0) / DREAM_XI.fanPointsDivisor) : 0;
     const now = Math.round(total / DREAM_XI.fanPointsDivisor);
-    if (user) user.points = Math.max(0, user.points - previous + now);
+    if (user && now !== previous) {
+      const label = `Match ${match.matchNo || ''} · ${total} Dream XI points`.replace('Match  · ', '');
+      awardPoints(store, user, now - previous, 'dream-xi', previous ? `${label} (scorecard corrected, was ${previous})` : label, matchId);
+    }
     pointsAwarded += now;
     ft.points = total;
     ft.breakdown = breakdown;

@@ -12,7 +12,7 @@ function ContestCard({ c, entry, entries, onEntered }: { c: Contest; entry?: Con
   const t = useT();
   const [answers, setAnswers] = useState<Record<string, string>>(entry?.answers || {});
   const [busy, setBusy] = useState(false);
-  const [results, setResults] = useState<{ id: string; correct: boolean; answer?: string; explain?: string }[] | null>(null);
+  const [results, setResults] = useState<{ id: string; correct: boolean }[] | null>(null);
   const match = matches.find(m => m.id === c.matchId);
   const open = c.status === 'open';
   const settled = c.status === 'settled';
@@ -60,7 +60,8 @@ function ContestCard({ c, entry, entries, onEntered }: { c: Contest; entry?: Con
       <div className="space-y-4">
         {c.questions.map((q, i) => {
           const res = results?.find(r => r.id === q.id);
-          const correct = settled ? q.answer : res?.answer;
+          // The answer is only sent once it can be shown (settled, or an instant quiz that has closed).
+          const correct = q.answer;
           return (
             <fieldset key={q.id} className="space-y-2">
               <legend className="text-sm font-bold text-white">
@@ -70,21 +71,24 @@ function ContestCard({ c, entry, entries, onEntered }: { c: Contest; entry?: Con
                 {q.options.map(o => {
                   const chosen = answers[q.id] === o;
                   const isRight = correct === o;
+                  // Right or wrong for the fan's own pick: from the answer when shown, else from their result.
+                  const verdict = chosen ? (correct ? isRight : res?.correct) : undefined;
                   return (
                     <label key={o} className={cx('flex items-center gap-2 min-h-[44px] px-3 py-2 rounded-xl border text-sm', editable ? 'cursor-pointer' : 'cursor-default', isRight ? 'border-emerald-500/60 bg-emerald-500/10' : chosen ? 'border-amber-400/70 bg-amber-400/10' : 'border-slate-800 bg-slate-950/60')}>
                       <input type="radio" name={`${c.id}-${q.id}`} className="accent-amber-400" disabled={!editable} checked={chosen} onChange={() => setAnswers({ ...answers, [q.id]: o })} />
                       <span className="flex-1 text-slate-100 break-words">{o}</span>
-                      {correct && chosen && (isRight ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <XCircle className="w-4 h-4 text-red-400" />)}
+                      {verdict !== undefined && (verdict ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <XCircle className="w-4 h-4 text-red-400" />)}
                     </label>
                   );
                 })}
               </div>
-              {(res?.explain || (settled && q.explain)) && <p className="text-xs text-slate-400">{res?.explain || q.explain}</p>}
+              {correct && q.explain && <p className="text-xs text-slate-400">{q.explain}</p>}
             </fieldset>
           );
         })}
       </div>
-      {settled && entry && <p className="text-sm font-black text-amber-400">{t('You scored {n} points', { n: entry.pointsAwarded || 0 })}</p>}
+      {(settled || c.instant) && entry && <p className="text-sm font-black text-amber-400">{t('You scored {n} points', { n: entry.pointsAwarded || 0 })}</p>}
+      {c.instant && entry && !c.questions.some(q => q.answer) && <p className="text-xs text-slate-400">{t('Answers are shown when the quiz closes.')}</p>}
       {editable ? (
         <Button onClick={submit} loading={busy} disabled={Object.keys(answers).length !== c.questions.length} className="w-full sm:w-auto">
           {entry ? t('Update predictions') : c.instant ? t('Submit answers') : t('Lock in predictions')}
