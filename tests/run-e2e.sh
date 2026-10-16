@@ -25,7 +25,7 @@ trap cleanup EXIT
 
 export FEED_FIXTURES_DIR="$ROOT/fixtures" CRON_SECRET=test-cron-secret CRICKET_API_KEY=test-cricket-key \
   GAME_SECRET=test-game-secret SCHEDULED_JOBS=off ADMIN_EMAILS=admin@test.dev GEMINI_API_KEY= FCM_VAPID_KEY= \
-  META_ACCESS_TOKEN=test-meta-token META_IG_USER_ID=17841400000000000
+  META_ACCESS_TOKEN=test-meta-token META_IG_USER_ID=17841400000000000 SMTP_USER= SMTP_PASS= SMTP_HOST=
 npx tsx tests/make-fixtures.ts "$FEED_FIXTURES_DIR" >/dev/null || { echo "fixtures failed"; exit 1; }
 
 # start <name> <data dir> <command...>  -> sets PORT_<name>

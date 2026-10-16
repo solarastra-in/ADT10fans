@@ -6,6 +6,8 @@ import { dispatchNotification } from '../notify';
 import { afterMatchCompleted } from '../reminders';
 import { computePlayerPoints } from '../fantasy';
 import { findCandidateMatches, liveScoresConfigured, syncLiveMatch } from '../liveScores';
+import { seedOfficialMatches } from '../seedOfficial';
+import { geminiConfigured, parseScheduleWithGemini } from '../gemini';
 
 export const matchesRouter = Router();
 
@@ -196,4 +198,111 @@ matchesRouter.post('/admin/notifications/trigger-match-result', requireAdmin('no
   if (!match) return bad(res, 'Choose a match', 404);
   if (match.status !== 'completed') return bad(res, 'Mark the match as completed first');
   res.json({ success: true, notification: await dispatchNotification(resultNotificationFor(match)) });
+}));
+
+matchesRouter.post('/admin/matches/seed-official', requireAdmin('matches'), wrap(async (req, res) => {
+  const store = db.get();
+  const overwrite = Boolean(req.body?.overwrite);
+  const now = new Date().toISOString();
+  seedOfficialMatches(store, now, overwrite);
+  db.save();
+  res.json({ success: true, count: store.matches.length, matches: [...store.matches].sort(sortByStart) });
+}));
+
+matchesRouter.post('/admin/matches/import-schedule', requireAdmin('matches'), wrap(async (req, res) => {
+  const b = req.body || {};
+  const fileData = typeof b.fileData === 'string' ? b.fileData : undefined;
+  const mimeType = typeof b.mimeType === 'string' ? b.mimeType : 'application/pdf';
+  const text = typeof b.text === 'string' ? b.text : undefined;
+  const overwrite = Boolean(b.overwrite);
+
+  if (!fileData && !text) {
+    return bad(res, 'Please provide a PDF file or schedule text to import.', 400);
+  }
+
+  if (!geminiConfigured()) {
+    return bad(res, 'AI schedule parsing requires GEMINI_API_KEY. Configure it or enter fixtures manually.', 400);
+  }
+
+  const store = db.get();
+  const teamSummaries = store.teams.map(t => ({ id: t.id, name: t.name, short: t.short }));
+
+  let parsedMatches: any[];
+  try {
+    parsedMatches = await parseScheduleWithGemini({ fileData, mimeType, text }, teamSummaries);
+  } catch (err: any) {
+    return bad(res, `Failed to parse schedule: ${err?.message || err}`, 500);
+  }
+
+  if (!parsedMatches || parsedMatches.length === 0) {
+    return bad(res, 'No fixtures found in the provided document.', 400);
+  }
+
+  const now = new Date().toISOString();
+  const validTeamIds = new Set(store.teams.map(t => t.id));
+  const imported: Match[] = [];
+
+  for (let i = 0; i < parsedMatches.length; i++) {
+    const raw = parsedMatches[i];
+    let teamA = String(raw.teamA || '').toLowerCase().trim();
+    let teamB = String(raw.teamB || '').toLowerCase().trim();
+
+    if (!validTeamIds.has(teamA)) {
+      const matchA = store.teams.find(t => t.id === teamA || t.name.toLowerCase() === teamA || t.short.toLowerCase() === teamA);
+      if (matchA) teamA = matchA.id;
+    }
+    if (!validTeamIds.has(teamB)) {
+      const matchB = store.teams.find(t => t.id === teamB || t.name.toLowerCase() === teamB || t.short.toLowerCase() === teamB);
+      if (matchB) teamB = matchB.id;
+    }
+
+    if (!validTeamIds.has(teamA) || !validTeamIds.has(teamB) || teamA === teamB) {
+      continue;
+    }
+
+    const matchNo = Math.max(1, Math.round(Number(raw.matchNo) || (i + 1)));
+    let startsAt = isoOrEmpty(raw.startsAt);
+    if (!startsAt) {
+      startsAt = new Date().toISOString();
+    }
+
+    imported.push({
+      id: newId('m'),
+      matchNo,
+      stage: str(raw.stage, 60) || 'Group stage',
+      teamA,
+      teamB,
+      startsAt,
+      venue: str(raw.venue, 120) || store.settings.venue || 'Zayed Cricket Stadium, Abu Dhabi',
+      status: 'upcoming',
+      updatedAt: now,
+    });
+  }
+
+  if (imported.length === 0) {
+    return bad(res, 'Could not map teams in the schedule to the 6 league franchises.', 400);
+  }
+
+  if (overwrite) {
+    store.matches = imported.sort((a, b) => a.matchNo - b.matchNo);
+  } else {
+    const existingNos = new Set(store.matches.map(m => m.matchNo));
+    for (const m of imported) {
+      if (existingNos.has(m.matchNo)) {
+        const idx = store.matches.findIndex(x => x.matchNo === m.matchNo);
+        store.matches[idx] = { ...store.matches[idx], ...m, id: store.matches[idx].id };
+      } else {
+        store.matches.push(m);
+      }
+    }
+    store.matches.sort((a, b) => a.matchNo - b.matchNo);
+  }
+
+  db.save();
+  res.json({
+    success: true,
+    count: imported.length,
+    total: store.matches.length,
+    matches: store.matches.sort(sortByStart),
+  });
 }));

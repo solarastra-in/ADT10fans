@@ -80,7 +80,7 @@ class PageBoundary extends React.Component<{ children: React.ReactNode; resetKey
   render() {
     if (this.state.error) {
       const msg = this.state.error.message || String(this.state.error);
-      const isVersionOrModuleIssue = /Failed to fetch dynamically imported module|Importing a module script failed|valid JavaScript MIME type|Cannot read properties of null/i.test(msg);
+      const isVersionOrModuleIssue = /Failed to fetch dynamically imported module|Importing a module script failed|valid JavaScript MIME type|Cannot read properties of null|Invalid hook call|Hooks can only be called/i.test(msg);
       return (
         <ErrorBox
           message={isVersionOrModuleIssue ? 'A fresh version of this page is ready. Reload to load the latest updates.' : 'This page hit a problem. Please reload.'}

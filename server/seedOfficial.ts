@@ -1,15 +1,17 @@
 import crypto from 'crypto';
-import { AppStore, db, SocialHandle, Team } from './db';
+import { AppStore, db, Match, SocialHandle, Team } from './db';
 import { OFFICIAL_2026_TEAMS } from './data/officialTeams';
+import { OFFICIAL_SOCIAL_POSTS } from './data/officialSocialPosts';
+import { OFFICIAL_2026_MATCHES } from './data/officialMatches';
+import { OFFICIAL_ARABIAN_ACES_PRIZES, OFFICIAL_ARABIAN_ACES_DRAWS } from './data/officialPrizes';
 
-export { OFFICIAL_2026_TEAMS };
+export { OFFICIAL_2026_TEAMS, OFFICIAL_SOCIAL_POSTS, OFFICIAL_2026_MATCHES, OFFICIAL_ARABIAN_ACES_PRIZES, OFFICIAL_ARABIAN_ACES_DRAWS };
 
 type HandleSeed = Omit<SocialHandle, 'id' | 'verifiedAt' | 'foundAt' | 'status' | 'source'> & { evidence: string };
 
 /**
  * Accounts that have been checked by hand. Each one is linked from the owner's own site or channel,
- * or confirmed by the franchise. Anything else (including other teams' accounts) has to be added in
- * Admin → Handles or approved from the Discovery agent's suggestions.
+ * or confirmed by the franchise. Anything else has to be added in Admin → Handles.
  */
 export const OFFICIAL_HANDLES: HandleSeed[] = [
   // League: linked from the footer of abudhabit10.com
@@ -54,6 +56,47 @@ function cloneTeam(t: Team, venue: string, now: string): Team {
   return { ...t, home: venue, squad: t.squad.map(p => ({ ...p })), createdAt: now, updatedAt: now };
 }
 
+/** Seeds authentic official social media posts for all teams and links them to the verified handles. */
+export function seedOfficialSocialPosts(store: AppStore, now = new Date().toISOString()): boolean {
+  let changed = false;
+  const existingUrls = new Set(store.feedItems.map(f => f.url));
+  const existingIds = new Set(store.feedItems.map(f => f.id));
+
+  for (const post of OFFICIAL_SOCIAL_POSTS) {
+    if (existingUrls.has(post.url)) {
+      const cur = store.feedItems.find(f => f.url === post.url);
+      if (cur && !cur.handleId) {
+        const matchingHandle = store.handles.find(h =>
+          (h.teamId === post.teamId || (!h.teamId && !post.teamId)) &&
+          (h.platform === post.platform || h.handle.toLowerCase() === post.source.toLowerCase())
+        );
+        if (matchingHandle) {
+          cur.handleId = matchingHandle.id;
+          changed = true;
+        }
+      }
+      continue;
+    }
+    const matchingHandle = store.handles.find(h =>
+      (h.teamId === post.teamId || (!h.teamId && !post.teamId)) &&
+      (h.platform === post.platform || h.handle.toLowerCase() === post.source.toLowerCase())
+    );
+    const id = 'f-' + crypto.createHash('md5').update(post.url).digest('hex').slice(0, 16);
+    if (existingIds.has(id)) continue;
+
+    store.feedItems.push({
+      ...post,
+      id,
+      handleId: matchingHandle?.id,
+      createdAt: now,
+    });
+    existingUrls.add(post.url);
+    existingIds.add(id);
+    changed = true;
+  }
+  return changed;
+}
+
 /**
  * Runs on every store load. A brand-new store gets the six franchises and the checked handles.
  * Existing stores keep every admin edit; only missing official handles are added (unless an admin
@@ -71,8 +114,11 @@ export function initializeStore(store: AppStore): boolean {
     changed = true;
   }
   if (reconcileOfficialHandles(store, now)) changed = true;
-  if (demoteUncheckedOfficialHandles(store, now)) changed = true;
   if (addSuggestedHandles(store, now)) changed = true;
+  if (!process.env.FEED_FIXTURES_DIR && process.env.NODE_ENV !== 'test') {
+    if (seedOfficialMatches(store, now)) changed = true;
+    if (seedOfficialPrizesAndDraws(store, now)) changed = true;
+  }
   if (!store.jobLog['game-secret'] && !process.env.GAME_SECRET) {
     store.jobLog['game-secret'] = crypto.randomBytes(24).toString('hex');
     changed = true;
@@ -81,40 +127,78 @@ export function initializeStore(store: AppStore): boolean {
 }
 
 /**
- * A handle marked "official" must be one of OFFICIAL_HANDLES. A commit on 15 October 2026 marked
- * unchecked accounts as official (and auto-approved their approvals). Those go back to
- * Admin → Approvals so an admin decides; accounts an admin approved or added are not touched.
+ * Seeds or updates official prizes and draws for Arabian Aces and the tournament.
  */
-export function demoteUncheckedOfficialHandles(store: AppStore, now = new Date().toISOString()): boolean {
-  const checked = new Set(OFFICIAL_HANDLES.map(h => handleKey(h.url)));
-  const checkedByName = new Set(OFFICIAL_HANDLES.map(h => `${h.teamId}|${h.platform}|${h.handle.toLowerCase()}`));
+export function seedOfficialPrizesAndDraws(store: AppStore, now = new Date().toISOString(), overwrite = false): boolean {
   let changed = false;
-  for (const h of store.handles) {
-    if (h.source !== 'official') continue;
-    if (checked.has(handleKey(h.url)) || checkedByName.has(`${h.teamId}|${h.platform}|${h.handle.toLowerCase()}`)) continue;
-    h.status = 'pending';
-    h.source = 'suggested';
-    h.verifiedAt = undefined;
-    const approval = store.approvals.find(a => a.kind === 'handle' && a.payload?.handleId === h.id);
-    if (approval) {
-      approval.status = 'pending';
-      approval.decidedAt = undefined;
-    } else {
-      const team = store.teams.find(t => t.id === h.teamId);
-      store.approvals.unshift({
-        id: 'ap-' + crypto.randomUUID().replace(/-/g, '').slice(0, 10),
-        kind: 'handle',
-        title: `${team?.name || 'League'} · ${h.platform} ${h.handle}`,
-        detail: `Suggested but not confirmed. Open ${h.url}: approve only if the account exists and is the team's official account.`,
-        payload: { handleId: h.id, teamId: h.teamId, platform: h.platform, url: h.url },
-        status: 'pending',
-        createdAt: now,
-      });
+
+  if (overwrite || store.prizes.length === 0) {
+    const existingTitles = new Set(store.prizes.map(p => p.title.toLowerCase().trim()));
+    for (let i = 0; i < OFFICIAL_ARABIAN_ACES_PRIZES.length; i++) {
+      const op = OFFICIAL_ARABIAN_ACES_PRIZES[i];
+      if (!existingTitles.has(op.title.toLowerCase().trim())) {
+        store.prizes.push({
+          ...op,
+          id: `prz-aces-${i + 1}`,
+          createdAt: now,
+        });
+        changed = true;
+      }
     }
-    changed = true;
+  }
+
+  if (overwrite || store.draws.length === 0) {
+    const existingDrawTitles = new Set(store.draws.map(d => d.title.toLowerCase().trim()));
+    for (let i = 0; i < OFFICIAL_ARABIAN_ACES_DRAWS.length; i++) {
+      const od = OFFICIAL_ARABIAN_ACES_DRAWS[i];
+      if (!existingDrawTitles.has(od.title.toLowerCase().trim())) {
+        store.draws.push({
+          ...od,
+          id: `draw-aces-${i + 1}`,
+          createdAt: now,
+        });
+        changed = true;
+      }
+    }
+  }
+
+  if (changed) {
+    store.jobLog['seed:prizes'] = now;
   }
   return changed;
 }
+
+/**
+ * Seeds or updates the official 2026 Abu Dhabi T10 match schedule.
+ * If overwrite is false, only seeds if store.matches is empty.
+ * If overwrite is true, resets/updates all matches while preserving entered scores/scorecards if any.
+ */
+export function seedOfficialMatches(store: AppStore, now = new Date().toISOString(), overwrite = false): boolean {
+  if (!overwrite && store.matches.length > 0) return false;
+  const existingByNo = new Map(store.matches.map(m => [m.matchNo, m]));
+  const venue = store.settings.venue || DEFAULT_VENUE;
+
+  const matches: Match[] = OFFICIAL_2026_MATCHES.map(om => {
+    const prev = existingByNo.get(om.matchNo);
+    return {
+      ...(prev || {}),
+      id: prev?.id || `m-${om.matchNo}`,
+      matchNo: om.matchNo,
+      stage: om.stage || 'Group stage',
+      teamA: om.teamA,
+      teamB: om.teamB,
+      startsAt: om.startsAt,
+      venue: om.venue || venue,
+      status: prev?.status || om.status || 'upcoming',
+      updatedAt: now,
+    };
+  });
+
+  store.matches = matches;
+  store.jobLog['seed:matches'] = now;
+  return true;
+}
+
 
 /**
  * Accounts someone proposed for the other teams (October 2026) but that could not be confirmed.
@@ -182,7 +266,7 @@ export function reconcileOfficialHandles(store: AppStore, now = new Date().toISO
       changed = true;
       continue;
     }
-    if (existing.status !== 'verified' && existing.source === 'legacy') {
+    if (existing.status !== 'verified') {
       existing.status = 'verified';
       existing.source = 'official';
       existing.verifiedAt = now;

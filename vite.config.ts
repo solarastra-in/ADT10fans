@@ -5,7 +5,13 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  resolve: { alias: { '@': path.resolve(import.meta.dirname, '.') } },
+  resolve: {
+    alias: { '@': path.resolve(import.meta.dirname, '.') },
+    dedupe: ['react', 'react-dom'],
+  },
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'react-dom/client', 'react/jsx-runtime', 'react/jsx-dev-runtime', 'recharts'],
+  },
   server: {
     // HMR can be turned off (e.g. in AI Studio) with DISABLE_HMR=true.
     hmr: process.env.DISABLE_HMR !== 'true',

@@ -179,4 +179,73 @@ export async function harvestSocialPostsWithSearch(
   }
 }
 
+export interface ParsedScheduleMatch {
+  matchNo: number;
+  stage?: string;
+  teamA: string;
+  teamB: string;
+  startsAt: string;
+  venue?: string;
+}
+
+/**
+ * Parses schedule documents (PDF, CSV, or text) into validated match fixtures using Gemini.
+ */
+export async function parseScheduleWithGemini(
+  input: { fileData?: string; mimeType?: string; text?: string },
+  teams: { id: string; name: string; short: string }[]
+): Promise<ParsedScheduleMatch[]> {
+  const ai = getAI();
+  const teamList = teams.map(t => `"${t.name}" (id: "${t.id}", short: "${t.short}")`).join(', ');
+  const prompt = `You are a cricket tournament schedule parser for Abu Dhabi T10.
+Available franchises:
+${teamList}
+
+Default venue if not specified: "Zayed Cricket Stadium, Abu Dhabi".
+Default year is 2026.
+Timezone for Abu Dhabi / UAE matches is Gulf Standard Time (GST, UTC+4).
+
+Analyze the attached document/text and extract all cricket match fixtures.
+Map each team to its exact team id from the available franchises above: ${teams.map(t => `"${t.id}"`).join(', ')}.
+Return a JSON array of matches matching this schema:
+[
+  {
+    "matchNo": 1,
+    "stage": "Group stage",
+    "teamA": "bulls",
+    "teamB": "lions",
+    "startsAt": "2026-11-07T11:30:00.000Z",
+    "venue": "Zayed Cricket Stadium, Abu Dhabi"
+  }
+]
+Output ONLY a valid JSON array.`;
+
+  const contents: any[] = [];
+  if (input.fileData) {
+    contents.push({
+      inlineData: {
+        mimeType: input.mimeType || 'application/pdf',
+        data: input.fileData,
+      },
+    });
+  }
+  if (input.text) {
+    contents.push({ text: `Schedule document text:\n${input.text}` });
+  }
+  contents.push({ text: prompt });
+
+  const response = await ai.models.generateContent({
+    model: geminiModel(),
+    contents,
+    config: {
+      responseMimeType: 'application/json',
+    },
+  });
+
+  const raw = (response.text || '').trim();
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed)) throw new Error('Gemini did not return an array of matches');
+  return parsed;
+}
+
 

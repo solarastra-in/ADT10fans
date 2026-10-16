@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Plus, Trash2, Edit3, Activity, RadioTower, Search } from 'lucide-react';
+import { Plus, Trash2, Edit3, Activity, RadioTower, Search, FileUp, RefreshCw, Calendar, Upload } from 'lucide-react';
 import { ScorecardEditor } from './ScorecardEditor';
 import type { CricketDataCandidate, MatchScorecard } from '../../types';
 import { Match, SystemSettings, Team } from '../../types';
@@ -59,8 +59,73 @@ export const MatchesSection: React.FC<{ matches: Match[]; teams: Team[]; setting
   const [score, setScore] = useState<ScoreDraft | null>(null);
   const [errors, setErrors] = useState<Errors>({});
   const [candidates, setCandidates] = useState<CricketDataCandidate[] | null>(null);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importFile, setImportFile] = useState<{ name: string; size: number; base64?: string; text?: string; mimeType: string } | null>(null);
+  const [importText, setImportText] = useState('');
+  const [importOverwrite, setImportOverwrite] = useState(matches.length === 0);
+  const [importError, setImportError] = useState<string | null>(null);
 
   const sorted = useMemo(() => [...matches].sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()), [matches]);
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setImportError(null);
+    const isPdf = f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
+    const reader = new FileReader();
+    if (isPdf) {
+      reader.onload = () => {
+        const res = reader.result as string;
+        const b64 = res.split(',')[1] || '';
+        setImportFile({ name: f.name, size: f.size, base64: b64, mimeType: 'application/pdf' });
+      };
+      reader.readAsDataURL(f);
+    } else {
+      reader.onload = () => {
+        const text = reader.result as string;
+        setImportFile({ name: f.name, size: f.size, text, mimeType: f.type || 'text/plain' });
+      };
+      reader.readAsText(f);
+    }
+  };
+
+  const handleImportSchedule = async () => {
+    if (!importFile && !importText.trim()) {
+      setImportError('Please choose a PDF/file or paste schedule text.');
+      return;
+    }
+    setImportError(null);
+    const res = await run(
+      'importSchedule',
+      () =>
+        api.importSchedule({
+          fileData: importFile?.base64,
+          mimeType: importFile?.mimeType,
+          text: importFile?.text || (importText.trim() ? importText.trim() : undefined),
+          fileName: importFile?.name,
+          overwrite: importOverwrite,
+        }),
+      r => `Imported ${r.count} matches from schedule (${r.total} total).`
+    );
+    if (res) {
+      setImportModalOpen(false);
+      setImportFile(null);
+      setImportText('');
+      await onRefreshAll();
+    }
+  };
+
+  const handleSyncOfficialSchedule = async () => {
+    if (matches.length > 0 && !window.confirm('Reset/update to the 32 official 2026 fixtures? Entered scores will be kept.')) {
+      return;
+    }
+    const res = await run(
+      'syncOfficial',
+      () => api.seedOfficialMatches(true),
+      r => `Synced ${r.count} official fixtures for Season 2026.`
+    );
+    if (res) await onRefreshAll();
+  };
 
   const openNewFixture = () => {
     setErrors({});
@@ -209,16 +274,68 @@ export const MatchesSection: React.FC<{ matches: Match[]; teams: Team[]; setting
         title="Matches"
         description="Fixtures, live scores and scorecards. Link a fixture to its CricketData.org match id for automatic live scores, or enter them by hand."
         actions={
-          <Button variant="primary" size="sm" icon={<Plus className="w-4 h-4" />} onClick={openNewFixture} disabled={teams.length < 2}>
-            Add fixture
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<FileUp className="w-4 h-4 text-amber-400" />}
+              onClick={() => {
+                setImportError(null);
+                setImportModalOpen(true);
+              }}
+            >
+              Import from PDF
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<RefreshCw className={`w-4 h-4 text-emerald-400 ${busy === 'syncOfficial' ? 'animate-spin' : ''}`} />}
+              loading={busy === 'syncOfficial'}
+              onClick={handleSyncOfficialSchedule}
+            >
+              Sync 2026 Schedule
+            </Button>
+            <Button variant="primary" size="sm" icon={<Plus className="w-4 h-4" />} onClick={openNewFixture} disabled={teams.length < 2}>
+              Add fixture
+            </Button>
+          </div>
         }
       />
       {teams.length < 2 && <Notice notice={{ kind: 'info', text: 'Add at least two teams before creating fixtures.' }} />}
       <Notice notice={notice} onClose={() => setNotice(null)} />
 
       {sorted.length === 0 ? (
-        <EmptyState title="No fixtures yet" description="Add fixtures once the schedule is announced." />
+        <Card className="text-center py-10 px-4 space-y-4">
+          <Calendar className="w-12 h-12 text-amber-400 mx-auto" />
+          <div className="space-y-1">
+            <h3 className="text-lg font-black text-white">No fixtures loaded yet</h3>
+            <p className="text-sm text-slate-400 max-w-md mx-auto">
+              Sync the official 32 fixtures for the Abu Dhabi T10 2026 season, import your schedule PDF or text, or add them manually.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+            <Button
+              variant="primary"
+              size="md"
+              icon={<RefreshCw className="w-4 h-4" />}
+              loading={busy === 'syncOfficial'}
+              onClick={handleSyncOfficialSchedule}
+            >
+              Load Official 2026 Schedule (32 matches)
+            </Button>
+            <Button
+              variant="secondary"
+              size="md"
+              icon={<FileUp className="w-4 h-4 text-amber-400" />}
+              onClick={() => {
+                setImportError(null);
+                setImportModalOpen(true);
+              }}
+            >
+              Import from PDF
+            </Button>
+          </div>
+        </Card>
       ) : (
         <ul className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           {sorted.map(m => (
@@ -428,6 +545,84 @@ export const MatchesSection: React.FC<{ matches: Match[]; teams: Team[]; setting
             </div>
           </div>
         )}
+      </Sheet>
+
+      {/* Import Schedule Sheet */}
+      <Sheet
+        open={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        title="Import Schedule from PDF / Document"
+        footer={
+          <>
+            <Button onClick={() => setImportModalOpen(false)}>Cancel</Button>
+            <Button
+              variant="primary"
+              icon={<Upload className="w-4 h-4" />}
+              loading={busy === 'importSchedule'}
+              onClick={handleImportSchedule}
+            >
+              Parse & Import Matches
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-slate-400">
+            Upload your match schedule PDF, CSV, or document (or paste the fixture text below). Gemini AI will parse the match numbers, stages, franchises, dates, times, and venue.
+          </p>
+
+          {importError && (
+            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+              {importError}
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-300 block">Schedule Document (PDF, TXT, CSV)</label>
+            <div className="border-2 border-dashed border-slate-700 hover:border-amber-400/50 rounded-2xl p-6 text-center cursor-pointer bg-slate-900/50 transition-colors relative">
+              <input
+                type="file"
+                accept=".pdf,application/pdf,.txt,.csv,.json"
+                onChange={onFileChange}
+                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+              />
+              <FileUp className="w-8 h-8 text-amber-400 mx-auto mb-2" />
+              {importFile ? (
+                <div>
+                  <p className="font-bold text-white text-sm">{importFile.name}</p>
+                  <p className="text-xs text-slate-400 mt-1">{(importFile.size / 1024).toFixed(1)} KB · Ready to parse</p>
+                </div>
+              ) : (
+                <div>
+                  <p className="font-bold text-white text-sm">Choose or drop schedule file</p>
+                  <p className="text-xs text-slate-400 mt-1">PDF schedule, fixtures list, or CSV</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-slate-300 block">Or paste schedule text directly</label>
+            <TextArea
+              rows={4}
+              placeholder="e.g. Match 1: 07 Nov 2026 - UAE Bulls vs Yas Lions at Zayed Cricket Stadium, 3:30 PM GST&#10;Match 2: 07 Nov 2026 - Royal Desert Champions vs Emirates Eagles..."
+              value={importText}
+              onChange={e => setImportText(e.target.value)}
+            />
+          </div>
+
+          <label className="flex items-center gap-2 cursor-pointer pt-1">
+            <input
+              type="checkbox"
+              checked={importOverwrite}
+              onChange={e => setImportOverwrite(e.target.checked)}
+              className="rounded bg-slate-800 border-slate-700 text-amber-400 focus:ring-0"
+            />
+            <span className="text-xs font-medium text-slate-300">
+              Replace existing fixtures with imported list
+            </span>
+          </label>
+        </div>
       </Sheet>
     </div>
   );

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ExternalLink, Heart, LayoutGrid, MessageSquarePlus, Radio, RefreshCw, Search, Sparkles } from 'lucide-react';
+import { ExternalLink, Heart, LayoutGrid, MessageSquarePlus, Radio, RefreshCw, Search, Sparkles, TrendingUp } from 'lucide-react';
 import { api } from '../api';
 import { useApp, useLoad } from '../state';
 import { useT } from '../i18n';
@@ -8,6 +8,7 @@ import { Avatar, Button, ButtonLink, Card, EmptyState, Notice, Pill, SectionTitl
 import { MatchCard, sortMatches } from '../components/matches';
 import { FeedCard, HandleEmbed, PlatformIcon } from '../components/social';
 import { PollCard } from '../components/PollCard';
+import { TeamAnalytics } from '../components/TeamAnalytics';
 import NotFoundPage from './NotFoundPage';
 import type { PlayerRole } from '../types';
 
@@ -23,7 +24,7 @@ export default function TeamPage({ id }: { id: string }) {
   const threads = useLoad(() => api.getForumThreads({ teamId: id }), [id]);
   const polls = useLoad(() => api.getPolls({ teamId: id }), [id]);
   const fans = useLoad(() => api.getLeaderboard(id), [id]);
-  const [tab, setTab] = useState<'squad' | 'channels' | 'fixtures' | 'fans'>('channels');
+  const [tab, setTab] = useState<'analytics' | 'squad' | 'channels' | 'fixtures' | 'fans'>('analytics');
   const [platformFilter, setPlatformFilter] = useState<string>('all');
   const [selectedHandleId, setSelectedHandleId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -123,18 +124,42 @@ export default function TeamPage({ id }: { id: string }) {
             )}
           </div>
         </div>
+        <div className="mt-4 pt-4 border-t border-white/10 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5">
+            <span className="flex items-center gap-1.5 font-bold text-amber-300">
+              <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
+              2026 Form & Analytics
+            </span>
+            <span className="text-slate-500">·</span>
+            <span className="text-slate-300">
+              {teamMatches.length} matches scheduled
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setTab('analytics')}
+            className="flex items-center gap-1 text-amber-400 hover:text-amber-300 font-bold transition-colors cursor-pointer"
+          >
+            View run rate & win trend →
+          </button>
+        </div>
       </Card>
 
       <Tabs
         value={tab}
         onChange={setTab}
         items={[
-          { id: 'squad', label: t('Squad'), count: team.squad.length },
+          { id: 'analytics', label: 'Analytics & Form' },
           { id: 'channels', label: t('Social & Videos'), count: allPosts.length || verified.length },
           { id: 'fixtures', label: t('Fixtures'), count: teamMatches.length },
+          { id: 'squad', label: t('Squad'), count: team.squad.length },
           { id: 'fans', label: t('Fans & chat') },
         ]}
       />
+
+      {tab === 'analytics' && (
+        <TeamAnalytics team={team} matches={teamMatches} allTeams={teams} />
+      )}
 
       {tab === 'squad' && (
         <div className="space-y-5">
