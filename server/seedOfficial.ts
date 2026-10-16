@@ -1,15 +1,15 @@
 import crypto from 'crypto';
 import { AppStore, db, SocialHandle, Team } from './db';
 import { OFFICIAL_2026_TEAMS } from './data/officialTeams';
-import { OFFICIAL_SOCIAL_POSTS } from './data/officialSocialPosts';
 
-export { OFFICIAL_2026_TEAMS, OFFICIAL_SOCIAL_POSTS };
+export { OFFICIAL_2026_TEAMS };
 
 type HandleSeed = Omit<SocialHandle, 'id' | 'verifiedAt' | 'foundAt' | 'status' | 'source'> & { evidence: string };
 
 /**
  * Accounts that have been checked by hand. Each one is linked from the owner's own site or channel,
- * or confirmed by the franchise. Anything else has to be added in Admin → Handles.
+ * or confirmed by the franchise. Anything else (including other teams' accounts) has to be added in
+ * Admin → Handles or approved from the Discovery agent's suggestions.
  */
 export const OFFICIAL_HANDLES: HandleSeed[] = [
   // League: linked from the footer of abudhabit10.com
@@ -24,7 +24,6 @@ export const OFFICIAL_HANDLES: HandleSeed[] = [
   { teamId: 'bulls', platform: 'X', handle: '@UAEBullsT10', url: 'https://x.com/UAEBullsT10', meta: {}, evidence: 'X profile "UAE Bulls (@UAEBullsT10)"' },
   { teamId: 'bulls', platform: 'Instagram', handle: '@delhibullst10', url: 'https://www.instagram.com/delhibullst10/', meta: { note: 'Profile name is UAE Bulls' }, evidence: 'Instagram profile "UAE Bulls (@delhibullst10)"' },
   { teamId: 'bulls', platform: 'Threads', handle: '@delhibullst10', url: 'https://www.threads.com/@delhibullst10', meta: {}, evidence: 'Threads account linked to the Instagram profile' },
-  { teamId: 'bulls', platform: 'Facebook', handle: 'UAEBullsT10', url: 'https://www.facebook.com/UAEBullsT10', meta: {}, evidence: 'Official Facebook page of UAE Bulls' },
 
   // Arabian Aces: the franchise's own accounts
   { teamId: 'aces', platform: 'X', handle: '@arabianacesT10', url: 'https://x.com/arabianacesT10', meta: {}, evidence: 'Confirmed by the franchise' },
@@ -33,35 +32,6 @@ export const OFFICIAL_HANDLES: HandleSeed[] = [
   { teamId: 'aces', platform: 'Facebook', handle: 'arabianacesofficial', url: 'https://www.facebook.com/arabianacesofficial/', meta: {}, evidence: 'Confirmed by the franchise' },
   { teamId: 'aces', platform: 'TikTok', handle: '@arabianaces', url: 'https://www.tiktok.com/@arabianaces', meta: {}, evidence: 'Confirmed by the franchise' },
   { teamId: 'aces', platform: 'LinkedIn', handle: 'arabianaces', url: 'https://www.linkedin.com/in/arabianaces/', meta: {}, evidence: 'Confirmed by the franchise' },
-  { teamId: 'aces', platform: 'YouTube', handle: '@ArabianAcesT10', url: 'https://www.youtube.com/@ArabianAcesT10', meta: { channelId: 'UC-ArabianAcesT10' }, evidence: 'Confirmed by the franchise' },
-
-  // United Tigers
-  { teamId: 'tigers', platform: 'X', handle: '@UnitedTigersT10', url: 'https://x.com/UnitedTigersT10', meta: {}, evidence: 'Official franchise handle' },
-  { teamId: 'tigers', platform: 'Instagram', handle: '@unitedtigerst10', url: 'https://www.instagram.com/unitedtigerst10/', meta: {}, evidence: 'Official franchise handle' },
-  { teamId: 'tigers', platform: 'Threads', handle: '@unitedtigerst10', url: 'https://www.threads.com/@unitedtigerst10', meta: {}, evidence: 'Official franchise handle' },
-  { teamId: 'tigers', platform: 'YouTube', handle: '@UnitedTigersT10', url: 'https://www.youtube.com/@UnitedTigersT10', meta: { channelId: 'UC-UnitedTigersT10' }, evidence: 'Official franchise handle' },
-  { teamId: 'tigers', platform: 'Facebook', handle: 'UnitedTigersT10', url: 'https://www.facebook.com/UnitedTigersT10', meta: {}, evidence: 'Official franchise handle' },
-
-  // Yas Lions
-  { teamId: 'lions', platform: 'X', handle: '@YasLionsT10', url: 'https://x.com/YasLionsT10', meta: {}, evidence: 'Official franchise handle' },
-  { teamId: 'lions', platform: 'Instagram', handle: '@yaslionst10', url: 'https://www.instagram.com/yaslionst10/', meta: {}, evidence: 'Official franchise handle' },
-  { teamId: 'lions', platform: 'Threads', handle: '@yaslionst10', url: 'https://www.threads.com/@yaslionst10', meta: {}, evidence: 'Official franchise handle' },
-  { teamId: 'lions', platform: 'YouTube', handle: '@YasLionsT10', url: 'https://www.youtube.com/@YasLionsT10', meta: { channelId: 'UC-YasLionsT10' }, evidence: 'Official franchise handle' },
-  { teamId: 'lions', platform: 'TikTok', handle: '@yaslionst10', url: 'https://www.tiktok.com/@yaslionst10', meta: {}, evidence: 'Official franchise handle' },
-
-  // Emirates Eagles
-  { teamId: 'eagles', platform: 'X', handle: '@EmiratesEaglesT10', url: 'https://x.com/EmiratesEaglesT10', meta: {}, evidence: 'Official franchise handle' },
-  { teamId: 'eagles', platform: 'Instagram', handle: '@emirateseaglest10', url: 'https://www.instagram.com/emirateseaglest10/', meta: {}, evidence: 'Official franchise handle' },
-  { teamId: 'eagles', platform: 'Threads', handle: '@emirateseaglest10', url: 'https://www.threads.com/@emirateseaglest10', meta: {}, evidence: 'Official franchise handle' },
-  { teamId: 'eagles', platform: 'YouTube', handle: '@EmiratesEaglesT10', url: 'https://www.youtube.com/@EmiratesEaglesT10', meta: { channelId: 'UC-EmiratesEaglesT10' }, evidence: 'Official franchise handle' },
-  { teamId: 'eagles', platform: 'Facebook', handle: 'EmiratesEaglesT10', url: 'https://www.facebook.com/EmiratesEaglesT10', meta: {}, evidence: 'Official franchise handle' },
-
-  // Royal Desert Champions
-  { teamId: 'champions', platform: 'X', handle: '@DesertChampionsT10', url: 'https://x.com/DesertChampionsT10', meta: {}, evidence: 'Official franchise handle' },
-  { teamId: 'champions', platform: 'Instagram', handle: '@royaldesertchampions', url: 'https://www.instagram.com/royaldesertchampions/', meta: {}, evidence: 'Official franchise handle' },
-  { teamId: 'champions', platform: 'Threads', handle: '@royaldesertchampions', url: 'https://www.threads.com/@royaldesertchampions', meta: {}, evidence: 'Official franchise handle' },
-  { teamId: 'champions', platform: 'YouTube', handle: '@RoyalDesertChampionsT10', url: 'https://www.youtube.com/@RoyalDesertChampionsT10', meta: { channelId: 'UC-RoyalDesertChampionsT10' }, evidence: 'Official franchise handle' },
-  { teamId: 'champions', platform: 'TikTok', handle: '@royalchampions', url: 'https://www.tiktok.com/@royalchampions', meta: {}, evidence: 'Official franchise handle' },
 ];
 
 const DEFAULT_VENUE = 'Zayed Cricket Stadium, Abu Dhabi';
@@ -84,47 +54,6 @@ function cloneTeam(t: Team, venue: string, now: string): Team {
   return { ...t, home: venue, squad: t.squad.map(p => ({ ...p })), createdAt: now, updatedAt: now };
 }
 
-/** Seeds authentic official social media posts for all teams and links them to the verified handles. */
-export function seedOfficialSocialPosts(store: AppStore, now = new Date().toISOString()): boolean {
-  let changed = false;
-  const existingUrls = new Set(store.feedItems.map(f => f.url));
-  const existingIds = new Set(store.feedItems.map(f => f.id));
-
-  for (const post of OFFICIAL_SOCIAL_POSTS) {
-    if (existingUrls.has(post.url)) {
-      const cur = store.feedItems.find(f => f.url === post.url);
-      if (cur && !cur.handleId) {
-        const matchingHandle = store.handles.find(h =>
-          (h.teamId === post.teamId || (!h.teamId && !post.teamId)) &&
-          (h.platform === post.platform || h.handle.toLowerCase() === post.source.toLowerCase())
-        );
-        if (matchingHandle) {
-          cur.handleId = matchingHandle.id;
-          changed = true;
-        }
-      }
-      continue;
-    }
-    const matchingHandle = store.handles.find(h =>
-      (h.teamId === post.teamId || (!h.teamId && !post.teamId)) &&
-      (h.platform === post.platform || h.handle.toLowerCase() === post.source.toLowerCase())
-    );
-    const id = 'f-' + crypto.createHash('md5').update(post.url).digest('hex').slice(0, 16);
-    if (existingIds.has(id)) continue;
-
-    store.feedItems.push({
-      ...post,
-      id,
-      handleId: matchingHandle?.id,
-      createdAt: now,
-    });
-    existingUrls.add(post.url);
-    existingIds.add(id);
-    changed = true;
-  }
-  return changed;
-}
-
 /**
  * Runs on every store load. A brand-new store gets the six franchises and the checked handles.
  * Existing stores keep every admin edit; only missing official handles are added (unless an admin
@@ -143,7 +72,6 @@ export function initializeStore(store: AppStore): boolean {
   }
   if (reconcileOfficialHandles(store, now)) changed = true;
   if (addSuggestedHandles(store, now)) changed = true;
-  if (seedOfficialSocialPosts(store, now)) changed = true;
   if (!store.jobLog['game-secret'] && !process.env.GAME_SECRET) {
     store.jobLog['game-secret'] = crypto.randomBytes(24).toString('hex');
     changed = true;
@@ -218,7 +146,7 @@ export function reconcileOfficialHandles(store: AppStore, now = new Date().toISO
       changed = true;
       continue;
     }
-    if (existing.status !== 'verified') {
+    if (existing.status !== 'verified' && existing.source === 'legacy') {
       existing.status = 'verified';
       existing.source = 'official';
       existing.verifiedAt = now;
