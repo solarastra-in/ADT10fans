@@ -24,7 +24,7 @@ export const FanPointsPanel: React.FC<{ teams: Team[] }> = ({ teams }) => {
     const r = await run('search', () => api.getAdminPoints({ q: query.trim() || undefined, id }));
     if (!r) return;
     setFans(r.fans);
-    setDetail(r.detail);
+    setDetail(r.detail || null);
   };
   useEffect(() => {
     search('');

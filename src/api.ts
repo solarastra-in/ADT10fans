@@ -5,6 +5,7 @@ import type {
   PrizeItem, PrizeRedemption, PollView, FanWarsRow, PublicFan, FanBase, ReferralSummary, CricketDataCandidate, FeedHealthRow,
   ProfileResponse, FanSpace, FanSpaceBooking, Approval, AgentRun, ForumReportView, Reaction, ProposalSettings,
   YouthCupSchool, CreatorPartner, CommentaryAudioFeed, SuperfanPassportTier,
+  AdminFanPoints, PointsHistory, PointsEntry,
 } from './types';
 
 const TOKEN_KEY = 't10_auth_token';
@@ -108,6 +109,7 @@ export const api = {
   checkin: () => post<Ok & { user: User; pointsAdded: number }>('/api/checkin'),
   selectTeam: (teamId: string) => post<Ok & { user: User }>('/api/me/team', { teamId }),
   getReferral: () => req<ReferralSummary>('/api/me/referral'),
+  getMyPoints: () => req<PointsHistory>('/api/me/points'),
 
   // ----- teams, players, handles -----
   getTeams: () => req<{ teams: Team[] }>('/api/teams'),
@@ -183,6 +185,8 @@ export const api = {
   deletePrize: (id: string) => del<Ok & { prizes: PrizeItem[] }>(`/api/admin/prizes/${id}`),
   updateRedemption: (id: string, status: 'fulfilled' | 'cancelled', note?: string) => post<Ok & { redemption: PrizeRedemption }>(`/api/admin/redemptions/${id}`, { status, note }),
   seedOfficialPrizes: (overwrite = false) => post<Ok & { prizesCount: number; drawsCount: number; prizes: PrizeItem[]; draws: PrizeDraw[] }>('/api/admin/prizes/seed-official', { overwrite }),
+  getAdminPoints: (params?: { q?: string; id?: string }) => req<{ fans: AdminFanPoints[]; detail?: { id: string; fan: AdminFanPoints; bySource: PointsHistory['bySource']; ledger: PointsEntry[]; claims: PrizeRedemption[]; unitemised: number } }>(`/api/admin/points${qs(params)}`),
+  adjustPoints: (userId: string, delta: number, reason: string) => post<Ok & { applied: number; points: number; balance: number }>(`/api/admin/points/${userId}/adjust`, { delta, reason }),
   getDraws: () => req<{ draws: PrizeDraw[]; myEntries: string[] }>('/api/draws'),
   saveDraw: (draw: Partial<PrizeDraw>) => post<Ok & { draws: PrizeDraw[] }>('/api/admin/draws', draw),
   deleteDraw: (id: string) => del<Ok & { draws: PrizeDraw[] }>(`/api/admin/draws/${id}`),

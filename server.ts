@@ -6,7 +6,7 @@ import { ephemeralDiskWarning } from './server/storage';
 export { app, initialize };
 export default app;
 
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = Number((process.env.PORT && process.env.PORT !== '8080') ? process.env.PORT : (process.env.APP_PORT || process.env.DEFAULT_APP_PORT || 3000)) || 3000;
 
 async function start() {
   await initialize();
