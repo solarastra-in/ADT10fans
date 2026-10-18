@@ -77,6 +77,17 @@ class PageBoundary extends React.Component<{ children: React.ReactNode; resetKey
   componentDidUpdate(prev: { resetKey: string }) {
     if (prev.resetKey !== this.props.resetKey && this.state.error) this.setState({ error: null });
   }
+  componentDidCatch(error: Error) {
+    const msg = error?.message || String(error);
+    const isVersionOrModuleIssue = /Failed to fetch dynamically imported module|Importing a module script failed|valid JavaScript MIME type|Cannot read properties of null|Invalid hook call|Hooks can only be called/i.test(msg);
+    if (isVersionOrModuleIssue && typeof window !== 'undefined') {
+      const nowBucket = Math.floor(Date.now() / 15000); // once per 15s window
+      if (sessionStorage.getItem('auto_reload_chunk') !== String(nowBucket)) {
+        sessionStorage.setItem('auto_reload_chunk', String(nowBucket));
+        window.location.reload();
+      }
+    }
+  }
   render() {
     if (this.state.error) {
       const msg = this.state.error.message || String(this.state.error);
@@ -84,7 +95,10 @@ class PageBoundary extends React.Component<{ children: React.ReactNode; resetKey
       return (
         <ErrorBox
           message={isVersionOrModuleIssue ? 'A fresh version of this page is ready. Reload to load the latest updates.' : 'This page hit a problem. Please reload.'}
-          onRetry={() => window.location.reload()}
+          onRetry={() => {
+            sessionStorage.removeItem('auto_reload_chunk');
+            window.location.reload();
+          }}
         />
       );
     }

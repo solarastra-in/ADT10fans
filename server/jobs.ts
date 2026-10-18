@@ -1,6 +1,5 @@
-import crypto from 'crypto';
 import { db, requestContext } from './db';
-import { ConflictError } from './storage';
+import { ConflictError, isWriteQuotaExceeded } from './storage';
 import { syncAllFeeds } from './feeds';
 import { syncLiveScores } from './liveScores';
 import { runReminders } from './reminders';
@@ -108,7 +107,7 @@ export async function runJobsOnce(opts: { force?: boolean } = {}): Promise<{ ran
   if (runningHere) return { ran: false, reason: 'already running' };
   runningHere = true;
   try {
-    if (!db.shared) {
+    if (!db.shared || isWriteQuotaExceeded()) {
       if (!opts.force && !jobsDue()) return { ran: false, reason: 'ran recently' };
       return { ran: true, result: await runScheduledJobs() };
     }
@@ -175,7 +174,7 @@ let timer: NodeJS.Timeout | null = null;
 export function startJobTimer() {
   if (timer || process.env.VERCEL || jobsMode() === 'off' || jobsMode() === 'traffic') return;
   const tick = () => runJobsInBackground().catch(() => undefined);
-  setTimeout(tick, 15_000).unref();
-  timer = setInterval(tick, 60_000);
+  setTimeout(tick, 30_000).unref();
+  timer = setInterval(tick, 300_000);
   timer.unref();
 }

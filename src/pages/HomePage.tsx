@@ -44,9 +44,12 @@ export default function HomePage() {
       <section className="relative overflow-hidden rounded-3xl border border-amber-500/30 bg-gradient-to-br from-amber-500/20 via-slate-900 to-slate-950 p-5 sm:p-10">
         <div className="absolute -top-24 -end-24 w-72 h-72 rounded-full bg-amber-400/10 blur-3xl pointer-events-none" />
         <div className="relative max-w-2xl">
-          <p className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/15 border border-amber-400/30 text-amber-300 text-xs font-black uppercase tracking-wider">
-            <Flame className="w-3.5 h-3.5" /> {config?.seasonLabel}
-          </p>
+          <div className="flex items-center gap-3">
+            <img src="/logos/adt10.png" alt="Abu Dhabi T10" className="w-12 h-12 object-contain rounded-2xl p-1 bg-slate-900/90 border border-amber-400/40 shadow-lg shadow-amber-500/20 shrink-0" />
+            <p className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/15 border border-amber-400/30 text-amber-300 text-xs font-black uppercase tracking-wider">
+              <Flame className="w-3.5 h-3.5" /> {config?.seasonLabel} · {t('Official Fan Hub')}
+            </p>
+          </div>
           <h1 className="mt-3 text-3xl sm:text-5xl font-black text-white tracking-tight leading-[1.08]">{t('Ten overs. Every ball counts.')}</h1>
           <p className="mt-3 text-sm sm:text-base text-slate-300">
             {t('{start} – {end} at {venue}.', { start: f.date(config?.seasonStart, { day: 'numeric', month: 'long' }), end: f.date(config?.seasonEnd, { day: 'numeric', month: 'long', year: 'numeric' }), venue: config?.venue || '' })}{' '}
@@ -82,6 +85,33 @@ export default function HomePage() {
               <div className="text-xs text-slate-400 font-semibold">{label}</div>
             </div>
           ))}
+        </div>
+
+        {/* Official 2026 Franchises Logos Strip */}
+        <div className="relative mt-8 pt-6 border-t border-white/10">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">
+              {t('Official 2026 Franchises')}
+            </span>
+            <Link to="/teams" className="text-xs font-bold text-slate-400 hover:text-white flex items-center gap-1">
+              {t('View all squads')} <ArrowRight className="w-3.5 h-3.5 rtl-flip" />
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+            {teams.map(tm => (
+              <Link
+                key={tm.id}
+                to={`/teams/${tm.id}`}
+                className="group p-2.5 rounded-2xl bg-slate-950/70 border border-slate-800 hover:border-amber-400/50 transition-all flex flex-col items-center text-center gap-2 hover:scale-[1.03]"
+              >
+                <TeamBadge team={tm} size="md" />
+                <div className="w-full min-w-0">
+                  <span className="block text-xs font-black text-white group-hover:text-amber-300 truncate">{tm.name}</span>
+                  <span className="block text-[10px] text-slate-400 truncate">{tm.iconPlayer || `${tm.squad.length} players`}</span>
+                </div>
+              </Link>
+            ))}
+          </div>
         </div>
       </section>
 

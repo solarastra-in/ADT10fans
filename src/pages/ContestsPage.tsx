@@ -4,7 +4,7 @@ import { api } from '../api';
 import { useApp, useLoad } from '../state';
 import { useT } from '../i18n';
 import { Link, usePageMeta } from '../router';
-import { Button, Card, Countdown, EmptyState, ErrorBox, PageHeader, Pill, Spinner, Tabs, cx } from '../components/ui';
+import { Button, Card, Countdown, EmptyState, ErrorBox, PageHeader, Pill, Spinner, Tabs, TeamBadge, cx } from '../components/ui';
 import type { Contest, ContestEntry } from '../types';
 
 function ContestCard({ c, entry, entries, onEntered }: { c: Contest; entry?: ContestEntry; entries: number; onEntered: () => void }) {
@@ -43,10 +43,15 @@ function ContestCard({ c, entry, entries, onEntered }: { c: Contest; entry?: Con
             {c.instant && <Pill tone="blue">{t('Instant quiz')}</Pill>}
             {entry && <Pill tone="green">{t('Entered')}</Pill>}
           </div>
-          <h2 className="text-lg font-black text-white break-words">{c.title}</h2>
+          <h2 className="text-lg font-black text-white break-words mt-1">{c.title}</h2>
           {match && (
-            <Link to={`/matches/${match.id}`} className="text-xs text-slate-400 hover:text-white">
-              {teamById(match.teamA)?.short} vs {teamById(match.teamB)?.short} · {t('Match {n}', { n: match.matchNo })}
+            <Link to={`/matches/${match.id}`} className="inline-flex items-center gap-1.5 text-xs text-slate-300 hover:text-white mt-1.5 flex-wrap">
+              <TeamBadge team={teamById(match.teamA)} size="sm" />
+              <span className="font-bold text-white">{teamById(match.teamA)?.name}</span>
+              <span className="text-amber-400 font-black">vs</span>
+              <TeamBadge team={teamById(match.teamB)} size="sm" />
+              <span className="font-bold text-white">{teamById(match.teamB)?.name}</span>
+              <span className="text-slate-500">· {t('Match {n}', { n: match.matchNo })}</span>
             </Link>
           )}
           {c.description && <p className="text-sm text-slate-400 mt-1 break-words">{c.description}</p>}

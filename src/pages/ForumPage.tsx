@@ -4,7 +4,7 @@ import { api } from '../api';
 import { useApp, useLoad } from '../state';
 import { useT } from '../i18n';
 import { Link, navigate, usePageMeta, useRoute } from '../router';
-import { Avatar, Button, Card, EmptyState, ErrorBox, Field, Modal, PageHeader, Pill, Spinner, Tabs, inputCls, useFormat } from '../components/ui';
+import { Avatar, Button, Card, EmptyState, ErrorBox, Field, Modal, PageHeader, Pill, Spinner, Tabs, TeamBadge, inputCls, useFormat } from '../components/ui';
 import { FORUM_CATEGORIES } from '../components/forum';
 import { PollCard } from '../components/PollCard';
 
@@ -112,7 +112,47 @@ export default function ForumPage() {
   const startThread = () => (user ? setNewOpen(true) : openAuth(t('Sign in to start a thread.')));
   return (
     <div className="space-y-5">
-      <PageHeader eyebrow={t('Community')} title={t('Fan forum')} subtitle={t('Match talk, tactics, Dream XI tips and team chat. +15 points for a thread, +5 for a reply (up to 50 a day).')} actions={<Button onClick={startThread} data-testid="new-thread"><MessageSquarePlus className="w-4 h-4" /> {t('New thread')}</Button>} />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl">
+        <div className="flex items-center gap-3">
+          <img
+            src="/logos/adt10.png"
+            alt="Abu Dhabi T10"
+            className="w-12 h-12 object-contain rounded-2xl p-1 bg-slate-950 border border-amber-400/40 shadow-lg shadow-amber-500/20 shrink-0"
+          />
+          <div>
+            <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 bg-amber-400/10 border border-amber-400/30 px-2 py-0.5 rounded-full inline-block">
+              Abu Dhabi T10 Community
+            </span>
+            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight mt-0.5">
+              {t('Fan forum')}
+            </h1>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button onClick={startThread} data-testid="new-thread" className="font-bold">
+            <MessageSquarePlus className="w-4 h-4" /> {t('New thread')}
+          </Button>
+        </div>
+      </div>
+
+      {!user && (
+        <Card className="p-4 border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-slate-900 to-slate-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-300">
+          <div className="flex items-center gap-3">
+            <img
+              src="/logos/adt10.png"
+              alt="ADT10"
+              className="w-9 h-9 object-contain rounded-xl p-0.5 bg-slate-950 border border-amber-400/40 shrink-0"
+            />
+            <div>
+              <span className="font-bold text-white block text-sm">📖 Public Fan Forum · Open to All</span>
+              <span>All forum topics and replies are open for everyone to view. Sign in with Google to post threads, write comments, and earn fan points.</span>
+            </div>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => openAuth(t('Sign in to participate in the forum.'))} className="self-start sm:self-auto shrink-0 font-bold border-amber-400 text-amber-300 hover:bg-amber-400 hover:text-slate-950">
+            {t('Sign in to comment')}
+          </Button>
+        </Card>
+      )}
       {openPolls.length > 0 && <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{openPolls.map(p => <PollCard key={p.id} poll={p} />)}</div>}
       <form onSubmit={e => { e.preventDefault(); setSearch(q.trim()); }} className="relative">
         <Search className="w-4 h-4 text-slate-500 absolute start-3 top-1/2 -translate-y-1/2" />
@@ -153,7 +193,12 @@ export default function ForumPage() {
                   <p className="text-[11px] text-slate-500 mt-1.5 flex items-center gap-2 flex-wrap">
                     <span>{th.userName}{th.userBadge ? ` · ${t(th.userBadge)}` : ''}</span>
                     <span>{t(FORUM_CATEGORIES.find(c => c.id === th.category)?.label || 'General')}</span>
-                    {th.teamId && <span style={{ color: teamById(th.teamId)?.color }}>● {teamById(th.teamId)?.short}</span>}
+                    {th.teamId && teamById(th.teamId) && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-slate-800 border border-slate-700/60 text-slate-200">
+                        <TeamBadge team={teamById(th.teamId)} size="sm" />
+                        <span>{teamById(th.teamId)?.name}</span>
+                      </span>
+                    )}
                     <span>{f.ago(th.lastActivityAt)}</span>
                   </p>
                 </div>

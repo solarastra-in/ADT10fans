@@ -109,9 +109,18 @@ export function initializeStore(store: AppStore): boolean {
     store.teams = OFFICIAL_2026_TEAMS.map(t => cloneTeam(t, store.settings.venue || DEFAULT_VENUE, now));
     store.jobLog['seed:teams'] = now;
     changed = true;
-  } else if (!store.jobLog['seed:teams']) {
     store.jobLog['seed:teams'] = now;
     changed = true;
+  }
+
+  // Ensure all teams have their official franchise logo populated
+  for (const team of store.teams) {
+    const official = OFFICIAL_2026_TEAMS.find(t => t.id === team.id);
+    const targetLogo = official?.logo || (team.id ? `/logos/${team.id}.svg` : '');
+    if (targetLogo && (!team.logo || team.logo !== targetLogo)) {
+      team.logo = targetLogo;
+      changed = true;
+    }
   }
   if (reconcileOfficialHandles(store, now)) changed = true;
   if (addSuggestedHandles(store, now)) changed = true;
@@ -331,7 +340,7 @@ export function seedOfficialTeams(overwrite = false, onlyTeamId?: string) {
         ...prev,
         ...official,
         home: prev.home || venue,
-        logo: prev.logo,
+        logo: official.logo || prev.logo || (official.id ? `/logos/${official.id}.svg` : ''),
         website: prev.website || official.website,
         squad: official.squad.map(p => ({ ...p, credits: prevById.get(p.id)?.credits, note: prevById.get(p.id)?.note })),
         createdAt: prev.createdAt || now,

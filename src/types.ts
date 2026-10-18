@@ -295,12 +295,82 @@ export interface FantasyTeam {
   playerIds: string[];
   captainId: string;
   viceCaptainId?: string;
+  variationId?: string;
+  variationName?: string;
   points?: number;
   rank?: number;
   breakdown?: FantasyBreakdownLine[];
   scoredAt?: string;
   createdAt: string;
+  updatedAt?: string;
 }
+
+export type FormTrend = 'hot' | 'rising' | 'stable' | 'cold';
+export type PlayerTier = 'star' | 'core' | 'value' | 'budget';
+
+export type PointAllocationLevel = 1 | 2 | 3 | 4 | 5;
+
+export interface PlayerFormStats {
+  trend: FormTrend;
+  momentumScore: number; // e.g. +18, +5, -12
+  recentScores: number[]; // last 3 match fantasy points
+  recentAvg: number;
+  projectedPoints: number;
+  swingIndex: number; // swing volatility score
+  pitchSuitability: 'Excellent' | 'Good' | 'Moderate' | 'Challenging';
+  matchupNote: string;
+  selectionSwing: number; // weekly swing % e.g. +9.4%
+  tier: PlayerTier;
+  // Multi-level adaptable point allocation
+  allocationLevel: PointAllocationLevel;
+  allocationLabel: string;
+  pastPointsAvg: number;
+  futurePitchBoost: number;
+  futureOpponentBoost: number;
+  projectedCeiling: number;
+  projectedFloor: number;
+  adaptationSummary: string;
+}
+
+export interface PlayerWithForm extends Player {
+  form: PlayerFormStats;
+}
+
+export interface LineupPreset {
+  id: string;
+  name: string;
+  tagline: string;
+  description: string;
+  badge: string;
+  playerIds: string[];
+  captainId: string;
+  viceCaptainId: string;
+  totalCredits: number;
+  starCount: number;
+}
+
+export interface MatchSwingInsights {
+  pitchProfile: {
+    venue: string;
+    condition: string;
+    expectedScore: string;
+    tossAdvantage: string;
+    paceVsSpin: { pacePct: number; spinPct: number; paceWickets: number; spinWickets: number };
+  };
+  starQuotaGuide: {
+    recommendedStars: number;
+    description: string;
+    creditBufferNotice: string;
+  };
+  radarAverages: {
+    power: number;
+    bowling: number;
+    starPower: number;
+    matchup: number;
+    volatility: number;
+  };
+}
+
 export interface DreamXIRules {
   size: number;
   creditCap: number;
@@ -320,7 +390,7 @@ export interface FantasyMatchSummary {
   status: Match['status'];
   locked: boolean;
   lineups: number;
-  mine: { points: number | null; rank: number | null; saved: boolean } | null;
+  mine: { points: number | null; rank: number | null; saved: boolean; variationsCount?: number } | null;
 }
 export interface LeaderRow {
   userId: string;

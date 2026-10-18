@@ -4,7 +4,7 @@ import { Contest, db } from '../db';
 import { getAuthUser, hasPermission, rateLimit, requireAdmin, requireUser, selfUser } from '../auth';
 import { bad, isoOrEmpty, newId, num, str, userOf, wrap } from '../http';
 import { dispatchNotification } from '../notify';
-import { creditsFor, DREAM_XI, fantasySeasonTotals, lineupLocked, lineupPool, scoreMatchFantasy, scoringRules, validateLineup } from '../fantasy';
+import { creditsFor, DREAM_XI, fantasySeasonTotals, lineupLocked, lineupPool, scoreMatchFantasy, scoringRules, validateLineup, lineupPoolWithForm, generateLineupVariations, getMatchSwingInsights } from '../fantasy';
 import { GameError, guessView, playBall, submitGuess, superOverState, todayLeaderboard, dubaiDay, Shot } from '../games';
 import { notifyFantasyResults } from '../reminders';
 import { awardPoints } from '../points';
@@ -215,8 +215,9 @@ playRouter.get('/fantasy', (req, res) => {
       locked: lineupLocked(m),
       lineups: store.fantasyTeams.filter(f => f.matchId === m.id).length,
       mine: (() => {
-        const f = mine.find(x => x.matchId === m.id);
-        return f ? { points: f.points ?? null, rank: f.rank ?? null, saved: true } : null;
+        const matching = mine.filter(x => x.matchId === m.id);
+        const f = matching[0];
+        return f ? { points: f.points ?? null, rank: f.rank ?? null, saved: true, variationsCount: matching.length } : null;
       })(),
     })),
     season: user ? fantasySeasonTotals(store, new Set([user.id]))[0] || null : null,
@@ -244,12 +245,23 @@ playRouter.get('/fantasy/:matchId', (req, res) => {
   const store = db.get();
   const match = store.matches.find(m => m.id === req.params.matchId);
   if (!match) return bad(res, 'Match not found', 404);
-  const pool = lineupPool(store, match).map(p => {
-    const lineups = store.fantasyTeams.filter(f => f.matchId === match.id);
-    return { ...p, credits: creditsFor(p), selectedBy: lineups.length ? Math.round((lineups.filter(f => f.playerIds.includes(p.id)).length / lineups.length) * 100) : 0 };
+  const pool = lineupPoolWithForm(store, match);
+  const myTeams = user ? store.fantasyTeams.filter(f => f.userId === user.id && f.matchId === match.id) : [];
+  const activeTeam = myTeams[0] || null;
+  const presets = generateLineupVariations(pool, match);
+  const swingInsights = getMatchSwingInsights(match, pool);
+
+  res.json({
+    match,
+    locked: lineupLocked(match),
+    rules: DREAM_XI,
+    pool,
+    fantasyTeam: activeTeam,
+    fantasyTeams: myTeams,
+    lineups: store.fantasyTeams.filter(f => f.matchId === match.id).length,
+    presets,
+    swingInsights,
   });
-  const mine = user ? store.fantasyTeams.find(f => f.userId === user.id && f.matchId === match.id) || null : null;
-  res.json({ match, locked: lineupLocked(match), rules: DREAM_XI, pool, fantasyTeam: mine, lineups: store.fantasyTeams.filter(f => f.matchId === match.id).length });
 });
 
 playRouter.post('/fantasy/:matchId', requireUser, rateLimit('fantasy', 40, 60_000), (req, res) => {
@@ -261,15 +273,32 @@ playRouter.post('/fantasy/:matchId', requireUser, rateLimit('fantasy', 40, 60_00
   const ids: string[] = Array.isArray(req.body?.playerIds) ? req.body.playerIds.map((x: any) => String(x)) : [];
   const captainId = str(req.body?.captainId, 80);
   const viceCaptainId = str(req.body?.viceCaptainId, 80);
-  const v = validateLineup(lineupPool(store, match), ids, captainId, viceCaptainId);
+  const variationId = str(req.body?.variationId, 40) || 'var-1';
+  const variationName = str(req.body?.variationName, 60) || 'Team 1';
+
+  const pool = lineupPoolWithForm(store, match);
+  const v = validateLineup(pool, ids, captainId, viceCaptainId);
   if (!v.ok) return bad(res, v.error!);
-  const idx = store.fantasyTeams.findIndex(f => f.userId === user.id && f.matchId === match.id);
+
+  const idx = store.fantasyTeams.findIndex(f => f.userId === user.id && f.matchId === match.id && (f.variationId || 'var-1') === variationId);
   const now = new Date().toISOString();
-  const team = { userId: user.id, matchId: match.id, playerIds: Array.from(new Set(ids)), captainId, viceCaptainId, createdAt: idx >= 0 ? store.fantasyTeams[idx].createdAt : now, updatedAt: now };
+  const team = {
+    userId: user.id,
+    matchId: match.id,
+    playerIds: Array.from(new Set(ids)),
+    captainId,
+    viceCaptainId,
+    variationId,
+    variationName,
+    createdAt: idx >= 0 ? store.fantasyTeams[idx].createdAt : now,
+    updatedAt: now,
+  };
   if (idx >= 0) store.fantasyTeams[idx] = team;
   else store.fantasyTeams.push(team);
   db.save();
-  res.json({ success: true, fantasyTeam: team, credits: v.credits, user: selfUser(user) });
+
+  const myTeams = store.fantasyTeams.filter(f => f.userId === user.id && f.matchId === match.id);
+  res.json({ success: true, fantasyTeam: team, fantasyTeams: myTeams, credits: v.credits, user: selfUser(user) });
 });
 
 playRouter.delete('/fantasy/:matchId', requireUser, (req, res) => {
@@ -278,9 +307,15 @@ playRouter.delete('/fantasy/:matchId', requireUser, (req, res) => {
   const match = store.matches.find(m => m.id === req.params.matchId);
   if (!match) return bad(res, 'Match not found', 404);
   if (lineupLocked(match)) return bad(res, 'Lineups are locked for this match');
-  store.fantasyTeams = store.fantasyTeams.filter(f => !(f.userId === user.id && f.matchId === match.id));
+  const variationId = str(req.query?.variationId, 40);
+  if (variationId) {
+    store.fantasyTeams = store.fantasyTeams.filter(f => !(f.userId === user.id && f.matchId === match.id && (f.variationId || 'var-1') === variationId));
+  } else {
+    store.fantasyTeams = store.fantasyTeams.filter(f => !(f.userId === user.id && f.matchId === match.id));
+  }
   db.save();
-  res.json({ success: true });
+  const myTeams = store.fantasyTeams.filter(f => f.userId === user.id && f.matchId === match.id);
+  res.json({ success: true, fantasyTeams: myTeams });
 });
 
 /** Admin: re-score Dream XI for a match after correcting its scorecard. */

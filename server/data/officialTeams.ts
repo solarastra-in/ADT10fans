@@ -15,6 +15,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
     "color": "#FACC15",
     "secondaryColor": "#1C1917",
     "iconPlayer": "Kieron Pollard",
+    "logo": "/logos/bulls.svg",
     "sort": 1,
     "squad": [
       {
@@ -283,6 +284,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
     "color": "#EC4899",
     "secondaryColor": "#1E1B4B",
     "iconPlayer": "Fakhar Zaman",
+    "logo": "/logos/tigers.svg",
     "sort": 2,
     "squad": [
       {
@@ -549,6 +551,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
     "color": "#22D3EE",
     "secondaryColor": "#0C4A6E",
     "iconPlayer": "Jason Holder",
+    "logo": "/logos/lions.svg",
     "sort": 3,
     "squad": [
       {
@@ -814,6 +817,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
     "color": "#F59E0B",
     "secondaryColor": "#0F172A",
     "iconPlayer": "Moeen Ali",
+    "logo": "/logos/aces.svg",
     "sort": 4,
     "headCoach": "Lance Klusener",
     "website": "https://www.arabianaces.ae",
@@ -1083,6 +1087,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
     "color": "#F5EBDD",
     "secondaryColor": "#1F2937",
     "iconPlayer": "Rovman Powell",
+    "logo": "/logos/eagles.svg",
     "sort": 5,
     "squad": [
       {
@@ -1347,6 +1352,7 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
     "color": "#FB7185",
     "secondaryColor": "#4C0519",
     "iconPlayer": "Nicholas Pooran",
+    "logo": "/logos/champions.svg",
     "sort": 6,
     "squad": [
       {

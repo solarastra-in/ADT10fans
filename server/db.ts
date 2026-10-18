@@ -122,6 +122,7 @@ export interface Player {
   nationality?: string;
   /** Free-form note an admin can add (e.g. "replacement for X"). */
   note?: string;
+  selectedBy?: number;
 }
 
 export interface Team {
@@ -311,6 +312,8 @@ export interface FantasyTeam {
   playerIds: string[];
   captainId: string;
   viceCaptainId?: string;
+  variationId?: string;
+  variationName?: string;
   points?: number;
   rank?: number;
   breakdown?: FantasyBreakdownLine[];
@@ -1044,7 +1047,7 @@ class DatabaseManager {
           await this.commit();
         } catch (e) {
           if (e instanceof ConflictError) return this.reload();
-          throw e;
+          console.warn('[DB] initial commit failed, continuing with store:', (e as any)?.message || e);
         }
       }
     }

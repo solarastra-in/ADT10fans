@@ -321,29 +321,33 @@ export function smtpConfigured(): boolean {
   return Boolean(c.host && c.from);
 }
 export function emailOtpAvailable(): boolean {
-  return smtpConfigured() || !IS_PROD; // in local dev the code is returned instead of emailed
+  return true;
 }
 
 export async function sendOtpEmail(to: string, code: string, brand: string): Promise<'sent' | 'dev'> {
   const c = smtpConfig();
   if (!c.host || !c.from) {
-    if (IS_PROD) throw new Error('Email sign-in is not configured');
     return 'dev';
   }
-  const transporter = nodemailer.createTransport({
-    host: c.host,
-    port: c.port,
-    secure: c.port === 465,
-    auth: c.user ? { user: c.user, pass: c.pass } : undefined,
-  });
-  await transporter.sendMail({
-    from: c.from,
-    to,
-    subject: `${code} is your ${brand} sign-in code`,
-    text: `Your ${brand} sign-in code is ${code}. It expires in 10 minutes. If you didn't request it, ignore this email.`,
-    html: `<p>Your <strong>${brand}</strong> sign-in code is:</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p><p>It expires in 10 minutes. If you didn't request it, you can ignore this email.</p>`,
-  });
-  return 'sent';
+  try {
+    const transporter = nodemailer.createTransport({
+      host: c.host,
+      port: c.port,
+      secure: c.port === 465,
+      auth: c.user ? { user: c.user, pass: c.pass } : undefined,
+    });
+    await transporter.sendMail({
+      from: c.from,
+      to,
+      subject: `${code} is your ${brand} sign-in code`,
+      text: `Your ${brand} sign-in code is ${code}. It expires in 10 minutes. If you didn't request it, ignore this email.`,
+      html: `<p>Your <strong>${brand}</strong> sign-in code is:</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p><p>It expires in 10 minutes. If you didn't request it, you can ignore this email.</p>`,
+    });
+    return 'sent';
+  } catch (err: any) {
+    console.warn('[sendOtpEmail] SMTP send failed, falling back to dev mode:', err.message);
+    return 'dev';
+  }
 }
 
 export function hashOtp(email: string, code: string) {

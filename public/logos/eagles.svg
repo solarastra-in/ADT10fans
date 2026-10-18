@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
+  <defs>
+    <linearGradient id="eagleRedBg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#b91c1c"/>
+      <stop offset="50%" stop-color="#881337"/>
+      <stop offset="100%" stop-color="#4c0519"/>
+    </linearGradient>
+    <linearGradient id="eagleGold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef08a"/>
+      <stop offset="40%" stop-color="#f59e0b"/>
+      <stop offset="80%" stop-color="#b45309"/>
+      <stop offset="100%" stop-color="#78350f"/>
+    </linearGradient>
+    <linearGradient id="eagleChrome" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="35%" stop-color="#f8fafc"/>
+      <stop offset="50%" stop-color="#94a3b8"/>
+      <stop offset="65%" stop-color="#e2e8f0"/>
+      <stop offset="100%" stop-color="#ffffff"/>
+    </linearGradient>
+    <filter id="eagleGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#ef4444" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <!-- Crown on Shield Apex -->
+  <g id="eagleCrown" filter="url(#eagleGlow)">
+    <polygon points="210,55 235,90 250,45 265,90 290,55 280,105 220,105" fill="url(#eagleGold)" stroke="#78350f" stroke-width="2"/>
+    <circle cx="210" cy="52" r="3.5" fill="#ffffff"/>
+    <circle cx="250" cy="42" r="4.5" fill="#ffffff"/>
+    <circle cx="290" cy="52" r="3.5" fill="#ffffff"/>
+  </g>
+
+  <!-- Outer Shield Border -->
+  <path d="M 250 85 C 385 85 435 130 435 205 C 435 340 345 435 250 485 C 155 435 65 340 65 205 C 65 130 115 85 250 85 Z"
+        fill="url(#eagleRedBg)" stroke="url(#eagleGold)" stroke-width="12" stroke-linejoin="round"/>
+
+  <!-- Inner Shield Trim in Dark Navy -->
+  <path d="M 250 102 C 370 102 415 142 415 205 C 415 325 335 415 250 460 C 165 415 85 325 85 205 C 85 142 130 102 250 102 Z"
+        fill="#0b1730" stroke="#b91c1c" stroke-width="6"/>
+
+  <!-- Fierce Eagle Head Profile (Facing Right) -->
+  <g id="eagleMascot" filter="url(#eagleGlow)">
+    <!-- White Crest / Feather Tufts -->
+    <path d="M 140 220 C 150 170 200 130 260 130 C 310 130 350 155 365 190 C 335 185 320 200 330 215 C 300 215 290 230 300 245 C 270 240 260 260 270 275 C 240 270 230 295 245 315 C 205 305 180 325 175 350 C 160 305 145 260 140 220 Z"
+          fill="#f8fafc" stroke="#cbd5e1" stroke-width="2"/>
+
+    <!-- Red and Blue Feather Flame Accents -->
+    <path d="M 245 138 C 290 142 325 165 340 195 C 315 190 295 205 285 220 C 295 190 275 165 245 138 Z" fill="#dc2626"/>
+    <path d="M 220 180 C 260 190 280 215 285 240 C 265 235 250 245 240 255 C 255 230 245 205 220 180 Z" fill="#1e3a8a"/>
+
+    <!-- Eagle Face & Hooked Beak -->
+    <!-- Sharp Golden Beak -->
+    <path d="M 330 215 C 365 210 405 230 415 260 C 400 270 380 270 365 265 C 350 280 335 280 320 270 C 340 260 350 245 330 235 Z"
+          fill="url(#eagleGold)" stroke="#78350f" stroke-width="2"/>
+    <!-- Nostril Slit -->
+    <ellipse cx="355" cy="235" rx="5" ry="2" fill="#451a03" transform="rotate(-15 355 235)"/>
+
+    <!-- Throat & Lower Beak -->
+    <path d="M 320 270 C 345 275 365 265 375 258 C 360 275 335 285 310 282 Z" fill="#d97706"/>
+
+    <!-- Eagle Brow & Eye -->
+    <polygon points="265,190 315,195 295,215" fill="#0f172a"/>
+    <!-- Intense Amber Eye -->
+    <circle cx="292" cy="205" r="7" fill="#f59e0b"/>
+    <circle cx="292" cy="205" r="3.5" fill="#020617"/>
+    <circle cx="290" cy="203" r="1.5" fill="#ffffff"/>
+  </g>
+
+  <!-- Typography Banner Area -->
+  <g filter="drop-shadow(0 6px 8px rgba(0,0,0,0.95))">
+    <!-- Red Accent Banner backing -->
+    <path d="M 100 365 L 400 365 L 380 445 L 250 460 L 120 445 Z" fill="#991b1b" stroke="url(#eagleGold)" stroke-width="3"/>
+
+    <!-- EMIRATES Sub-text -->
+    <text x="250" y="385" text-anchor="middle" font-family="'Impact', 'Arial Black', sans-serif" font-weight="900" font-size="28" fill="#ffffff" letter-spacing="8">
+      EMIRATES
+    </text>
+
+    <!-- EAGLES Bold 3D Chrome Text -->
+    <text x="250" y="438" text-anchor="middle" font-family="'Impact', 'Arial Black', sans-serif" font-weight="900" font-size="58" fill="url(#eagleChrome)" stroke="#0f172a" stroke-width="4" letter-spacing="3" style="paint-order: stroke fill;">
+      EAGLES
+    </text>
+  </g>
+</svg>

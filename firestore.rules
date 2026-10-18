@@ -1,12 +1,59 @@
 rules_version = '2';
-// The site's data is read and written only by its own server, which signs in with the
-// FIREBASE_SERVICE_ACCOUNT key and is not subject to these rules. Browsers never need direct
-// access, so everything is closed to them. Publish in Firebase console → Firestore → Rules
-// (or `firebase deploy --only firestore:rules`).
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        request.auth.token.email == 'solarastra.in@gmail.com'
+      );
+    }
+
+    // Unified application cloud persistence store (contains all synced app collections)
+    match /adt10_store/{document=**} {
+      allow read, write: if true;
+    }
+
+    // Forum Topics: Open for EVERYONE to view, but only signed-in users can create
+    match /forumThreads/{threadId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // Forum Comments & Replies: Available for EVERYONE to view, but only LOGGED-IN users can post
+    match /forumComments/{commentId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // Rewards & Prizes Catalogue
+    match /prizes/{prizeId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Prize Claims & Redemptions
+    match /redemptions/{redemptionId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // General fallback
     match /{document=**} {
-      allow read, write: if false;
+      allow read: if true;
+      allow write: if isSignedIn();
     }
   }
 }

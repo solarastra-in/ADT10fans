@@ -111,7 +111,7 @@ async function servePage(req: Request, res: Response, next: NextFunction) {
     const page = renderPage(req.path, store, baseUrl(req));
     const html = injectIntoTemplate(template, page, store.settings.brandName || 'ADT10 Fans');
     res.status(page.status).setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('Cache-Control', page.status === 200 && !page.robots.includes('noindex') ? 'public, max-age=0, s-maxage=60, stale-while-revalidate=300' : 'no-store');
+    res.setHeader('Cache-Control', !IS_PROD ? 'no-cache, no-store, must-revalidate' : (page.status === 200 && !page.robots.includes('noindex') ? 'public, max-age=0, s-maxage=60, stale-while-revalidate=300' : 'no-store'));
     res.send(html);
   } catch (e) {
     next(e);

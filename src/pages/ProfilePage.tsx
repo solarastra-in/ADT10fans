@@ -153,9 +153,16 @@ export default function ProfilePage() {
           <Card className="mt-3 divide-y divide-slate-800">
             {data.fantasyHistory.map(h => (
               <Link key={h.matchId} to={`/fantasy/${h.matchId}`} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-800/40">
-                <Trophy className="w-4 h-4 text-amber-400" />
-                <span className="flex-1 text-sm text-white">{t('Match {n}', { n: h.matchNo ?? '' })}: {teamById(h.teamA)?.short} v {teamById(h.teamB)?.short}</span>
-                <span className="text-sm font-black text-amber-400">{h.scored ? `${h.points} · #${h.rank}` : t('Pending')}</span>
+                <Trophy className="w-4 h-4 text-amber-400 shrink-0" />
+                <div className="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap">
+                  <span className="text-xs text-slate-400">{t('Match {n}', { n: h.matchNo ?? '' })}:</span>
+                  <TeamBadge team={teamById(h.teamA)} size="sm" />
+                  <span className="text-xs font-bold text-white">{teamById(h.teamA)?.name}</span>
+                  <span className="text-amber-400 font-bold text-xs">v</span>
+                  <TeamBadge team={teamById(h.teamB)} size="sm" />
+                  <span className="text-xs font-bold text-white">{teamById(h.teamB)?.name}</span>
+                </div>
+                <span className="text-sm font-black text-amber-400 shrink-0">{h.scored ? `${h.points} · #${h.rank}` : t('Pending')}</span>
               </Link>
             ))}
           </Card>

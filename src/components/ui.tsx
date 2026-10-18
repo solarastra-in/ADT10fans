@@ -136,13 +136,78 @@ export function TeamDot({ team, size = 12 }: { team?: Pick<Team, 'color'> | null
   return <span className="inline-block rounded-full shrink-0 ring-1 ring-white/10" style={{ width: size, height: size, background: team?.color || '#475569' }} />;
 }
 
-export function TeamBadge({ team, size = 'md' }: { team?: Team | null; size?: 'sm' | 'md' | 'lg' }) {
-  const dim = size === 'sm' ? 'w-8 h-8 text-[10px]' : size === 'lg' ? 'w-16 h-16 text-lg' : 'w-11 h-11 text-xs';
-  if (!team) return <span className={cx(dim, 'rounded-xl bg-slate-800 inline-flex items-center justify-center text-slate-500 font-black')}>?</span>;
-  if (team.logo)
-    return <img src={team.logo} alt="" className={cx(dim, 'rounded-xl object-contain bg-slate-950 p-1 border border-slate-800')} loading="lazy" />;
+export function TeamBadge({
+  team,
+  size = 'md',
+  className,
+  glow = true,
+}: {
+  team?: Team | null;
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl';
+  className?: string;
+  glow?: boolean;
+}) {
+  const dim = {
+    xs: 'w-7 h-7 text-[10px] p-0.5',
+    sm: 'w-10 h-10 sm:w-11 sm:h-11 text-xs p-1',
+    md: 'w-13 h-13 sm:w-14 sm:h-14 text-sm p-1.5',
+    lg: 'w-20 h-20 sm:w-24 sm:h-24 text-lg p-2',
+    xl: 'w-28 h-28 sm:w-32 sm:h-32 text-xl p-2.5',
+    '2xl': 'w-36 h-36 sm:w-44 sm:h-44 text-2xl p-3',
+  }[size];
+
+  if (!team) {
+    return (
+      <span className={cx(dim, 'rounded-2xl bg-slate-900 border border-slate-800 inline-flex items-center justify-center text-slate-500 font-black shrink-0', className)}>
+        ?
+      </span>
+    );
+  }
+
+  const logoSrc = team.logo || (team.id && ['bulls', 'tigers', 'lions', 'aces', 'eagles', 'champions'].includes(team.id) ? `/logos/${team.id}.svg` : null);
+
+  if (logoSrc) {
+    return (
+      <div
+        className={cx(
+          dim,
+          'rounded-2xl inline-flex items-center justify-center bg-gradient-to-b from-slate-900/95 via-slate-950/90 to-slate-900/95 border shadow-lg transition-transform shrink-0 relative overflow-hidden group',
+          glow ? 'hover:scale-105' : '',
+          className
+        )}
+        style={{
+          borderColor: team.color ? `${team.color}66` : 'rgba(51,65,85,0.7)',
+          boxShadow: glow && team.color ? `0 4px 16px -2px ${team.color}33, 0 2px 6px -1px rgba(0,0,0,0.6)` : '0 4px 12px rgba(0,0,0,0.5)',
+        }}
+        title={team.name || team.short}
+      >
+        {/* Subtle radial highlight behind logo */}
+        <div
+          className="absolute inset-0 opacity-20 group-hover:opacity-35 transition-opacity pointer-events-none rounded-2xl"
+          style={{
+            background: `radial-gradient(circle at 50% 50%, ${team.color || '#38bdf8'} 0%, transparent 70%)`,
+          }}
+        />
+        <img
+          src={logoSrc}
+          alt={team.name || team.short}
+          className="w-full h-full object-contain filter drop-shadow-md shrink-0 relative z-10 transition-transform duration-200 group-hover:scale-105"
+          loading="lazy"
+        />
+      </div>
+    );
+  }
+
   return (
-    <span className={cx(dim, 'rounded-xl inline-flex items-center justify-center font-black shrink-0 border border-white/10')} style={{ background: team.color, color: team.secondaryColor || '#0f172a' }} aria-hidden>
+    <span
+      className={cx(dim, 'rounded-2xl inline-flex items-center justify-center font-black shrink-0 border shadow-md', className)}
+      style={{
+        background: `linear-gradient(135deg, ${team.color}, ${team.secondaryColor || '#0f172a'})`,
+        color: '#ffffff',
+        borderColor: `${team.color}88`,
+      }}
+      aria-hidden
+    >
       {team.short}
     </span>
   );

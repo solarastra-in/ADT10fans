@@ -246,10 +246,25 @@ export const TieredRewardDashboard: React.FC<TieredRewardDashboardProps> = ({
             </div>
 
             <div>
-              <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2">
-                Point Milestones & Reward Tiers
-              </h2>
-              <p className="text-xs sm:text-sm text-slate-400 max-w-xl mt-1 leading-relaxed">
+              <div className="flex items-center gap-3">
+                <img
+                  src="/logos/adt10.png"
+                  alt="Abu Dhabi T10"
+                  className="w-10 h-10 object-contain rounded-xl p-0.5 bg-slate-950 border border-amber-400/40 shadow-md shrink-0"
+                />
+                <img
+                  src="/logos/aces.svg"
+                  alt="Arabian Aces"
+                  className="w-8 h-8 object-contain shrink-0"
+                />
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2">
+                    Point Milestones & Reward Tiers
+                  </h2>
+                  <span className="text-[11px] font-bold text-amber-400">Abu Dhabi T10 Official Fan Rewards</span>
+                </div>
+              </div>
+              <p className="text-xs sm:text-sm text-slate-400 max-w-xl mt-2 leading-relaxed">
                 Earn fan points by playing daily games, picking fantasy lineups, and making match predictions to unlock Free Match Tickets, Official T-Shirts, and Signed Memorabilia.
               </p>
             </div>

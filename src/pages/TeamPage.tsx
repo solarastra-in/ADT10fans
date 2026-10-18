@@ -98,7 +98,7 @@ export default function TeamPage({ id }: { id: string }) {
       <Card className="relative overflow-hidden p-5 sm:p-7">
         <div className="absolute inset-0 opacity-20" style={{ background: `linear-gradient(135deg, ${team.color}, transparent 60%)` }} />
         <div className="relative flex flex-col sm:flex-row sm:items-center gap-4">
-          <TeamBadge team={team} size="lg" />
+          <TeamBadge team={team} size="xl" />
           <div className="flex-1 min-w-0">
             <h1 className="text-2xl sm:text-3xl font-black text-white">{team.name}</h1>
             <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-300">

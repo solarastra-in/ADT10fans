@@ -52,8 +52,15 @@ export default function LeaderboardPage() {
                 <Avatar name={u.name} src={u.avatar} size={34} />
                 <span className="flex-1 min-w-0">
                   <span className="block text-sm font-bold text-white truncate">{u.name}</span>
-                  <span className="block text-[11px] text-slate-500">
-                    {u.teamId ? teamById(u.teamId)?.name : t('No team yet')}
+                  <span className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-0.5">
+                    {u.teamId && teamById(u.teamId) ? (
+                      <span className="inline-flex items-center gap-1 font-bold text-slate-300">
+                        <TeamBadge team={teamById(u.teamId)} size="sm" />
+                        <span>{teamById(u.teamId)?.name}</span>
+                      </span>
+                    ) : (
+                      <span>{t('No team yet')}</span>
+                    )}
                     {u.streak > 1 ? ` · 🔥 ${u.streak}` : ''}
                     {u.badges.length ? ` · ${t('{n} badges', { n: u.badges.length })}` : ''}
                   </span>

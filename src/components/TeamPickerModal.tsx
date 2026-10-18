@@ -53,7 +53,7 @@ export function TeamPickerModal() {
                 className={cx('flex items-center gap-3 p-3 rounded-2xl border text-start transition-colors min-h-[64px] disabled:opacity-50', mine ? 'border-amber-400 bg-amber-400/10' : 'border-slate-800 bg-slate-950/60 hover:border-slate-600')}
                 data-team={team.id}
               >
-                <TeamBadge team={team} />
+                <TeamBadge team={team} size="md" />
                 <span className="min-w-0 flex-1">
                   <span className="block font-bold text-white truncate">{team.name}</span>
                   <span className="block text-xs text-slate-400">{t('{n} fans', { n: team.fans || 0 })}</span>

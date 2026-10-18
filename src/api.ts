@@ -5,7 +5,7 @@ import type {
   PrizeItem, PrizeRedemption, PollView, FanWarsRow, PublicFan, FanBase, ReferralSummary, CricketDataCandidate, FeedHealthRow,
   ProfileResponse, FanSpace, FanSpaceBooking, Approval, AgentRun, ForumReportView, Reaction, ProposalSettings,
   YouthCupSchool, CreatorPartner, CommentaryAudioFeed, SuperfanPassportTier,
-  AdminFanPoints, PointsHistory, PointsEntry,
+  AdminFanPoints, PointsHistory, PointsEntry, PlayerWithForm, LineupPreset, MatchSwingInsights,
 } from './types';
 
 const TOKEN_KEY = 't10_auth_token';
@@ -162,9 +162,9 @@ export const api = {
   // ----- Dream XI -----
   getFantasyHub: () => req<{ rules: DreamXIRules; matches: FantasyMatchSummary[]; season: { points: number; matches: number; best: number } | null }>('/api/fantasy'),
   getFantasyRules: () => req<{ rules: DreamXIRules; scoring: { group: string; rules: [string, number | string][] }[] }>('/api/fantasy/rules'),
-  getFantasy: (matchId: string) => req<{ match: Match; locked: boolean; rules: DreamXIRules; pool: Player[]; fantasyTeam: FantasyTeam | null; lineups: number }>(`/api/fantasy/${encodeURIComponent(matchId)}`),
-  submitFantasy: (matchId: string, playerIds: string[], captainId: string, viceCaptainId: string) => post<Ok & { fantasyTeam: FantasyTeam; credits: number; user: User }>(`/api/fantasy/${encodeURIComponent(matchId)}`, { playerIds, captainId, viceCaptainId }),
-  deleteFantasy: (matchId: string) => del<Ok>(`/api/fantasy/${encodeURIComponent(matchId)}`),
+  getFantasy: (matchId: string) => req<{ match: Match; locked: boolean; rules: DreamXIRules; pool: PlayerWithForm[]; fantasyTeam: FantasyTeam | null; fantasyTeams?: FantasyTeam[]; lineups: number; presets?: LineupPreset[]; swingInsights?: MatchSwingInsights }>(`/api/fantasy/${encodeURIComponent(matchId)}`),
+  submitFantasy: (matchId: string, playerIds: string[], captainId: string, viceCaptainId: string, variationId?: string, variationName?: string) => post<Ok & { fantasyTeam: FantasyTeam; fantasyTeams: FantasyTeam[]; credits: number; user: User }>(`/api/fantasy/${encodeURIComponent(matchId)}`, { playerIds, captainId, viceCaptainId, variationId, variationName }),
+  deleteFantasy: (matchId: string, variationId?: string) => del<Ok & { fantasyTeams: FantasyTeam[] }>(`/api/fantasy/${encodeURIComponent(matchId)}${variationId ? `?variationId=${encodeURIComponent(variationId)}` : ''}`),
   getFantasyLeaderboard: (matchId?: string) => req<{ rows: LeaderRow[] }>(`/api/fantasy/leaderboard${qs({ matchId })}`),
   rescoreFantasy: (matchId: string) => post<Ok & { scored: number; topScore: number; unmatchedNames: string[] }>(`/api/admin/fantasy/${matchId}/score`),
   getLeagues: () => req<{ leagues: FantasyLeague[] }>('/api/fantasy-leagues'),
@@ -178,7 +178,7 @@ export const api = {
   playSuperOverBall: (shot: Shot) => post<Ok & { superOver: SuperOverState; user: User }>('/api/games/superover', { shot }),
 
   // ----- prizes & draws -----
-  getPrizes: () => req<{ prizes: PrizeItem[]; balance: number | null; myRedemptions: PrizeRedemption[] }>('/api/prizes'),
+  getPrizes: () => req<{ prizes: PrizeItem[]; balance: number | null; myRedemptions: PrizeRedemption[]; limits?: { dailyClaimsUsed: number; dailyClaimsMax: number; pendingClaimsCount: number; pendingClaimsMax: number } | null }>('/api/prizes'),
   redeemPrize: (id: string) => post<Ok & { redemption: PrizeRedemption; fulfilment: string; user: User }>(`/api/prizes/${id}/redeem`),
   getAdminPrizes: () => req<{ prizes: PrizeItem[]; redemptions: PrizeRedemption[] }>('/api/admin/prizes'),
   savePrize: (p: Partial<PrizeItem>) => post<Ok & { prize: PrizeItem; prizes: PrizeItem[] }>('/api/admin/prizes', p),

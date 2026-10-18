@@ -9,11 +9,15 @@ import { Avatar, cx } from './ui';
 export function BrandMark({ compact }: { compact?: boolean }) {
   const { config } = useApp();
   return (
-    <Link to="/" className="inline-flex items-center gap-2 min-h-[44px] shrink-0" aria-label={config?.brandName || 'ADT10 Fans'}>
-      <span className="w-9 h-9 rounded-xl bg-amber-400 text-slate-950 font-black text-sm flex items-center justify-center shadow-lg shadow-amber-500/20">T10</span>
+    <Link to="/" className="inline-flex items-center gap-2.5 min-h-[44px] shrink-0 group" aria-label={config?.brandName || 'ADT10 Fans'}>
+      <img
+        src="/logos/adt10.png"
+        alt="Abu Dhabi T10"
+        className="w-10 h-10 object-contain rounded-xl p-0.5 bg-slate-900/90 border border-amber-500/40 shadow-lg shadow-amber-500/20 group-hover:scale-105 transition-transform"
+      />
       {!compact && (
-        <span className="leading-none">
-          <span className="block text-[15px] font-black text-white tracking-tight">{config?.brandName || 'ADT10 Fans'}</span>
+        <span className="leading-tight">
+          <span className="block text-[15px] font-black text-white tracking-tight group-hover:text-amber-300 transition-colors">{config?.brandName || 'ADT10 Fans'}</span>
           <span className="block text-[10px] font-bold uppercase tracking-wider text-amber-400/90">{config?.seasonLabel || 'Abu Dhabi T10'}</span>
         </span>
       )}

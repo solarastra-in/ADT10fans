@@ -102,7 +102,11 @@ export default function FantasyPage() {
               <span className="block text-[11px] text-slate-400">#{m.mine.rank}</span>
             </span>
           ) : m.mine?.saved ? (
-            <Pill tone="green">{m.locked ? t('Waiting for result') : t('Saved')}</Pill>
+            <Pill tone="green">
+              {m.mine.variationsCount && m.mine.variationsCount > 1
+                ? t('{n} variations', { n: m.mine.variationsCount })
+                : m.locked ? t('Waiting for result') : t('Saved')}
+            </Pill>
           ) : !m.locked ? (
             <Pill tone="amber">{t('Pick XI')}</Pill>
           ) : null}

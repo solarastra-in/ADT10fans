@@ -135,24 +135,109 @@ prizesRouter.get('/prizes', (req, res) => {
   const user = getAuthUser(req);
   const store = db.get();
   const prizes = store.prizes.filter(p => p.active).map(p => ({ ...p, claimed: store.redemptions.filter(r => r.prizeId === p.id && r.status !== 'cancelled').length }));
+  
+  let dailyClaimsUsed = 0;
+  let pendingClaimsCount = 0;
+  if (user) {
+    const todayDubai = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Dubai' });
+    const userRedemptions = store.redemptions.filter(r => r.userId === user.id && r.status !== 'cancelled');
+    dailyClaimsUsed = userRedemptions.filter(r => new Date(r.createdAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Dubai' }) === todayDubai).length;
+    pendingClaimsCount = userRedemptions.filter(r => r.status === 'pending').length;
+  }
+
   res.json({
     prizes,
     balance: user ? balance(user) : null,
     myRedemptions: user ? store.redemptions.filter(r => r.userId === user.id) : [],
+    limits: user ? {
+      dailyClaimsUsed,
+      dailyClaimsMax: 2,
+      pendingClaimsCount,
+      pendingClaimsMax: 3,
+    } : null,
   });
 });
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-prizesRouter.post('/prizes/:id/redeem', requireUser, rateLimit('redeem', 10, 60_000), (req, res) => {
+prizesRouter.post('/prizes/:id/redeem', requireUser, rateLimit('redeem', 5, 60_000), (req, res) => {
   const user = userOf(req);
   const store = db.get();
   const prize = store.prizes.find(p => p.id === req.params.id && p.active);
-  if (!prize) return bad(res, 'Prize not found', 404);
-  if (prize.teamOnly && user.teamId !== prize.teamOnly) return bad(res, `This prize is for ${store.teams.find(t => t.id === prize.teamOnly)?.name || 'one team'} fans`, 403);
+  if (!prize) return bad(res, 'Prize not found or inactive', 404);
+
+  // 1. Team-only verification
+  if (prize.teamOnly && user.teamId !== prize.teamOnly) {
+    return bad(res, `This prize is reserved exclusively for ${store.teams.find(t => t.id === prize.teamOnly)?.name || 'official team'} fans. Back this team in your profile to claim.`, 403);
+  }
+
+  // 2. Stock check
   const claimed = store.redemptions.filter(r => r.prizeId === prize.id && r.status !== 'cancelled').length;
-  if (claimed >= prize.stock) return bad(res, 'This prize has all been claimed', 409);
-  if (store.redemptions.some(r => r.prizeId === prize.id && r.userId === user.id && r.status !== 'cancelled')) return bad(res, 'You have already claimed this prize', 409);
-  if (balance(user) < prize.pointsCost) return bad(res, `You need ${prize.pointsCost} points; you have ${balance(user)} to spend.`, 402);
+  if (claimed >= prize.stock) return bad(res, 'This reward is currently out of stock. Check back when more inventory is released.', 409);
+
+  // 3. Prevent duplicate claims for the exact same item
+  const userRedemptions = store.redemptions.filter(r => r.userId === user.id && r.status !== 'cancelled');
+  if (userRedemptions.some(r => r.prizeId === prize.id)) {
+    return bad(res, 'You have already claimed this prize item. Each fan is limited to 1 claim per reward.', 409);
+  }
+
+  // 4. Match Ticket Hoarding Prevention: 1 ticket per match fixture
+  const isMatchTicket = prize.title.toLowerCase().includes('ticket');
+  if (isMatchTicket) {
+    const matchNumberMatch = prize.title.match(/Match\s+(\d+)/i);
+    if (matchNumberMatch) {
+      const matchNum = matchNumberMatch[1];
+      const hasTicketForMatch = userRedemptions.some(r => r.prizeTitle.toLowerCase().includes('ticket') && r.prizeTitle.includes(`Match ${matchNum}`));
+      if (hasTicketForMatch) {
+        return bad(res, `You already have an active matchday pass for Match ${matchNum}. Each fan can claim at most 1 ticket per match to ensure all fans get access.`, 409);
+      }
+    }
+  }
+
+  // 5. Daily claim cap: max 2 redemptions per 24h
+  const todayDubai = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Dubai' });
+  const claimsToday = userRedemptions.filter(r => new Date(r.createdAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Dubai' }) === todayDubai).length;
+  if (claimsToday >= 2) {
+    return bad(res, 'Daily claim limit reached (2 prizes per day). This protection prevents hoarding and ensures fair distribution to all fans.', 429);
+  }
+
+  // 6. Active pending claims cap: max 3 pending items
+  const pendingClaims = userRedemptions.filter(r => r.status === 'pending').length;
+  if (pendingClaims >= 3) {
+    return bad(res, 'You have 3 unfulfilled pending prize claims. Please await fulfilment or contact organisers before claiming additional rewards.', 429);
+  }
+
+  // 7. Cooldown between claims: minimum 30 seconds
+  const lastClaim = userRedemptions[0];
+  if (lastClaim && Date.now() - +new Date(lastClaim.createdAt) < 30_000) {
+    return bad(res, 'Please wait 30 seconds between claims.', 429);
+  }
+
+  // 8. Balance & points ledger audit
+  const currentBalance = balance(user);
+  if (currentBalance < prize.pointsCost) {
+    return bad(res, `You need ${prize.pointsCost} spendable points, but you have ${currentBalance}. Earn more points in daily games and predictions.`, 402);
+  }
+
+  if (prize.pointsCost <= 0) {
+    return bad(res, 'Invalid reward point cost.', 400);
+  }
+
+  // Ledger audit: strictly verify user points match official ledger records to prevent any points tampering or misuse
+  const ledger = store.pointsLedger || [];
+  let auditedEarned = 0;
+  let auditedSpent = 0;
+  for (const entry of ledger) {
+    if (entry.userId === user.id) {
+      if (entry.bucket === 'earned' || entry.delta > 0) auditedEarned += entry.delta;
+      else if (entry.bucket === 'spent' || entry.source === 'prize') auditedSpent += Math.abs(entry.delta);
+    }
+  }
+  const trueAuditedBalance = Math.max(0, auditedEarned - auditedSpent);
+  if (auditedEarned > 0 && trueAuditedBalance < prize.pointsCost) {
+    return bad(res, `Points verification failed: Verified ledger balance (${trueAuditedBalance} pts) is less than required points (${prize.pointsCost} pts). Points cannot be artificially generated or misused.`, 403);
+  }
+
+  // 9. Atomic Spend & Redemption Creation
   const code = Array.from(crypto.randomBytes(8), b => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
   const redemptionId = newId('rdm');
   spendPoints(store, user, prize.pointsCost, `${prize.title} (claim ${code})`, redemptionId);

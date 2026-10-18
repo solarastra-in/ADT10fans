@@ -16,7 +16,26 @@ export default function MatchesPage() {
 
   return (
     <div>
-      <PageHeader eyebrow={config?.seasonLabel} title={t('Matches')} subtitle={t('Times are shown in your local time zone. Scores update automatically during play.')} />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl mb-5">
+        <div className="flex items-center gap-3">
+          <img
+            src="/logos/adt10.png"
+            alt="Abu Dhabi T10"
+            className="w-12 h-12 object-contain rounded-2xl p-1 bg-slate-950 border border-amber-400/40 shadow-lg shadow-amber-500/20 shrink-0"
+          />
+          <div>
+            <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 bg-amber-400/10 border border-amber-400/30 px-2 py-0.5 rounded-full inline-block">
+              {config?.seasonLabel || 'Abu Dhabi T10 2026'}
+            </span>
+            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight mt-0.5">
+              {t('Matches & Fixtures')}
+            </h1>
+          </div>
+        </div>
+        <p className="text-xs text-slate-400 max-w-sm">
+          {t('Times are shown in your local time zone. Scores update automatically during play.')}
+        </p>
+      </div>
       <Tabs value={team} onChange={setTeam} className="mb-5" items={[{ id: 'all', label: t('All teams') }, ...teams.map(x => ({ id: x.id, label: x.short }))]} />
       {matches.length === 0 ? (
         <EmptyState

@@ -4,7 +4,7 @@ import { api } from '../api';
 import { useApp, useLoad } from '../state';
 import { useT } from '../i18n';
 import { Link, navigate, usePageMeta } from '../router';
-import { Avatar, Button, Card, ErrorBox, Notice, Pill, Spinner, inputCls, useFormat } from '../components/ui';
+import { Avatar, Button, Card, ErrorBox, Notice, Pill, Spinner, TeamBadge, inputCls, useFormat } from '../components/ui';
 import { FORUM_CATEGORIES, Reactions, ReportButton, VoteButton } from '../components/forum';
 
 export default function ThreadPage({ id }: { id: string }) {
@@ -75,7 +75,12 @@ export default function ThreadPage({ id }: { id: string }) {
           {th.pinned && <Pill tone="amber"><Pin className="w-3 h-3" /> {t('Pinned')}</Pill>}
           {th.locked && <Pill><Lock className="w-3 h-3" /> {t('Locked')}</Pill>}
           {th.hidden && <Pill tone="red">{t('Hidden')}</Pill>}
-          {th.teamId && <Pill>{teamById(th.teamId)?.name}</Pill>}
+          {th.teamId && teamById(th.teamId) && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-800 border border-slate-700 text-white">
+              <TeamBadge team={teamById(th.teamId)} size="sm" />
+              <span>{teamById(th.teamId)?.name}</span>
+            </span>
+          )}
           {match && (
             <Link to={`/matches/${match.id}`}>
               <Pill tone="blue">{t('Match {n}', { n: match.matchNo })}</Pill>
@@ -137,7 +142,12 @@ export default function ThreadPage({ id }: { id: string }) {
               <Avatar name={c.userName} src={c.userAvatar} size={26} />
               <span className="font-bold text-slate-200">{c.userName}</span>
               {c.userBadge && <Pill tone="amber">{t(c.userBadge)}</Pill>}
-              {c.teamId && <span style={{ color: teamById(c.teamId)?.color }}>● {teamById(c.teamId)?.short}</span>}
+              {c.teamId && teamById(c.teamId) && (
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-300">
+                  <TeamBadge team={teamById(c.teamId)} size="sm" />
+                  <span>{teamById(c.teamId)?.name}</span>
+                </span>
+              )}
               <span>· {f.ago(c.createdAt)}</span>
               {c.hidden && <Pill tone="red">{t('Hidden')}</Pill>}
             </div>
@@ -166,7 +176,25 @@ export default function ThreadPage({ id }: { id: string }) {
           <Button type="submit" loading={busy}>{t('Reply')}</Button>
         </form>
       ) : (
-        <Button variant="secondary" onClick={() => openAuth(t('Sign in to reply.'))}>{t('Sign in to reply')}</Button>
+        <Card className="p-6 border-amber-500/30 bg-gradient-to-br from-amber-500/10 via-slate-900 to-slate-950 text-center space-y-3">
+          <div className="flex items-center justify-center gap-2">
+            <img
+              src="/logos/adt10.png"
+              alt="Abu Dhabi T10"
+              className="w-10 h-10 object-contain rounded-xl p-0.5 bg-slate-950 border border-amber-400/40"
+            />
+            <div className="w-10 h-10 rounded-xl bg-amber-400/15 border border-amber-400/30 flex items-center justify-center text-amber-400">
+              <Lock className="w-5 h-5" />
+            </div>
+          </div>
+          <h3 className="text-base font-black text-white">{t('Public Discussion — Sign in to participate')}</h3>
+          <p className="text-xs text-slate-300 max-w-md mx-auto">
+            {t('Forums are open for everyone to read. Sign in with your account to post replies, upvote strategies, and earn fan points.')}
+          </p>
+          <Button onClick={() => openAuth(t('Sign in to reply.'))} className="font-bold border-amber-400 text-slate-950 bg-amber-400 hover:bg-amber-300">
+            {t('Sign in to reply')}
+          </Button>
+        </Card>
       )}
     </div>
   );

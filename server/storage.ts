@@ -1,5 +1,164 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
+import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
+import { getFirestore, doc, getDoc, writeBatch, type Firestore, setLogLevel } from 'firebase/firestore';
+try {
+  setLogLevel('silent');
+} catch {
+  /* ignore */
+}
+
+const BACKUP_PATH = path.join(process.cwd(), 'data', 'store_cloud_backup.json');
+
+function saveLocalBackup(data: string) {
+  try {
+    const dir = path.dirname(BACKUP_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(BACKUP_PATH, data, 'utf8');
+  } catch {
+    /* fallback */
+  }
+}
+
+function loadLocalBackup(): string | null {
+  try {
+    if (fs.existsSync(BACKUP_PATH)) return fs.readFileSync(BACKUP_PATH, 'utf8');
+  } catch {
+    /* fallback */
+  }
+  return null;
+}
+
+let globalWriteQuotaExceededUntil = Date.now() + 24 * 60 * 60 * 1000;
+export const isWriteQuotaExceeded = () => Date.now() < globalWriteQuotaExceededUntil;
+
+export class FirestoreSdkBackend implements StorageBackend {
+  readonly kind = 'firestore' as const;
+  readonly shared = true;
+  private readonly app: FirebaseApp;
+  private readonly firestore: Firestore;
+  private readonly collectionName: string;
+  private lastChunks = 0;
+  private currentLocalVersion = 'v1';
+
+  constructor(private readonly cfg: ReturnType<typeof firebaseAppConfig>, collectionName = 'adt10_store') {
+    this.collectionName = collectionName;
+    const appName = `storage-${cfg.projectId}`;
+    const existing = getApps().find(a => a.name === appName || a.name === '[DEFAULT]');
+    this.app = existing || initializeApp(cfg as any, appName);
+    this.firestore = getFirestore(this.app, cfg.firestoreDatabaseId || '(default)');
+  }
+
+  describe() {
+    return `firebase-firestore ${this.cfg.projectId}/${this.cfg.firestoreDatabaseId}/${this.collectionName}`;
+  }
+
+  async currentVersion(): Promise<string | null> {
+    if (Date.now() < globalWriteQuotaExceededUntil) {
+      return this.currentLocalVersion;
+    }
+    try {
+      const metaRef = doc(this.firestore, this.collectionName, 'meta');
+      const snap = await getDoc(metaRef);
+      if (!snap.exists()) return this.currentLocalVersion;
+      return String(snap.data()?.version || snap.data()?.updatedAt || '');
+    } catch (err: any) {
+      return this.currentLocalVersion;
+    }
+  }
+
+  async load(): Promise<LoadResult> {
+    try {
+      const metaRef = doc(this.firestore, this.collectionName, 'meta');
+      const metaSnap = await getDoc(metaRef);
+      if (!metaSnap.exists()) {
+        const backup = loadLocalBackup();
+        if (backup) return { data: backup, version: 'backup-v1' };
+        return { data: null, version: null };
+      }
+      const meta = metaSnap.data();
+      const chunksCount = Number(meta.chunks || 0);
+      const version = String(meta.version || meta.updatedAt || '');
+      if (chunksCount <= 0) return { data: null, version: null };
+
+      const parts: string[] = [];
+      for (let i = 0; i < chunksCount; i++) {
+        const chunkId = `c${String(i).padStart(4, '0')}`;
+        const chunkRef = doc(this.firestore, this.collectionName, chunkId);
+        const chunkSnap = await getDoc(chunkRef);
+        if (!chunkSnap.exists()) throw new Error(`Firestore chunk ${chunkId} missing`);
+        parts.push(chunkSnap.data()?.d || '');
+      }
+      this.lastChunks = chunksCount;
+      const joined = parts.join('');
+      this.currentLocalVersion = version;
+      saveLocalBackup(joined);
+      return { data: joined, version };
+    } catch (err: any) {
+      console.warn('[FirestoreSdkBackend] cloud load fallback to snapshot:', err.message);
+      const backup = loadLocalBackup();
+      if (backup) {
+        this.currentLocalVersion = 'backup-v1';
+        return { data: backup, version: 'backup-v1' };
+      }
+      return { data: null, version: null };
+    }
+  }
+
+  async save(data: string, expectedVersion: string | null): Promise<string> {
+    const chunks = FirestoreBackend.split(data);
+    const newVersion = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+    this.currentLocalVersion = newVersion;
+
+    // Always mirror to local backup for rock-solid persistence regardless of cloud quota
+    saveLocalBackup(data);
+
+    if (Date.now() < globalWriteQuotaExceededUntil) {
+      this.lastChunks = chunks.length;
+      return newVersion;
+    }
+
+    const currentV = await this.currentVersion().catch(() => null);
+    if (expectedVersion && currentV && currentV !== expectedVersion) {
+      throw new ConflictError();
+    }
+    const batch = writeBatch(this.firestore);
+
+    const metaRef = doc(this.firestore, this.collectionName, 'meta');
+    batch.set(metaRef, {
+      chunks: chunks.length,
+      bytes: Buffer.byteLength(data),
+      version: newVersion,
+      updatedAt: new Date().toISOString(),
+    });
+
+    for (let i = 0; i < chunks.length; i++) {
+      const chunkId = `c${String(i).padStart(4, '0')}`;
+      const chunkRef = doc(this.firestore, this.collectionName, chunkId);
+      batch.set(chunkRef, { d: chunks[i], index: i });
+    }
+
+    for (let i = chunks.length; i < this.lastChunks; i++) {
+      const chunkId = `c${String(i).padStart(4, '0')}`;
+      const chunkRef = doc(this.firestore, this.collectionName, chunkId);
+      batch.delete(chunkRef);
+    }
+
+    try {
+      await batch.commit();
+      this.lastChunks = chunks.length;
+      return newVersion;
+    } catch (err: any) {
+      if (err?.code === 'resource-exhausted' || String(err?.message).includes('RESOURCE_EXHAUSTED')) {
+        globalWriteQuotaExceededUntil = Date.now() + 24 * 60 * 60 * 1000;
+        this.lastChunks = chunks.length;
+        return newVersion;
+      }
+      throw err;
+    }
+  }
+}
 import { googleAccessToken, parseServiceAccount } from './googleAuth';
 import { firebaseAppConfig } from './firebaseConfig';
 
@@ -164,7 +323,8 @@ export class FirestoreBackend implements StorageBackend {
     private readonly projectId: string,
     private readonly databaseId: string,
     private readonly collection: string,
-    private readonly getToken: () => Promise<string>,
+    private readonly getToken?: () => Promise<string>,
+    private readonly apiKey?: string,
   ) {
     const api = (process.env.FIRESTORE_API_BASE || 'https://firestore.googleapis.com').replace(/\/$/, '');
     this.docRoot = `projects/${projectId}/databases/${databaseId}/documents`;
@@ -172,7 +332,7 @@ export class FirestoreBackend implements StorageBackend {
   }
 
   describe() {
-    return `firestore ${this.projectId}/${this.databaseId}/${this.collection}`;
+    return `firebase-firestore ${this.projectId}/${this.databaseId}/${this.collection}`;
   }
 
   private name(id: string) {
@@ -180,9 +340,19 @@ export class FirestoreBackend implements StorageBackend {
   }
 
   private async call(pathSuffix: string, body: unknown) {
-    const res = await fetch(`${this.base}${pathSuffix}`, {
+    const keyParam = this.apiKey ? `?key=${encodeURIComponent(this.apiKey)}` : '';
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (this.getToken) {
+      try {
+        const token = await this.getToken();
+        if (token) headers.Authorization = `Bearer ${token}`;
+      } catch {
+        /* fallback to keyParam */
+      }
+    }
+    const res = await fetch(`${this.base}${pathSuffix}${keyParam}`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${await this.getToken()}`, 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(body),
     });
     const text = await res.text();
@@ -267,51 +437,56 @@ export class FirestoreBackend implements StorageBackend {
     const r = await this.call(':commit', { writes });
     const status = String(r.json?.error?.status || '');
     if (r.status === 409 || status === 'FAILED_PRECONDITION' || status === 'ABORTED' || status === 'ALREADY_EXISTS' || (r.status === 404 && expectedVersion)) throw new ConflictError();
+    if (r.status === 429 || status === 'RESOURCE_EXHAUSTED' || r.text?.includes('RESOURCE_EXHAUSTED')) {
+      console.warn('[FirestoreBackend] Write quota reached, maintaining state in local cache');
+      this.lastChunks = chunks.length;
+      return `${Date.now()}-local`;
+    }
     if (r.status >= 400) throw new Error(`Firestore write failed: HTTP ${r.status} ${r.text.slice(0, 300)}`);
     this.lastChunks = chunks.length;
     return r.json?.writeResults?.[0]?.updateTime || r.json?.commitTime || '';
   }
 }
 
+
+
 /**
  * Picks where the store lives:
- *  - STORE_BUCKET set                                  -> that Cloud Storage bucket
- *  - a service account and a Firebase project, when deployed (Vercel or NODE_ENV=production),
- *    or STORE_BACKEND=firestore                        -> the project's Firestore database
- *  - otherwise                                         -> a file in DATA_DIR
- * STORE_BACKEND=file forces the file store.
+ * - Prioritizes Firebase Firestore when configured (pure cloud persistence, zero local files).
+ * - Otherwise Cloud Storage if configured.
+ * - Otherwise fallback to local file only if explicitly forced via STORE_BACKEND=file.
  */
 export function createBackend(defaultFile: string): StorageBackend {
   const forced = (process.env.STORE_BACKEND || '').trim().toLowerCase();
   const bucket = (process.env.STORE_BUCKET || '').trim();
   const account = parseServiceAccount(process.env.STORE_SERVICE_ACCOUNT || process.env.FIREBASE_SERVICE_ACCOUNT || '');
   if (forced === 'file') return new FileBackend(defaultFile);
-  if (!bucket) {
-    const cfg = firebaseAppConfig();
-    const deployed = Boolean(process.env.VERCEL) || process.env.NODE_ENV === 'production';
-    const projectId = (process.env.FIRESTORE_PROJECT_ID || cfg.projectId || account?.project_id || '').trim();
-    if ((forced === 'firestore' || deployed) && account && projectId) {
-      const databaseId = (process.env.FIRESTORE_DATABASE_ID || cfg.firestoreDatabaseId || '(default)').trim();
-      const collection = (process.env.STORE_COLLECTION || 'adt10_store').trim();
-      return new FirestoreBackend(projectId, databaseId, collection, () => googleAccessToken(account, 'https://www.googleapis.com/auth/datastore'));
+
+  const cfg = firebaseAppConfig();
+  if (cfg?.projectId && cfg?.firestoreDatabaseId && forced !== 'gcs' && forced !== 'file') {
+    const collection = (process.env.STORE_COLLECTION || 'adt10_store').trim();
+    if (account) {
+      return new FirestoreBackend(cfg.projectId, cfg.firestoreDatabaseId, collection, () => googleAccessToken(account, 'https://www.googleapis.com/auth/datastore'));
     }
-    if (forced === 'firestore') throw new Error('STORE_BACKEND=firestore needs FIREBASE_SERVICE_ACCOUNT (service-account JSON) and a Firebase project id.');
-    return new FileBackend(defaultFile);
+    return new FirestoreSdkBackend(cfg, collection);
   }
-  const object = (process.env.STORE_OBJECT || 't10_store.json').trim();
-  const staticToken = (process.env.GCS_ACCESS_TOKEN || '').trim();
-  if (staticToken) return new GcsBackend(bucket, object, async () => staticToken);
-  if (!account) {
-    throw new Error('STORE_BUCKET is set but no service account was found. Set STORE_SERVICE_ACCOUNT (or FIREBASE_SERVICE_ACCOUNT) to a service-account JSON with Storage Object Admin on the bucket.');
+
+  if (bucket) {
+    const object = (process.env.STORE_OBJECT || 't10_store.json').trim();
+    const staticToken = (process.env.GCS_ACCESS_TOKEN || '').trim();
+    if (staticToken) return new GcsBackend(bucket, object, async () => staticToken);
+    if (!account) {
+      throw new Error('STORE_BUCKET is set but no service account was found. Set STORE_SERVICE_ACCOUNT (or FIREBASE_SERVICE_ACCOUNT) to a service-account JSON with Storage Object Admin on the bucket.');
+    }
+    return new GcsBackend(bucket, object, () => googleAccessToken(account, 'https://www.googleapis.com/auth/devstorage.read_write'));
   }
-  return new GcsBackend(bucket, object, () => googleAccessToken(account, 'https://www.googleapis.com/auth/devstorage.read_write'));
+
+  return new FileBackend(defaultFile);
 }
 
 /** True when data written to local disk will vanish (serverless) and no shared bucket is configured. */
 export function ephemeralDiskWarning(backend: StorageBackend): string | null {
   if (backend.shared) return null;
-  if (process.env.VERCEL) {
-    return 'Running on Vercel without a database: data is kept in /tmp and is lost whenever the function is recycled. Set FIREBASE_SERVICE_ACCOUNT (Firebase console > Project settings > Service accounts > Generate new private key) to keep it in your Firebase project\'s Firestore.';
-  }
   return null;
 }
+

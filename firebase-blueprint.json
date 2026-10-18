@@ -1,0 +1,205 @@
+{
+  "entities": {
+    "StoreChunk": {
+      "title": "StoreChunk",
+      "description": "Unified atomic cloud persistence chunk for the Abu Dhabi T10 Fan Hub database",
+      "type": "object",
+      "properties": {
+        "d": {
+          "type": "string",
+          "description": "JSON serialized chunk payload"
+        },
+        "index": {
+          "type": "number",
+          "description": "Index of the chunk in the multi-part store"
+        }
+      },
+      "required": ["d"]
+    },
+    "StoreMeta": {
+      "title": "StoreMeta",
+      "description": "Metadata document for versioning and atomic commits of the cloud store",
+      "type": "object",
+      "properties": {
+        "chunks": {
+          "type": "number",
+          "description": "Total number of payload chunks"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO timestamp of the latest store write"
+        }
+      },
+      "required": ["chunks"]
+    },
+    "ForumThread": {
+      "title": "ForumThread",
+      "description": "Public discussion thread visible to all fans, creatable only by authenticated users",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique thread identifier"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 150,
+          "description": "Thread title"
+        },
+        "content": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 5000,
+          "description": "Thread body text"
+        },
+        "category": {
+          "type": "string",
+          "description": "Topic category: general, squad, tactics, fantasy, matchday"
+        },
+        "teamId": {
+          "type": "string",
+          "description": "Associated team identifier if team-specific"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Author UID"
+        },
+        "userName": {
+          "type": "string",
+          "description": "Author display name"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp"
+        }
+      },
+      "required": ["id", "title", "content", "userId", "createdAt"]
+    },
+    "ForumComment": {
+      "title": "ForumComment",
+      "description": "Public comment on a discussion thread, postable only by logged-in users",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique comment identifier"
+        },
+        "threadId": {
+          "type": "string",
+          "description": "Parent thread identifier"
+        },
+        "content": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 3000,
+          "description": "Comment reply text"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Author UID"
+        },
+        "userName": {
+          "type": "string",
+          "description": "Author display name"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Comment timestamp"
+        }
+      },
+      "required": ["id", "threadId", "content", "userId", "createdAt"]
+    },
+    "PrizeItem": {
+      "title": "PrizeItem",
+      "description": "Official rewards fans can claim with points",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique prize identifier"
+        },
+        "title": {
+          "type": "string",
+          "description": "Prize name"
+        },
+        "pointsCost": {
+          "type": "number",
+          "description": "Points required to claim"
+        },
+        "stock": {
+          "type": "number",
+          "description": "Available inventory"
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Whether reward is active"
+        }
+      },
+      "required": ["id", "title", "pointsCost", "stock", "active"]
+    },
+    "PrizeRedemption": {
+      "title": "PrizeRedemption",
+      "description": "Claim voucher and record of points spent",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Redemption identifier"
+        },
+        "prizeId": {
+          "type": "string",
+          "description": "Claimed prize identifier"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Claimant UID"
+        },
+        "pointsCost": {
+          "type": "number",
+          "description": "Points deducted"
+        },
+        "code": {
+          "type": "string",
+          "description": "8-character verification claim voucher code"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "fulfilled", "cancelled"],
+          "description": "Redemption fulfillment status"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Claim timestamp"
+        }
+      },
+      "required": ["id", "prizeId", "userId", "pointsCost", "code", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/adt10_store/{chunkId}": {
+      "schema": "StoreChunk",
+      "description": "Cloud persistence chunks holding all Abu Dhabi T10 fan hub live state in Firebase"
+    },
+    "/forumThreads/{threadId}": {
+      "schema": "ForumThread",
+      "description": "Forum topics readable by everyone, postable only by logged-in users"
+    },
+    "/forumComments/{commentId}": {
+      "schema": "ForumComment",
+      "description": "Forum comments readable by everyone, commentable only by logged-in users"
+    },
+    "/prizes/{prizeId}": {
+      "schema": "PrizeItem",
+      "description": "Official rewards catalogue"
+    },
+    "/redemptions/{redemptionId}": {
+      "schema": "PrizeRedemption",
+      "description": "Prize claims with anti-misuse tracking"
+    }
+  }
+}

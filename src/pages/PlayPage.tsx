@@ -4,7 +4,7 @@ import { api } from '../api';
 import { useApp, useLoad } from '../state';
 import { useT } from '../i18n';
 import { Link, usePageMeta } from '../router';
-import { Card, Countdown, PageHeader, StatTile } from '../components/ui';
+import { Card, Countdown, PageHeader, StatTile, TeamBadge } from '../components/ui';
 
 export default function PlayPage() {
   const { user, config, teamById } = useApp();
@@ -46,10 +46,19 @@ export default function PlayPage() {
           Trophy,
           t('Dream XI'),
           nextMatch ? (
-            <>
-              {t('Next: {a} vs {b}', { a: teamById(nextMatch.teamA)?.short || '', b: teamById(nextMatch.teamB)?.short || '' })} · <Countdown to={nextMatch.startsAt} prefix="locks in {time}" />
-              {nextMatch.mine?.saved && <span className="block text-emerald-400 font-bold mt-1">{t('Your team is saved')}</span>}
-            </>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <TeamBadge team={teamById(nextMatch.teamA)} size="sm" />
+                <span className="font-bold text-white text-xs">{teamById(nextMatch.teamA)?.name}</span>
+                <span className="text-amber-400 font-black text-xs">vs</span>
+                <TeamBadge team={teamById(nextMatch.teamB)} size="sm" />
+                <span className="font-bold text-white text-xs">{teamById(nextMatch.teamB)?.name}</span>
+              </div>
+              <div className="text-xs text-slate-400">
+                <Countdown to={nextMatch.startsAt} prefix="locks in {time}" />
+              </div>
+              {nextMatch.mine?.saved && <span className="block text-emerald-400 font-bold mt-0.5">{t('Your team is saved')}</span>}
+            </div>
           ) : (
             t('Pick 11 players for each match within 100 credits. Captain scores double.')
           ),

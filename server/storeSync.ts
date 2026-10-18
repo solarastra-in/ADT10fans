@@ -36,18 +36,6 @@ async function handleRead(req: Request, res: Response, next: NextFunction) {
   } catch (e) {
     console.warn('[STORE] refresh failed:', (e as Error)?.message);
   }
-  const before = db.epoch;
-  res.on('finish', () => {
-    // Small side effects of reads (view counters, auto-locking contests) are written when nothing else is.
-    if (db.epoch === before || db.busy) return;
-    db.exclusive(async () => {
-      try {
-        await db.commit();
-      } catch (e) {
-        if (e instanceof ConflictError) await db.discardAndReload();
-      }
-    }).catch(() => undefined);
-  });
   requestContext.run({ id: crypto.randomUUID() }, () => next());
 }
 
