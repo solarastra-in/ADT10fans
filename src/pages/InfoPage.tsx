@@ -29,8 +29,9 @@ function Rules() {
       <Section id="dream-xi" title={t('Dream XI')}>
         {r && (
           <ul className="list-disc ps-5 space-y-1">
-            <li>{t('Pick {size} players from the two teams in a match, within {cap} credits.', { size: r.size, cap: r.creditCap })}</li>
+            <li>{t('Pick exactly {size} players for your fantasy squad from the two teams in a match.', { size: r.size })}</li>
             <li>{t('At most {max} players from one team, and {min}–{rmax} of each role (wicketkeeper, batter, all-rounder, bowler).', { max: r.maxFromOneTeam, min: r.roleMin, rmax: r.roleMax })}</li>
+            <li>{t('Point allocation dynamically scales per player based on both historical form and upcoming pitch & match context.')}</li>
             <li>{t('Your captain scores {c}x and your vice-captain {vc}x.', { c: r.captainMultiplier, vc: r.viceCaptainMultiplier })}</li>
             <li>{t('You can change your team until the first ball. Points come from the official scorecard once the match ends.')}</li>
             <li>{t('Season points earned = your Dream XI points divided by {d}, rounded.', { d: r.fanPointsDivisor })}</li>

@@ -9,42 +9,41 @@ import { awardPoints } from './points';
  * the vice-captain 1.5x. Lineups lock at the first ball. Points come from the match scorecard.
  */
 export const DREAM_XI = {
-  size: 11,
-  creditCap: 100,
-  maxFromOneTeam: 7,
+  size: 6,
+  maxFromOneTeam: 4,
   roleMin: 1,
-  roleMax: 6,
+  roleMax: 3,
   captainMultiplier: 2,
   viceCaptainMultiplier: 1.5,
   fanPointsDivisor: 5,
 } as const;
 
 export const SCORING = {
-  playing: 4,
-  run: 1,
-  boundaryBonus: 1,
-  sixBonus: 2,
-  thirtyBonus: 8,
-  fiftyBonus: 16,
-  duck: -2,
-  wicket: 25,
-  lbwBowledBonus: 8,
-  twoWicketBonus: 8,
-  threeWicketBonus: 16,
-  maiden: 16,
-  catch: 8,
-  stumping: 12,
-  runOut: 12,
+  playing: 20, // Increased base point value for playing in the squad (scaled up from 4)
+  run: 2, // 2 pts per run in explosive 10-over format (scaled up from 1)
+  boundaryBonus: 2, // 2 bonus pts per boundary four
+  sixBonus: 5, // 5 bonus pts per six
+  thirtyBonus: 16, // 16 bonus pts for 30+ runs
+  fiftyBonus: 36, // 36 bonus pts for 50+ runs
+  duck: -4, // -4 pts for dismissal without scoring
+  wicket: 35, // 35 pts per wicket in 10-over innings (scaled up from 25)
+  lbwBowledBonus: 12, // 12 bonus pts for bowled or LBW
+  twoWicketBonus: 16, // 16 bonus pts for 2-wicket haul
+  threeWicketBonus: 32, // 32 bonus pts for 3-wicket haul
+  maiden: 32, // 32 bonus pts for rare T10 maiden over
+  catch: 12, // 12 pts per catch
+  stumping: 16, // 16 pts per stumping
+  runOut: 16, // 16 pts per run out
 };
 
 export function scoringRules() {
   return [
-    { group: 'Batting', rules: [['Run', SCORING.run], ['Boundary bonus', SCORING.boundaryBonus], ['Six bonus', SCORING.sixBonus], ['30-run bonus', SCORING.thirtyBonus], ['50-run bonus', SCORING.fiftyBonus], ['Duck (batters, keepers, all-rounders)', SCORING.duck]] },
-    { group: 'Bowling', rules: [['Wicket (not run out)', SCORING.wicket], ['Bowled or LBW bonus', SCORING.lbwBowledBonus], ['2-wicket bonus', SCORING.twoWicketBonus], ['3-wicket bonus', SCORING.threeWicketBonus], ['Maiden over', SCORING.maiden]] },
+    { group: 'Batting', rules: [['Run', SCORING.run], ['Boundary four bonus', SCORING.boundaryBonus], ['Maximum six bonus', SCORING.sixBonus], ['30-run milestone', SCORING.thirtyBonus], ['50-run milestone', SCORING.fiftyBonus], ['Duck (batters/keepers/all-rounders)', SCORING.duck]] },
+    { group: 'Bowling', rules: [['Wicket (excluding run out)', SCORING.wicket], ['Bowled / LBW dismissal bonus', SCORING.lbwBowledBonus], ['2-wicket haul bonus', SCORING.twoWicketBonus], ['3+ wicket haul bonus', SCORING.threeWicketBonus], ['Maiden over bonus', SCORING.maiden]] },
     { group: 'Fielding', rules: [['Catch', SCORING.catch], ['Stumping', SCORING.stumping], ['Run out', SCORING.runOut]] },
-    { group: 'Economy (min 1 over)', rules: [['Below 7 runs per over', 6], ['7 to 7.99', 4], ['8 to 9', 2], ['14 to 15', -2], ['15.01 to 16', -4], ['Above 16', -6]] },
-    { group: 'Strike rate (min 5 balls, not bowlers)', rules: [['Above 190', 6], ['170 to 190', 4], ['150 to 169.99', 2], ['70 to 80', -2], ['60 to 69.99', -4], ['Below 60', -6]] },
-    { group: 'Other', rules: [['In the playing XI', SCORING.playing], ['Captain', '2x'], ['Vice-captain', '1.5x']] },
+    { group: 'Economy (min 1 over)', rules: [['Under 7.0 runs per over', 12], ['7.0 to 8.5 rpo', 8], ['8.51 to 10.0 rpo', 4], ['14.0 to 15.5 rpo', -4], ['Above 15.5 rpo', -8]] },
+    { group: 'Strike rate (min 5 balls)', rules: [['Above 200.0', 12], ['175.0 to 200.0', 8], ['150.0 to 174.9', 4], ['Below 80.0', -4], ['Below 60.0', -8]] },
+    { group: 'Squad & Multipliers', rules: [['In the match playing squad', SCORING.playing], ['Captain (C)', '2x multiplier'], ['Vice-Captain (VC)', '1.5x multiplier']] },
   ];
 }
 
@@ -90,28 +89,44 @@ export function lineupPool(store: AppStore, match: Match): Player[] {
   return store.teams.filter(t => t.id === match.teamA || t.id === match.teamB).flatMap(t => t.squad);
 }
 
+export function isTopPlayer(p: Player | PlayerWithForm): boolean {
+  const form = (p as any).form;
+  const lvl = form?.allocationLevel;
+  if (typeof lvl === 'number' && lvl >= 4) return true;
+  const tier = form?.tier || getPlayerTier(p);
+  if (tier === 'star') return true;
+  const cr = (p as any).credits ?? creditsFor(p);
+  return cr >= 8.5;
+}
+
 export function validateLineup(pool: Player[], playerIds: string[], captainId: string, viceCaptainId: string): ValidationResult {
   const ids = Array.from(new Set(playerIds));
-  if (ids.length !== DREAM_XI.size) return { ok: false, error: `Pick exactly ${DREAM_XI.size} different players` };
+  if (ids.length !== DREAM_XI.size) return { ok: false, error: `Pick exactly ${DREAM_XI.size} players for your fantasy squad` };
   const picked = ids.map(id => pool.find(p => p.id === id));
   if (picked.some(p => !p)) return { ok: false, error: 'Players must come from the two teams in this match' };
   const players = picked as Player[];
-  if (!ids.includes(captainId)) return { ok: false, error: 'Choose a captain from your 11' };
-  if (!ids.includes(viceCaptainId)) return { ok: false, error: 'Choose a vice-captain from your 11' };
+  if (!ids.includes(captainId)) return { ok: false, error: `Choose a captain from your ${DREAM_XI.size} players` };
+  if (!ids.includes(viceCaptainId)) return { ok: false, error: `Choose a vice-captain from your ${DREAM_XI.size} players` };
   if (captainId === viceCaptainId) return { ok: false, error: 'Captain and vice-captain must be different players' };
-  const credits = Math.round(players.reduce((s, p) => s + (p.credits ?? creditsFor(p)), 0) * 10) / 10;
-  if (credits > DREAM_XI.creditCap) return { ok: false, error: `Your team uses ${credits} credits; the limit is ${DREAM_XI.creditCap}` };
+
   const byTeam: Record<string, number> = {};
   for (const p of players) byTeam[p.teamId] = (byTeam[p.teamId] || 0) + 1;
-  if (Object.values(byTeam).some(n => n > DREAM_XI.maxFromOneTeam)) return { ok: false, error: `You can pick at most ${DREAM_XI.maxFromOneTeam} players from one team` };
+  if (Object.values(byTeam).some(n => n > DREAM_XI.maxFromOneTeam)) {
+    return { ok: false, error: `Pick at most ${DREAM_XI.maxFromOneTeam} players from one team (squad size is ${DREAM_XI.size})` };
+  }
+
   const counts: Record<string, number> = { wicketkeeper: 0, batter: 0, allrounder: 0, bowler: 0 };
   for (const p of players) counts[p.role] = (counts[p.role] || 0) + 1;
-  const label: Record<string, string> = { wicketkeeper: 'wicketkeeper', batter: 'batter', allrounder: 'all-rounder', bowler: 'bowler' };
+  const label: Record<string, string> = { wicketkeeper: 'Wicketkeeper', batter: 'Batter', allrounder: 'All-Rounder', bowler: 'Bowler' };
   for (const [role, n] of Object.entries(counts)) {
-    if (n < DREAM_XI.roleMin) return { ok: false, error: `Pick at least ${DREAM_XI.roleMin} ${label[role]}` };
-    if (n > DREAM_XI.roleMax) return { ok: false, error: `Pick at most ${DREAM_XI.roleMax} ${label[role]}s` };
+    if (n < DREAM_XI.roleMin) {
+      return { ok: false, error: `A balanced 6-player squad must include at least ${DREAM_XI.roleMin} ${label[role]}` };
+    }
+    if (n > DREAM_XI.roleMax) {
+      return { ok: false, error: `Squad can have at most ${DREAM_XI.roleMax} ${label[role]}s` };
+    }
   }
-  return { ok: true, credits, counts };
+  return { ok: true, counts };
 }
 
 export type FormTrend = 'hot' | 'rising' | 'stable' | 'cold';
@@ -218,9 +233,9 @@ export function getPlayerTier(p: Player): PlayerTier {
 
 const TIER_BASE_CREDITS: Record<PlayerTier, number> = {
   star: 10.0,
-  core: 8.5,
-  value: 7.5,
-  budget: 6.5,
+  core: 7.5,
+  value: 5.5,
+  budget: 4.0,
 };
 
 export function creditsFor(p: Player, formTrend?: FormTrend): number {
@@ -229,7 +244,7 @@ export function creditsFor(p: Player, formTrend?: FormTrend): number {
   let base = TIER_BASE_CREDITS[tier];
   if (p.isIcon) base = 10.5;
   if (formTrend === 'hot') base = Math.min(10.5, base + 0.5);
-  else if (formTrend === 'cold') base = Math.max(6.0, base - 0.5);
+  else if (formTrend === 'cold') base = Math.max(3.5, base - 0.5);
   return Math.round(base * 10) / 10;
 }
 
@@ -254,21 +269,21 @@ export function calculatePlayerForm(p: Player, match: Match, store: AppStore): P
   if (scoresFromHistory.length >= 2) {
     recentScores = scoresFromHistory.slice(-3);
   } else {
-    // Baseline T10 historical performance model
+    // Increased baseline T10 historical performance model with higher base point values
     const baseByTier = {
-      star: [54, 78, 62],
-      core: [42, 38, 55],
-      value: [28, 44, 32],
-      budget: [18, 35, 22],
+      star: [110, 142, 128],
+      core: [82, 106, 94],
+      value: [60, 82, 72],
+      budget: [44, 62, 52],
     }[tier];
-    // Apply slight deterministic player variance (-12 to +15)
-    const var1 = (hash % 19) - 8;
-    const var2 = ((hash * 3) % 21) - 9;
-    const var3 = ((hash * 7) % 23) - 10;
+    // Apply slight deterministic player variance (-10 to +15)
+    const var1 = (hash % 23) - 10;
+    const var2 = ((hash * 3) % 27) - 12;
+    const var3 = ((hash * 7) % 29) - 13;
     recentScores = [
-      Math.max(8, baseByTier[0] + var1),
-      Math.max(10, baseByTier[1] + var2),
-      Math.max(12, baseByTier[2] + var3),
+      Math.max(25, baseByTier[0] + var1),
+      Math.max(30, baseByTier[1] + var2),
+      Math.max(28, baseByTier[2] + var3),
     ];
   }
 
@@ -279,43 +294,45 @@ export function calculatePlayerForm(p: Player, match: Match, store: AppStore): P
   let trend: FormTrend = 'stable';
   let momentumScore = 0;
 
-  if (lastScore >= 60 || recentAvg >= 55) {
+  if (lastScore >= 110 || recentAvg >= 105) {
     trend = 'hot';
-    momentumScore = Math.min(25, Math.round(((lastScore - 50) / 50) * 20 + 8));
-  } else if (lastScore > recentScores[0] + 8 || recentAvg >= 42) {
+    momentumScore = Math.min(30, Math.round(((lastScore - 90) / 90) * 20 + 12));
+  } else if (lastScore > recentScores[0] + 15 || recentAvg >= 80) {
     trend = 'rising';
-    momentumScore = Math.min(18, Math.max(5, Math.round(lastScore - recentScores[0])));
-  } else if (lastScore <= 20 || recentAvg < 25) {
+    momentumScore = Math.min(22, Math.max(8, Math.round((lastScore - recentScores[0]) * 0.8)));
+  } else if (lastScore <= 45 || recentAvg < 50) {
     trend = 'cold';
-    momentumScore = -Math.min(20, Math.max(8, Math.round(30 - lastScore)));
+    momentumScore = -Math.min(24, Math.max(8, Math.round(60 - lastScore)));
   } else {
     trend = 'stable';
-    momentumScore = (hash % 7) - 3;
+    momentumScore = (hash % 9) - 4;
   }
 
-  // Sheikh Zayed Cricket Stadium pitch conditions & upcoming match factors
+  // Sheikh Zayed Cricket Stadium pitch conditions & upcoming match context factors
   let pitchSuitability: 'Excellent' | 'Good' | 'Moderate' | 'Challenging' = 'Good';
   let matchupNote = 'Balanced matchup';
 
   if (p.role === 'batter' || (p.role === 'allrounder' && p.battingStyle)) {
     pitchSuitability = tier === 'star' ? 'Excellent' : 'Good';
-    matchupNote = tier === 'star' ? 'Powerplay boundary threat (190+ SR)' : 'Middle-order acceleration';
+    matchupNote = tier === 'star' ? 'Powerplay boundary threat (200+ SR)' : 'Middle-order acceleration';
   } else if (p.role === 'bowler') {
     if (p.bowlingStyle?.toLowerCase().includes('spin')) {
       pitchSuitability = 'Good';
-      matchupNote = 'High wicket potential in overs 4-7';
+      matchupNote = 'High wicket potential in middle overs 4-7';
     } else {
       pitchSuitability = tier === 'star' ? 'Excellent' : 'Good';
-      matchupNote = 'Death-overs yorker specialist';
+      matchupNote = 'Death-overs yorker & wicket specialist';
     }
   } else if (p.role === 'wicketkeeper') {
     pitchSuitability = 'Good';
     matchupNote = 'Top order striker + stumping bonuses';
   }
 
-  // Projected points for upcoming game
-  const pitchMultiplier = pitchSuitability === 'Excellent' ? 1.15 : pitchSuitability === 'Good' ? 1.05 : 0.95;
-  const projectedPoints = Math.round(Math.max(15, recentAvg * (1 + momentumScore / 100) * pitchMultiplier));
+  // Projected points for upcoming match - scaled on historical form, pitch suitability, and match context
+  const pitchMultiplier = pitchSuitability === 'Excellent' ? 1.22 : pitchSuitability === 'Good' ? 1.12 : pitchSuitability === 'Moderate' ? 1.00 : 0.92;
+  const futurePitchBoost = pitchSuitability === 'Excellent' ? 22 : pitchSuitability === 'Good' ? 12 : 0;
+  const futureOpponentBoost = Math.max(0, Math.round(momentumScore * 0.7));
+  const projectedPoints = Math.round(Math.max(30, recentAvg * (1 + momentumScore / 100) * pitchMultiplier + Math.round((hash % 9) - 4)));
 
   // Volatility swing index (-10 to +25)
   const swingIndex = Math.round(momentumScore + (hash % 11) - 5);
@@ -328,7 +345,7 @@ export function calculatePlayerForm(p: Player, match: Match, store: AppStore): P
 
   let allocationLevel: AllocationLevelInfo;
 
-  if (compositeScore >= 66 || (tier === 'star' && trend !== 'cold')) {
+  if (compositeScore >= 110 || (tier === 'star' && trend !== 'cold')) {
     allocationLevel = {
       level: 5,
       badge: 'L5 Supernova',
@@ -336,11 +353,11 @@ export function calculatePlayerForm(p: Player, match: Match, store: AppStore): P
       tierCategory: 'Supernova',
       pastFactor: `Past Form: ${recentAvg} avg pts · Trajectory [${recentScores.join(', ')}] (${trend.toUpperCase()})`,
       futureFactor: `Future Outlook: ${projectedPoints} proj pts · ${pitchSuitability} pitch fit (${matchupNote})`,
-      recommendedUsage: 'Top Captaincy candidate (2x) · Anchor 1-2 per team',
-      creditTier: '10.0–10.5 cr',
-      projectedRange: '70–95+ pts',
+      recommendedUsage: 'Premier Captaincy candidate (2x) · Highest scoring ceiling',
+      creditTier: 'Supernova Tier',
+      projectedRange: '120–175+ pts',
     };
-  } else if (compositeScore >= 50 || (tier === 'star' && trend === 'cold') || (tier === 'core' && trend === 'hot')) {
+  } else if (compositeScore >= 85 || (tier === 'star' && trend === 'cold') || (tier === 'core' && trend === 'hot')) {
     allocationLevel = {
       level: 4,
       badge: 'L4 Premium',
@@ -349,52 +366,50 @@ export function calculatePlayerForm(p: Player, match: Match, store: AppStore): P
       pastFactor: `Past Form: ${recentAvg} avg pts · Trajectory [${recentScores.join(', ')}] (Momentum: ${momentumScore > 0 ? '+' : ''}${momentumScore}%)`,
       futureFactor: `Future Outlook: ${projectedPoints} proj pts · ${matchupNote}`,
       recommendedUsage: 'Vice-Captain candidate (1.5x) or Core Strike Bowler',
-      creditTier: '9.0–9.5 cr',
-      projectedRange: '52–69 pts',
+      creditTier: 'Premium Tier',
+      projectedRange: '88–118 pts',
     };
-  } else if (compositeScore >= 38 || tier === 'core') {
+  } else if (compositeScore >= 66 || tier === 'core') {
     allocationLevel = {
       level: 3,
       badge: 'L3 Core Anchor',
       name: 'Core Anchor Point Allocation',
       tierCategory: 'Core Anchor',
-      pastFactor: `Past Form: ${recentAvg} avg pts · Steady floor in recent games`,
+      pastFactor: `Past Form: ${recentAvg} avg pts · Consistent matchday baseline`,
       futureFactor: `Future Outlook: ${projectedPoints} proj pts · Middle overs boundary / wicket specialist`,
-      recommendedUsage: 'Essential lineup balance (allocate 3–5 slots)',
-      creditTier: '8.0–8.5 cr',
-      projectedRange: '38–51 pts',
+      recommendedUsage: 'Essential squad anchor for steady returns',
+      creditTier: 'Core Tier',
+      projectedRange: '66–88 pts',
     };
-  } else if (compositeScore >= 27 || tier === 'value') {
+  } else if (compositeScore >= 48 || tier === 'value') {
     allocationLevel = {
       level: 2,
       badge: 'L2 Tactical',
       name: 'Tactical Differential Allocation',
       tierCategory: 'Tactical Swing',
-      pastFactor: `Past Form: ${recentAvg} avg pts · High-volatility differential strike`,
+      pastFactor: `Past Form: ${recentAvg} avg pts · Differential swing potential`,
       futureFactor: `Future Outlook: ${projectedPoints} proj pts · Matchup specific weapon`,
-      recommendedUsage: 'Tournament differential pick to jump leaderboards',
-      creditTier: '7.0–7.5 cr',
-      projectedRange: '27–37 pts',
+      recommendedUsage: 'High-upside differential pick',
+      creditTier: 'Tactical Tier',
+      projectedRange: '48–66 pts',
     };
   } else {
     allocationLevel = {
       level: 1,
       badge: 'L1 Enabler',
-      name: 'Budget Enabler Allocation',
+      name: 'Emerging Talent Allocation',
       tierCategory: 'Budget Enabler',
-      pastFactor: `Past Form: ${recentAvg} avg pts · Economical UAE domestic talent`,
-      futureFactor: `Future Outlook: ${projectedPoints} proj pts · Key credit-saving utility player`,
-      recommendedUsage: 'Unlocks credit headroom to draft 3–4 Level 4/5 stars',
-      creditTier: '6.0–6.5 cr',
-      projectedRange: '18–26 pts',
+      pastFactor: `Past Form: ${recentAvg} avg pts · Developing UAE squad player`,
+      futureFactor: `Future Outlook: ${projectedPoints} proj pts · Vital squad depth option`,
+      recommendedUsage: 'Squad balance specialist',
+      creditTier: 'Support Tier',
+      projectedRange: '32–48 pts',
     };
   }
 
   const pastPointsAvg = recentAvg;
-  const futurePitchBoost = pitchSuitability === 'Excellent' ? 15 : pitchSuitability === 'Good' ? 8 : 0;
-  const futureOpponentBoost = Math.max(0, Math.round(momentumScore * 0.6));
-  const projectedCeiling = Math.round(projectedPoints * 1.35 + 8);
-  const projectedFloor = Math.max(8, Math.round(projectedPoints * 0.65));
+  const projectedCeiling = Math.round(projectedPoints * 1.38 + 12);
+  const projectedFloor = Math.max(20, Math.round(projectedPoints * 0.68));
   const adaptationSummary = `${allocationLevel.name}: Past trajectory (${recentAvg} avg, ${trend}) adapted with future ${pitchSuitability.toLowerCase()} pitch fit & ${matchupNote.toLowerCase()} (${projectedPoints} projected pts, range ${projectedFloor}–${projectedCeiling}).`;
 
   return {
@@ -453,7 +468,7 @@ export function generateLineupVariations(pool: PlayerWithForm[], match: Match): 
 
   const buildLineup = (
     pickCriteria: (candidates: PlayerWithForm[]) => PlayerWithForm[],
-    targetStars = 3,
+    targetStars = 2,
     preferredCaptainTier: 'star' | 'any' = 'star'
   ): { playerIds: string[]; captainId: string; viceCaptainId: string; totalCredits: number; starCount: number } | null => {
     const picked: PlayerWithForm[] = [];
@@ -465,20 +480,18 @@ export function generateLineupVariations(pool: PlayerWithForm[], match: Match): 
       if (picked.length >= DREAM_XI.size) return false;
       const curStars = picked.filter(x => x.form.tier === 'star').length;
       if (curStars >= targetStars && p.form.tier === 'star') return false;
-      const curCredits = picked.reduce((s, x) => s + (x.credits || 8.5), 0);
-      const left = DREAM_XI.size - picked.length - 1;
-      // Budget floor check so we never run out of credits for remaining spots
-      if (curCredits + (p.credits || 8.5) + (left * minCostInPool) > DREAM_XI.creditCap) return false;
       if ((teams[p.teamId] || 0) >= DREAM_XI.maxFromOneTeam) return false;
       if ((roles[p.role] || 0) >= DREAM_XI.roleMax) return false;
+      const left = DREAM_XI.size - picked.length - 1;
       const neededRoles = ['wicketkeeper', 'batter', 'allrounder', 'bowler'].filter(r => r !== p.role && (roles[r] || 0) === 0).length;
-      if (neededRoles > left) return false;
+      if (neededRoles > left && left <= 2) return false;
       return true;
     };
 
-    // First ensure 1 of each role is covered
-    for (const r of ['wicketkeeper', 'batter', 'allrounder', 'bowler'] as const) {
-      const candidates = pool.filter(p => p.role === r && canAdd(p)).sort((a, b) => (b.form.projectedPoints / (b.credits || 8.5)) - (a.form.projectedPoints / (a.credits || 8.5)));
+    // First ensure 1 of each major role is covered
+    for (const r of ['wicketkeeper', 'batter', 'bowler', 'allrounder'] as const) {
+      if (picked.length >= DREAM_XI.size) break;
+      const candidates = pool.filter(p => p.role === r && canAdd(p)).sort((a, b) => b.form.projectedPoints - a.form.projectedPoints);
       const chosen = candidates[0];
       if (chosen && canAdd(chosen)) {
         picked.push(chosen);
@@ -490,6 +503,7 @@ export function generateLineupVariations(pool: PlayerWithForm[], match: Match): 
     // Prioritize stars up to targetStars
     const stars = pool.filter(p => p.form.tier === 'star').sort((a, b) => b.form.projectedPoints - a.form.projectedPoints);
     for (const s of stars) {
+      if (picked.length >= DREAM_XI.size) break;
       if (picked.filter(x => x.form.tier === 'star').length >= targetStars) break;
       if (canAdd(s)) {
         picked.push(s);
@@ -511,7 +525,7 @@ export function generateLineupVariations(pool: PlayerWithForm[], match: Match): 
 
     if (picked.length !== DREAM_XI.size) return null;
 
-    const totalCredits = Math.round(picked.reduce((s, p) => s + (p.credits || 8.5), 0) * 10) / 10;
+    const totalProjected = Math.round(picked.reduce((s, p) => s + (p.form?.projectedPoints || 70), 0));
     const starCount = picked.filter(p => p.form.tier === 'star').length;
 
     // Pick captain & vice captain
@@ -525,52 +539,48 @@ export function generateLineupVariations(pool: PlayerWithForm[], match: Match): 
       playerIds: picked.map(p => p.id),
       captainId: captain.id,
       viceCaptainId: vice.id,
-      totalCredits,
+      totalCredits: totalProjected,
       starCount,
     };
   };
 
   const presets: LineupPreset[] = [];
 
-  // 1. "3-4 Star Power Heavy" (anchors 3-4 top marquee players with budget enablers)
+  // 1. "Star Power Super 6" (anchors top marquee match-winners)
   const starLineup = buildLineup(cands => {
-    return [...cands].sort((a, b) => (b.form.projectedPoints / (b.credits || 8.5)) - (a.form.projectedPoints / (a.credits || 8.5)));
-  }, 4, 'star') || buildLineup(cands => {
-    return [...cands].sort((a, b) => (b.form.projectedPoints / (b.credits || 8.5)) - (a.form.projectedPoints / (a.credits || 8.5)));
-  }, 3, 'star');
+    return [...cands].sort((a, b) => b.form.projectedPoints - a.form.projectedPoints);
+  }, 2, 'star') || buildLineup(cands => {
+    return [...cands].sort((a, b) => b.form.projectedPoints - a.form.projectedPoints);
+  }, 1, 'star');
 
   if (starLineup) {
     presets.push({
       id: 'preset-stars',
-      name: '3-4 Star Power Heavy',
+      name: 'Star Power Super 6',
       tagline: 'Maximum Match-Winner Ceiling',
-      description: 'Anchors 3 to 4 marquee international icons complemented by top value-for-credit budget enablers.',
-      badge: '⭐ 3-4 Stars',
+      description: 'Anchors marquee international icons with peak scoring potential in high-intensity T10 fixtures.',
+      badge: '⭐ Star Power',
       ...starLineup,
     });
   }
 
-  // 2. "Balanced Core XI" (steady high floor across both squads)
+  // 2. "Balanced Core 6" (steady high floor across both squads)
   const balancedLineup = buildLineup(cands => {
-    return [...cands].sort((a, b) => {
-      const aVal = a.form.projectedPoints / (a.credits || 8.5);
-      const bVal = b.form.projectedPoints / (b.credits || 8.5);
-      return bVal - aVal;
-    });
-  }, 2, 'any');
+    return [...cands].sort((a, b) => b.form.recentAvg - a.form.recentAvg);
+  }, 1, 'any');
 
   if (balancedLineup) {
     presets.push({
       id: 'preset-balanced',
-      name: 'Balanced Core XI',
+      name: 'Balanced Core 6',
       tagline: 'High Consistency & Depth',
-      description: 'Evenly distributed across both teams with verified consistency and zero budget strain.',
+      description: 'Evenly distributed across both teams with verified tournament consistency and dependable baseline returns.',
       badge: '⚖️ Balanced',
       ...balancedLineup,
     });
   }
 
-  // 3. "Death-Overs & Bowling Attack" (prioritizing 25pt wickets & death hitting)
+  // 3. "Death-Overs & Bowling Attack 6" (prioritizing 35pt wickets & death hitting)
   const bowlingLineup = buildLineup(cands => {
     return [...cands].sort((a, b) => {
       const aBowl = a.role === 'bowler' || a.role === 'allrounder' ? 1 : 0;
@@ -578,20 +588,20 @@ export function generateLineupVariations(pool: PlayerWithForm[], match: Match): 
       if (aBowl !== bBowl) return bBowl - aBowl;
       return b.form.projectedPoints - a.form.projectedPoints;
     });
-  }, 3, 'any');
+  }, 2, 'any');
 
   if (bowlingLineup) {
     presets.push({
       id: 'preset-bowling',
-      name: 'Death-Overs & Wicket Strike',
-      tagline: 'Wicket Heavy Pitch Strategy',
-      description: 'Capitalizes on 25-point wicket bonuses and death-overs economy bonuses in fast T10 overs.',
-      badge: '🎯 Bowling Swing',
+      name: 'Death-Overs Strike 6',
+      tagline: 'Wicket-Heavy Bowling Strategy',
+      description: 'Capitalizes on 35-point wicket bonuses, maiden overs, and death-overs economy bonuses.',
+      badge: '🎯 Bowling Strike',
       ...bowlingLineup,
     });
   }
 
-  // 4. "Differential / Contrarian XI" (low ownership upside for leaderboard climbs)
+  // 4. "Differential / Contrarian 6" (low ownership upside for leaderboard climbs)
   const differentialLineup = buildLineup(cands => {
     return [...cands].sort((a, b) => {
       const aDiff = (100 - (a.selectedBy || 50)) * 0.4 + a.form.momentumScore;
@@ -603,9 +613,9 @@ export function generateLineupVariations(pool: PlayerWithForm[], match: Match): 
   if (differentialLineup) {
     presets.push({
       id: 'preset-differential',
-      name: 'Contrarian Differential XI',
-      tagline: 'High-Ceiling Private League Weapon',
-      description: 'Smart low-ownership picks (<35% selected) poised for dynamic breakout performances.',
+      name: 'Contrarian Differential 6',
+      tagline: 'High-Ceiling League Weapon',
+      description: 'Smart low-ownership picks poised for breakout match-winning performances.',
       badge: '⚡ High Swing',
       ...differentialLineup,
     });
@@ -634,9 +644,9 @@ export function getMatchSwingInsights(match: Match, pool: PlayerWithForm[]): Mat
       },
     },
     starQuotaGuide: {
-      recommendedStars: Math.min(4, Math.max(3, Math.floor(starCount / 2))),
-      description: 'Allocating 3 to 4 Star Players (Icons & Platinum) anchors your lineup with established match-winners while leaving 58-62 credits for high-value differentials.',
-      creditBufferNotice: 'Budget enablers (6.5-7.5 cr) make 4-star lineups fully viable without exceeding the 100-credit cap.',
+      recommendedStars: Math.min(3, Math.max(2, Math.floor(starCount / 2))),
+      description: 'Allocating 2 to 3 Star Players (Icons & Platinum) anchors your 6-player squad with proven match-winners, balanced by in-form tactical differentials.',
+      creditBufferNotice: 'Dynamic point scaling adapts to pitch context, powerplay boundary threats, and middle-overs spin grip for peak projected fantasy points.',
     },
     radarAverages: {
       power: 78,

@@ -386,13 +386,14 @@ export interface MatchSwingInsights {
 
 export interface DreamXIRules {
   size: number;
-  creditCap: number;
   maxFromOneTeam: number;
   roleMin: number;
   roleMax: number;
   captainMultiplier: number;
   viceCaptainMultiplier: number;
   fanPointsDivisor: number;
+  creditCap?: number;
+  maxTopPlayers?: number;
 }
 export interface FantasyMatchSummary {
   matchId: string;

@@ -198,31 +198,31 @@ export function FantasySwingVisualizer({
   // Star player allocation status
   const starStatus = useMemo(() => {
     const count = metrics.starCount;
-    if (count === 3 || count === 4) {
+    if (count === 2 || count === 3) {
       return {
         tone: 'emerald',
-        label: `${count}/4 Stars · Optimal Allocation`,
-        desc: 'Optimal 3–4 star anchor! Marquee match-winners secured while maintaining balance with budget enablers.',
+        label: `${count} Stars · Optimal Allocation`,
+        desc: 'Optimal star balance! Marquee match-winners secured alongside versatile core and tactical contributors in your 6-player squad.',
       };
     }
     if (count > 4) {
       return {
         tone: 'amber',
-        label: `${count} Stars · Heavy Weight`,
-        desc: 'Star-dense lineup. Ensure your remaining picks leave enough credits for quality core contributors.',
+        label: `${count} Stars · Star-Heavy Squad`,
+        desc: 'High concentration of marquee stars. Ensure balanced coverage across bowling and batting roles in your 6-player squad.',
       };
     }
-    if (count === 1 || count === 2) {
+    if (count === 1) {
       return {
         tone: 'sky',
-        label: `${count}/4 Stars · Room for More`,
-        desc: 'You have room to take 1 or 2 more marquee star players without breaching credit limits.',
+        label: `1 Star · Room for More`,
+        desc: 'You have room to add marquee star anchors (L4–L5 Supernova) to boost your ceiling in explosive T10 action.',
       };
     }
     return {
       tone: 'slate',
       label: '0 Stars Selected',
-      desc: 'Tip: Add 3–4 marquee star players to boost your ceiling in high-scoring Abu Dhabi T10 fixtures.',
+      desc: 'Tip: Add 2–3 marquee star players to elevate your scoring potential in high-scoring Abu Dhabi T10 fixtures.',
     };
   }, [metrics.starCount]);
 
@@ -488,34 +488,34 @@ export function FantasySwingVisualizer({
                     Squad Multi-Level Point Allocation Architecture
                   </span>
                   <span className="text-[10px] text-slate-400">
-                    {pickedPlayers.length}/11 Players Allocated
+                    {pickedPlayers.length}/6 Players Allocated
                   </span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 text-center">
                   <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30">
                     <span className="block text-[10px] font-bold text-amber-300">L5 Supernova</span>
-                    <span className="text-sm font-black text-white">{metrics.l5Count} / 2</span>
-                    <span className="block text-[9px] text-slate-400">10.0–10.5 cr</span>
+                    <span className="text-sm font-black text-white">{metrics.l5Count}</span>
+                    <span className="block text-[9px] text-amber-300">120+ pts</span>
                   </div>
                   <div className="p-2 rounded-lg bg-sky-500/10 border border-sky-500/30">
                     <span className="block text-[10px] font-bold text-sky-300">L4 Premium</span>
                     <span className="text-sm font-black text-white">{metrics.l4Count}</span>
-                    <span className="block text-[9px] text-slate-400">9.0–9.5 cr</span>
+                    <span className="block text-[9px] text-sky-300">88–118 pts</span>
                   </div>
                   <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
                     <span className="block text-[10px] font-bold text-emerald-300">L3 Core Anchor</span>
                     <span className="text-sm font-black text-white">{metrics.l3Count}</span>
-                    <span className="block text-[9px] text-slate-400">8.0–8.5 cr</span>
+                    <span className="block text-[9px] text-emerald-300">66–88 pts</span>
                   </div>
                   <div className="p-2 rounded-lg bg-purple-500/10 border border-purple-500/30">
                     <span className="block text-[10px] font-bold text-purple-300">L2 Tactical</span>
                     <span className="text-sm font-black text-white">{metrics.l2Count}</span>
-                    <span className="block text-[9px] text-slate-400">7.0–7.5 cr</span>
+                    <span className="block text-[9px] text-purple-300">48–66 pts</span>
                   </div>
                   <div className="p-2 rounded-lg bg-slate-800/60 border border-slate-700 col-span-2 sm:col-span-1">
                     <span className="block text-[10px] font-bold text-slate-300">L1 Budget Enabler</span>
                     <span className="text-sm font-black text-white">{metrics.l1Count}</span>
-                    <span className="block text-[9px] text-slate-400">6.0–6.5 cr</span>
+                    <span className="block text-[9px] text-slate-400">32–48 pts</span>
                   </div>
                 </div>
               </div>
@@ -582,8 +582,9 @@ export function FantasySwingVisualizer({
                               <TeamBadge team={tm} size="xs" />
                               {tm?.short} · {ROLE_SHORT[p.role]}
                             </span>
-                            <span>·</span>
-                            <span className="font-semibold text-slate-300">{p.credits} cr</span>
+                            <span className="font-semibold text-amber-300 tabular-nums">
+                              {form?.projectedPoints || 70} <span className="text-[10px] text-slate-400 font-normal">pts proj</span>
+                            </span>
                             {typeof p.selectedBy === 'number' && (
                               <>
                                 <span>·</span>
@@ -703,15 +704,15 @@ export function FantasySwingVisualizer({
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
               <div>
-                <h4 className="text-sm font-black text-white">5-Axis Team Balance & Swing Radar</h4>
+                <h4 className="text-sm font-black text-white">5-Axis Tactical Balance & Swing Radar</h4>
                 <p className="text-xs text-slate-400">
-                  Graphical pentagon comparing your selected 11 against the Abu Dhabi T10 tournament benchmark.
+                  Tactical pentagon comparing your selected 6-player squad against the tournament benchmark.
                 </p>
               </div>
               <div className="flex items-center gap-4 text-xs font-bold">
                 <span className="inline-flex items-center gap-1.5 text-amber-400">
                   <span className="h-2.5 w-2.5 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
-                  Your 11 ({activeVariationName})
+                  Your Squad ({activeVariationName})
                 </span>
                 <span className="inline-flex items-center gap-1.5 text-slate-500">
                   <span className="h-2.5 w-2.5 rounded-full bg-slate-600" />
@@ -913,9 +914,9 @@ export function FantasySwingVisualizer({
                           </span>
                         </div>
                         <div className="rounded bg-slate-950/60 p-1.5 border border-slate-800">
-                          <span className="text-[10px] text-slate-400 block">Credits</span>
+                          <span className="text-[10px] text-slate-400 block">Squad Size</span>
                           <span className="font-black text-xs text-slate-200 tabular-nums">
-                            {cvCredits}/100
+                            {cvPlayers.length}/6
                           </span>
                         </div>
                       </div>
@@ -966,7 +967,7 @@ export function FantasySwingVisualizer({
                     <tr>
                       <th className="py-2.5 px-3 text-start font-bold">Player & Form</th>
                       <th className="py-2.5 px-2 text-start font-bold">Role</th>
-                      <th className="py-2.5 px-2 text-start font-bold">Cost</th>
+                      <th className="py-2.5 px-2 text-start font-bold">Base Proj.</th>
                       <th className="py-2.5 px-2 text-center font-bold">Swing Role</th>
                       {comparisonVariations.map(cv => (
                         <th key={cv.id} className="py-2.5 px-2 text-center font-bold truncate max-w-[120px]">
@@ -985,13 +986,13 @@ export function FantasySwingVisualizer({
                         return { p, pid, countInTeams };
                       }).filter(r => r.p) as { p: PlayerWithForm; pid: string; countInTeams: number }[];
 
-                      // Sort: Core Locks first, then Stars, then highest credits
+                      // Sort: Core Locks first, then Stars, then highest projected points
                       playerRows.sort((a, b) => {
                         if (a.countInTeams !== b.countInTeams) return b.countInTeams - a.countInTeams;
                         const aStar = a.p.form?.tier === 'star' ? 1 : 0;
                         const bStar = b.p.form?.tier === 'star' ? 1 : 0;
                         if (aStar !== bStar) return bStar - aStar;
-                        return (b.p.credits || 0) - (a.p.credits || 0);
+                        return (b.p.form?.projectedPoints || 0) - (a.p.form?.projectedPoints || 0);
                       });
 
                       const totalVars = comparisonVariations.length;
@@ -1026,8 +1027,8 @@ export function FantasySwingVisualizer({
                             <td className="py-2.5 px-2 text-slate-300 font-semibold whitespace-nowrap">
                               {ROLE_SHORT[p.role]}
                             </td>
-                            <td className="py-2.5 px-2 text-slate-200 font-bold tabular-nums whitespace-nowrap">
-                              {p.credits} cr
+                            <td className="py-2.5 px-2 text-amber-300 font-bold tabular-nums whitespace-nowrap">
+                              <span>{p.form?.projectedPoints || 70} pts</span>
                             </td>
                             <td className="py-2.5 px-2 text-center whitespace-nowrap">
                               {isCoreLock ? (
@@ -1107,8 +1108,8 @@ export function FantasySwingVisualizer({
                         <span className="rounded-full bg-amber-400/20 px-2 py-0.5 text-[10px] font-black text-amber-300">
                           {pr.badge}
                         </span>
-                        <span className="text-xs font-black text-slate-300 tabular-nums">
-                          {pr.totalCredits} / 100 cr
+                        <span className="text-xs font-black text-amber-300 tabular-nums">
+                          {pr.totalCredits} pts proj
                         </span>
                       </div>
                       <h5 className="text-sm font-black text-white">{pr.name}</h5>

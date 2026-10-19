@@ -1,19 +1,27 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  AlertCircle,
   Award,
   Check,
+  CheckCircle2,
   ChevronLeft,
   Crown,
   Flame,
+  HelpCircle,
+  Info,
   Layers,
   Lock,
   Minus,
   Plus,
   RotateCcw,
+  Shield,
+  ShieldAlert,
   Sparkles,
+  Target,
   Trash2,
   TrendingDown,
   TrendingUp,
+  Zap,
 } from 'lucide-react';
 import { api } from '../api';
 import { useApp, useLoad } from '../state';
@@ -36,9 +44,67 @@ import {
   ROLE_LABEL,
 } from '../components/ui';
 import { FantasySwingVisualizer } from '../components/FantasySwingVisualizer';
+import { SquadSkillRadar } from '../components/SquadSkillRadar';
 import type { LineupPreset, Player, PlayerRole, PlayerWithForm } from '../types';
 
 const ROLES: PlayerRole[] = ['wicketkeeper', 'batter', 'allrounder', 'bowler'];
+
+const ROLE_INFO: Record<PlayerRole, {
+  label: string;
+  short: string;
+  singular: string;
+  icon: typeof Shield;
+  color: string;
+  badgeBg: string;
+  badgeBorder: string;
+  badgeText: string;
+  summary: string;
+}> = {
+  wicketkeeper: {
+    label: 'Wicketkeepers',
+    short: 'WK',
+    singular: 'Wicketkeeper',
+    icon: Shield,
+    color: '#f59e0b',
+    badgeBg: 'bg-amber-500/15',
+    badgeBorder: 'border-amber-500/30',
+    badgeText: 'text-amber-300',
+    summary: 'Catches, stumpings & top-order hitting',
+  },
+  batter: {
+    label: 'Batters',
+    short: 'BAT',
+    singular: 'Batter',
+    icon: Zap,
+    color: '#f43f5e',
+    badgeBg: 'bg-rose-500/15',
+    badgeBorder: 'border-rose-500/30',
+    badgeText: 'text-rose-300',
+    summary: 'Powerplay boundaries & acceleration',
+  },
+  allrounder: {
+    label: 'All-Rounders',
+    short: 'AR',
+    singular: 'All-Rounder',
+    icon: Sparkles,
+    color: '#818cf8',
+    badgeBg: 'bg-indigo-500/15',
+    badgeBorder: 'border-indigo-500/30',
+    badgeText: 'text-indigo-300',
+    summary: 'Match-winners with bat & ball',
+  },
+  bowler: {
+    label: 'Bowlers',
+    short: 'BOWL',
+    singular: 'Bowler',
+    icon: Target,
+    color: '#10b981',
+    badgeBg: 'bg-emerald-500/15',
+    badgeBorder: 'border-emerald-500/30',
+    badgeText: 'text-emerald-300',
+    summary: 'Wicket takers, spin & death yorkers',
+  },
+};
 
 export default function FantasyMatchPage({ id }: { id: string }) {
   const { user, teamById, openAuth, toast, setUser, config } = useApp();
@@ -61,8 +127,8 @@ export default function FantasyMatchPage({ id }: { id: string }) {
   const a = teamById(m?.teamA);
   const b = teamById(m?.teamB);
   usePageMeta(
-    m ? t('Dream XI: {a} vs {b}', { a: a?.name || '', b: b?.name || '' }) : null,
-    t('Pick 11 players within 100 credits. 3–4 Star players recommended. Captain scores double.'),
+    m ? t('Dream XI Super 6: {a} vs {b}', { a: a?.name || '', b: b?.name || '' }) : null,
+    t('Draft a balanced 6-player squad across Wicketkeeper, Batter, All-Rounder, and Bowler. Captain scores 2x, Vice-Captain 1.5x.'),
     config?.brandName
   );
 
@@ -86,24 +152,41 @@ export default function FantasyMatchPage({ id }: { id: string }) {
   const rules = data?.rules;
   const byId = useMemo(() => new Map(pool.map(p => [p.id, p])), [pool]);
   const chosen = picked.map(pid => byId.get(pid)).filter(Boolean) as PlayerWithForm[];
-  const credits = Math.round(chosen.reduce((s, p) => s + (p.credits || 0), 0) * 10) / 10;
+  const totalSquadProj = Math.round(chosen.reduce((s, p) => s + (p.form?.projectedPoints || 70), 0));
   const perTeam = (tid?: string) => chosen.filter(p => p.teamId === tid).length;
   const perRole = (r: PlayerRole) => chosen.filter(p => p.role === r).length;
   const perLevel = (lvl: number) => chosen.filter(p => (p.form?.allocationLevel || (p.form?.tier === 'star' ? 5 : 3)) === lvl).length;
   const starCount = chosen.filter(p => p.form?.tier === 'star').length;
+
+  // Balanced squad checks: at least 1 of each role (WK, BAT, AR, BOWL)
+  const missingRoles = ROLES.filter(r => perRole(r) < (rules?.roleMin ?? 1));
+  const isSquadBalanced = missingRoles.length === 0;
 
   if (loading && !data) return <Spinner />;
   if (error || !data || !m || !rules) return <ErrorBox message={error || t('Match not found')} onRetry={reload} />;
 
   const why = (p: PlayerWithForm): string | null => {
     if (picked.includes(p.id)) return null;
-    if (picked.length >= rules.size) return t('Your XI is full');
-    if (credits + (p.credits || 0) > rules.creditCap) return t('Not enough credits');
+    if (picked.length >= rules.size) return t('Squad is full ({size}/{size} players selected)', { size: rules.size });
     if (perTeam(p.teamId) >= rules.maxFromOneTeam) return t('Max {n} from one team', { n: rules.maxFromOneTeam });
-    if (perRole(p.role) >= rules.roleMax) return t('Max {n} {role}s', { n: rules.roleMax, role: t(ROLE_LABEL[p.role]).toLowerCase() });
-    const remaining = rules.size - picked.length - 1;
-    const missingRoles = ROLES.filter(r => r !== p.role && perRole(r) === 0).length;
-    if (missingRoles > remaining) return t('Leave room for every role');
+    if (perRole(p.role) >= rules.roleMax) {
+      return t('Max {n} {role}s allowed in 6-player squad', {
+        n: rules.roleMax,
+        role: ROLE_INFO[p.role].label,
+      });
+    }
+
+    // Enforce balanced squad across all 4 roles:
+    const remainingSpots = rules.size - picked.length - 1;
+    // Which required roles will still be missing if we pick candidate p?
+    const rolesStillMissing = ROLES.filter(r => r !== p.role && perRole(r) < rules.roleMin);
+    if (rolesStillMissing.length > remainingSpots) {
+      const missingLabels = rolesStillMissing.map(r => ROLE_INFO[r].singular).join(', ');
+      return t('Leave spot(s) for required {roles} ({left} spot(s) left)', {
+        roles: missingLabels,
+        left: remainingSpots,
+      });
+    }
     return null;
   };
 
@@ -142,7 +225,7 @@ export default function FantasyMatchPage({ id }: { id: string }) {
     setCaptain('');
     setVice('');
     setStep('pick');
-    toast(t('New team slot {name} created. Pick your 11 or select a smart preset!', { name: `Team ${nextSlot}` }));
+    toast(t('New squad slot {name} created. Pick your 6 players or select a smart preset!', { name: `Team ${nextSlot}` }));
   };
 
   const handleApplyPreset = (preset: LineupPreset) => {
@@ -151,10 +234,10 @@ export default function FantasyMatchPage({ id }: { id: string }) {
     setVice(preset.viceCaptainId);
     setVariationName(preset.name);
     setStep('pick');
-    toast(t('Applied "{name}" preset ({stars} stars, {cr} cr). Customize or save!', {
+    toast(t('Applied "{name}" preset ({stars} stars, {pts} proj pts). Customize or save!', {
       name: preset.name,
       stars: preset.starCount,
-      cr: preset.totalCredits,
+      pts: preset.totalCredits,
     }));
   };
 
@@ -246,8 +329,9 @@ export default function FantasyMatchPage({ id }: { id: string }) {
 
   const visible = pool
     .filter(p => (role === 'all' || p.role === role) && (teamFilter === 'all' || p.teamId === teamFilter) && (levelFilter === 'all' || String(p.form?.allocationLevel ?? (p.form?.tier === 'star' ? 5 : 3)) === levelFilter))
-    .sort((x, y) => (y.credits || 0) - (x.credits || 0) || x.name.localeCompare(y.name));
-  const complete = picked.length === rules.size;
+    .sort((x, y) => (y.form?.projectedPoints || 0) - (x.form?.projectedPoints || 0) || x.name.localeCompare(y.name));
+  const isSquadComplete = picked.length === rules.size;
+  const complete = isSquadComplete && isSquadBalanced;
 
   return (
     <div className="space-y-4 pb-24">
@@ -319,50 +403,136 @@ export default function FantasyMatchPage({ id }: { id: string }) {
         onSelectVariation={handleSelectVariation}
       />
 
-      {/* Real-time counters: Players, Credits, 3-4 Stars, and Team distributions */}
+      {/* Real-time counters: Squad Size (6 max), Total Squad Projected Points, Stars, and Team distributions */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center" data-testid="xi-counters">
-        <Card className="p-2">
-          <p className="text-lg font-black text-white tabular-nums">{picked.length}/{rules.size}</p>
-          <p className="text-[11px] text-slate-400">{t('Players')}</p>
+        <Card className="p-2 border border-amber-500/30 bg-slate-900/90">
+          <p className={cx('text-lg font-black tabular-nums', complete ? 'text-emerald-400' : 'text-amber-400')}>
+            {picked.length}/{rules.size}
+          </p>
+          <p className="text-[11px] text-slate-300 font-semibold">{t('Squad ({size} Max)', { size: rules.size })}</p>
         </Card>
         <Card className="p-2">
-          <p className={cx('text-lg font-black tabular-nums', credits > rules.creditCap ? 'text-red-400' : 'text-amber-400')}>
-            {(rules.creditCap - credits).toFixed(1)}
+          <p className="text-lg font-black text-amber-300 tabular-nums">
+            {totalSquadProj} <span className="text-xs font-normal text-slate-400">pts</span>
           </p>
-          <p className="text-[11px] text-slate-400">{t('Credits left')}</p>
+          <p className="text-[11px] text-slate-400">{t('Squad Proj. Points')}</p>
         </Card>
         <Card className="p-2 col-span-2 sm:col-span-1">
-          <p className={cx('text-lg font-black tabular-nums', starCount >= 3 && starCount <= 4 ? 'text-emerald-400' : starCount > 4 ? 'text-amber-400' : 'text-sky-300')}>
-            {starCount}/4 ⭐
+          <p className={cx('text-lg font-black tabular-nums', starCount >= 2 ? 'text-emerald-400' : 'text-sky-300')}>
+            {starCount} ⭐
           </p>
-          <p className="text-[11px] text-slate-400">{t('3–4 Stars (Optimal)')}</p>
+          <p className="text-[11px] text-slate-400">{t('Star Anchors')}</p>
         </Card>
         <Card className="p-2">
-          <p className="text-lg font-black text-white tabular-nums">{perTeam(m.teamA)}</p>
-          <p className="text-[11px] text-slate-400">{a?.short}</p>
+          <p className={cx('text-lg font-black tabular-nums', perTeam(m.teamA) > rules.maxFromOneTeam ? 'text-red-400' : 'text-white')}>
+            {perTeam(m.teamA)}/{rules.maxFromOneTeam}
+          </p>
+          <p className="text-[11px] text-slate-400">{a?.short} ({t('Max {n}', { n: rules.maxFromOneTeam })})</p>
         </Card>
         <Card className="p-2">
-          <p className="text-lg font-black text-white tabular-nums">{perTeam(m.teamB)}</p>
-          <p className="text-[11px] text-slate-400">{b?.short}</p>
+          <p className={cx('text-lg font-black tabular-nums', perTeam(m.teamB) > rules.maxFromOneTeam ? 'text-red-400' : 'text-white')}>
+            {perTeam(m.teamB)}/{rules.maxFromOneTeam}
+          </p>
+          <p className="text-[11px] text-slate-400">{b?.short} ({t('Max {n}', { n: rules.maxFromOneTeam })})</p>
         </Card>
       </div>
 
-      {/* Role balance chips */}
-      <div className="flex gap-1.5 flex-wrap">
-        {ROLES.map(r => (
-          <span
-            key={r}
-            className={cx(
-              'px-2 py-1 rounded-lg text-[11px] font-bold border',
-              perRole(r) >= rules.roleMin
-                ? 'border-emerald-500/40 text-emerald-300'
-                : 'border-slate-700 text-slate-400'
+      {/* Aggregate Skill Distribution Radar (Batting, Bowling, Fielding) using Recharts */}
+      <SquadSkillRadar
+        pickedPlayers={chosen}
+        captainId={captain}
+        viceCaptainId={vice}
+        squadSizeLimit={rules.size}
+      />
+
+      {/* Balanced Squad Requirement Board (6 Players across 4 Roles) */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-3.5 sm:p-4 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-400/20 text-amber-400">
+                <Shield className="h-3.5 w-3.5" />
+              </span>
+              <h4 className="text-sm font-black text-white">
+                {t('Balanced Squad Requirement (6 Players Across Roles)')}
+              </h4>
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">
+              {t('Every 6-player squad must include at least 1 Wicketkeeper, 1 Batter, 1 All-Rounder, and 1 Bowler (Max {max} per role).', { max: rules.roleMax })}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            {isSquadBalanced ? (
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/20 px-2.5 py-1 text-xs font-black text-emerald-300 border border-emerald-500/40">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                {t('All 4 Roles Balanced')}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500/20 px-2.5 py-1 text-xs font-black text-amber-300 border border-amber-500/40">
+                <AlertCircle className="h-3.5 w-3.5 text-amber-400" />
+                {t('{n} Role(s) Missing', { n: missingRoles.length })}
+              </span>
             )}
-          >
-            {ROLE_SHORT[r]} {perRole(r)}
-          </span>
-        ))}
-        <span className="text-[11px] text-slate-500 self-center">{t('1–{max} of each role', { max: rules.roleMax })}</span>
+          </div>
+        </div>
+
+        {/* 4 Interactive Role Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+          {ROLES.map(r => {
+            const conf = ROLE_INFO[r];
+            const count = perRole(r);
+            const isCovered = count >= rules.roleMin;
+            const isFull = count >= rules.roleMax;
+            const Icon = conf.icon;
+            const isSelectedTab = role === r;
+
+            return (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setRole(role === r ? 'all' : r)}
+                className={cx(
+                  'rounded-xl border p-2.5 text-start transition-all cursor-pointer relative',
+                  isSelectedTab
+                    ? 'ring-2 ring-amber-400 border-amber-400 bg-slate-950'
+                    : isCovered
+                    ? 'border-emerald-500/40 bg-emerald-500/5 hover:border-emerald-500/70'
+                    : 'border-amber-500/40 bg-amber-500/5 hover:border-amber-500/70'
+                )}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="inline-flex items-center gap-1.5 text-xs font-black text-white">
+                    <span
+                      className="flex h-5 w-5 items-center justify-center rounded-md"
+                      style={{ backgroundColor: `${conf.color}20`, color: conf.color }}
+                    >
+                      <Icon className="h-3 w-3" />
+                    </span>
+                    {conf.singular}
+                  </span>
+                  <span
+                    className={cx(
+                      'text-[10px] font-black px-1.5 py-0.2 rounded font-mono',
+                      isCovered
+                        ? 'bg-emerald-500/20 text-emerald-300'
+                        : 'bg-amber-500/20 text-amber-300'
+                    )}
+                  >
+                    {count}/{rules.roleMin} min
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-slate-400 truncate text-[10px]">{conf.summary}</span>
+                  <span className={cx('text-[10px] font-bold ml-1 shrink-0', isCovered ? 'text-emerald-400' : 'text-amber-400')}>
+                    {isCovered ? (isFull ? t('Max {n}', { n: rules.roleMax }) : t('✓ Covered')) : t('⚠️ Need 1')}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {step === 'pick' ? (
@@ -370,7 +540,13 @@ export default function FantasyMatchPage({ id }: { id: string }) {
           <Tabs
             value={role}
             onChange={setRole as any}
-            items={[{ id: 'all', label: t('All') }, ...ROLES.map(r => ({ id: r, label: `${ROLE_SHORT[r]} (${perRole(r)})` }))]}
+            items={[
+              { id: 'all', label: t('All Roles ({n})', { n: pool.length }) },
+              ...ROLES.map(r => ({
+                id: r,
+                label: `${ROLE_INFO[r].singular} (${perRole(r)}/${rules.roleMin})`,
+              })),
+            ]}
           />
           <Tabs
             value={teamFilter}
@@ -461,7 +637,7 @@ export default function FantasyMatchPage({ id }: { id: string }) {
           <div className="space-y-2" data-testid="player-pool">
             {visible.map(p => {
               const on = picked.includes(p.id);
-              const blocked = !on && Boolean(why(p));
+              const blocked = !on ? why(p) : null;
               const tm = teamById(p.teamId);
               const form = p.form;
               const lvl = form?.allocationLevel || (form?.tier === 'star' ? 5 : form?.tier === 'core' ? 3 : 2);
@@ -485,6 +661,25 @@ export default function FantasyMatchPage({ id }: { id: string }) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-bold text-sm text-white truncate">{p.name}</span>
+
+                        {/* Role Category Badge */}
+                        {(() => {
+                          const rConf = ROLE_INFO[p.role];
+                          const RIcon = rConf.icon;
+                          return (
+                            <span
+                              className={cx(
+                                'rounded-md px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1 border',
+                                rConf.badgeBg,
+                                rConf.badgeBorder,
+                                rConf.badgeText
+                              )}
+                            >
+                              <RIcon className="w-2.5 h-2.5" />
+                              {rConf.short} · {rConf.singular}
+                            </span>
+                          );
+                        })()}
 
                         {/* Allocation Level Badge */}
                         <span
@@ -524,7 +719,9 @@ export default function FantasyMatchPage({ id }: { id: string }) {
                       <div className="flex items-center gap-2 text-[11px] text-slate-400 truncate mt-1">
                         <span className="inline-flex items-center gap-1.5">
                           <TeamBadge team={tm} size="xs" />
-                          <span className="font-bold text-slate-300">{tm?.short}</span> · {ROLE_SHORT[p.role]}
+                          <span className="font-bold text-slate-300">{tm?.short}</span>
+                          <span>·</span>
+                          <span>{[p.battingStyle, p.bowlingStyle].filter(Boolean).join(' · ') || ROLE_INFO[p.role].singular}</span>
                         </span>
                         {form?.matchupNote && (
                           <>
@@ -572,14 +769,28 @@ export default function FantasyMatchPage({ id }: { id: string }) {
                           </button>
                         </div>
                       )}
+
+                      {/* Blocked reason helper text if user cannot pick this player */}
+                      {blocked && (
+                        <div className="mt-1.5 flex items-center gap-1 text-[10.5px] text-amber-400 font-medium bg-amber-400/5 px-2 py-0.5 rounded border border-amber-400/20">
+                          <Info className="w-3 h-3 shrink-0 text-amber-400" />
+                          <span className="truncate">{blocked}</span>
+                        </div>
+                      )}
                     </div>
 
-                    {/* Credits & Projected Points */}
-                    <div className="flex flex-col items-end text-end min-w-[56px]">
-                      <span className="text-sm font-black text-white tabular-nums">{p.credits} cr</span>
-                      {form?.projectedPoints && (
-                        <span className="text-[10px] text-amber-400 font-bold tabular-nums">
-                          Proj: {form.projectedPoints} pts
+                    {/* Refined Base Point Projection (No player valuation displayed) */}
+                    <div className="flex flex-col items-end text-end min-w-[70px]">
+                      <div className="inline-flex items-baseline gap-1">
+                        <span className="text-base font-black text-amber-400 tabular-nums">
+                          {form?.projectedPoints || 70}
+                        </span>
+                        <span className="text-[10px] font-bold text-slate-400">pts</span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-medium">Base Proj.</span>
+                      {form?.recentAvg && (
+                        <span className="text-[9px] text-slate-500 font-mono">
+                          Past: {form.pastPointsAvg || form.recentAvg} avg
                         </span>
                       )}
                     </div>
@@ -590,13 +801,16 @@ export default function FantasyMatchPage({ id }: { id: string }) {
                       onClick={() => toggle(p)}
                       aria-pressed={on}
                       data-player={p.id}
+                      disabled={Boolean(blocked)}
                       className={cx(
-                        'w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-transform cursor-pointer',
+                        'w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-transform',
                         on
-                          ? 'bg-amber-400 text-slate-950 scale-105 shadow-md shadow-amber-500/20'
-                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
+                          ? 'bg-amber-400 text-slate-950 scale-105 shadow-md shadow-amber-500/20 cursor-pointer'
+                          : blocked
+                          ? 'bg-slate-900 text-slate-600 cursor-not-allowed border border-slate-800'
+                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white cursor-pointer'
                       )}
-                      title={on ? 'Remove from team' : 'Add to team'}
+                      title={on ? 'Remove from team' : blocked ? blocked : 'Add to team'}
                     >
                       {on ? <Minus className="w-5 h-5 stroke-[2.5]" /> : <Plus className="w-5 h-5 stroke-[2.5]" />}
                     </button>
@@ -675,8 +889,14 @@ export default function FantasyMatchPage({ id }: { id: string }) {
                     <span className="block text-sm font-bold text-white truncate">
                       {p.name} {form?.tier === 'star' && <span className="text-amber-400 text-xs">⭐</span>}
                     </span>
-                    <span className="block text-[11px] text-slate-400">
-                      {teamById(p.teamId)?.short} · {ROLE_SHORT[p.role]} · Proj: <strong className="text-amber-400">{form?.projectedPoints || 45} pts</strong>
+                    <span className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                      <span className="font-bold text-slate-300">{teamById(p.teamId)?.short}</span>
+                      <span>·</span>
+                      <span className={cx('rounded px-1.5 py-0.2 text-[9px] font-black uppercase tracking-wider border', ROLE_INFO[p.role].badgeBg, ROLE_INFO[p.role].badgeBorder, ROLE_INFO[p.role].badgeText)}>
+                        {ROLE_INFO[p.role].short} · {ROLE_INFO[p.role].singular}
+                      </span>
+                      <span>·</span>
+                      <span>Proj: <strong className="text-amber-400">{form?.projectedPoints || 45} pts</strong></span>
                     </span>
                   </span>
                   <button
@@ -746,12 +966,33 @@ export default function FantasyMatchPage({ id }: { id: string }) {
               )}
               <span className="flex-1 text-xs text-slate-400">
                 {complete ? (
-                  <span className="text-emerald-400 font-bold">XI complete · {starCount} Stars</span>
+                  <span className="text-emerald-400 font-bold inline-flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    {t('Balanced Squad Complete (6/6) · {pts} Proj Pts', { pts: totalSquadProj })}
+                  </span>
+                ) : isSquadComplete && !isSquadBalanced ? (
+                  <span className="text-amber-400 font-bold inline-flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    {t('Need at least 1 {roles} for balance', {
+                      roles: missingRoles.map(r => ROLE_INFO[r].singular).join(', '),
+                    })}
+                  </span>
                 ) : (
-                  t('{n} more to pick', { n: rules.size - picked.length })
+                  <span>
+                    {t('{n} more to pick ({cur}/{size})', {
+                      n: rules.size - picked.length,
+                      cur: picked.length,
+                      size: rules.size,
+                    })}
+                    {missingRoles.length > 0 && (
+                      <span className="text-amber-400/90 ml-1.5 font-medium">
+                        · {t('Need: {roles}', { roles: missingRoles.map(r => ROLE_INFO[r].short).join(', ') })}
+                      </span>
+                    )}
+                  </span>
                 )}
               </span>
-              <Button disabled={!complete || credits > rules.creditCap} onClick={() => setStep('captain')} data-testid="xi-next">
+              <Button disabled={!complete} onClick={() => setStep('captain')} data-testid="xi-next">
                 {t('Next')}: {t('captain')}
               </Button>
             </>
