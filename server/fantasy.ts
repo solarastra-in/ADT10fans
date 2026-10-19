@@ -117,6 +117,20 @@ export function validateLineup(pool: Player[], playerIds: string[], captainId: s
 export type FormTrend = 'hot' | 'rising' | 'stable' | 'cold';
 export type PlayerTier = 'star' | 'core' | 'value' | 'budget';
 
+export type PointAllocationLevel = 1 | 2 | 3 | 4 | 5;
+
+export interface AllocationLevelInfo {
+  level: PointAllocationLevel;
+  badge: string;
+  name: string;
+  tierCategory: 'Supernova' | 'Premium Star' | 'Core Anchor' | 'Tactical Swing' | 'Budget Enabler';
+  pastFactor: string;
+  futureFactor: string;
+  recommendedUsage: string;
+  creditTier: string;
+  projectedRange: string;
+}
+
 export interface PlayerFormStats {
   trend: FormTrend;
   momentumScore: number;
@@ -128,6 +142,15 @@ export interface PlayerFormStats {
   matchupNote: string;
   selectionSwing: number;
   tier: PlayerTier;
+  allocationLevel: PointAllocationLevel;
+  allocationLabel: string;
+  allocationInfo: AllocationLevelInfo;
+  pastPointsAvg: number;
+  futurePitchBoost: number;
+  futureOpponentBoost: number;
+  projectedCeiling: number;
+  projectedFloor: number;
+  adaptationSummary: string;
 }
 
 export interface PlayerWithForm extends Player {
@@ -300,6 +323,80 @@ export function calculatePlayerForm(p: Player, match: Match, store: AppStore): P
   // Selection swing (+/- % weekly trend)
   const selectionSwing = Math.round((momentumScore * 0.7 + ((hash % 13) - 6)) * 10) / 10;
 
+  // Composite allocation score combining past track record (45%) and future projected conditions (55%)
+  const compositeScore = recentAvg * 0.45 + projectedPoints * 0.55;
+
+  let allocationLevel: AllocationLevelInfo;
+
+  if (compositeScore >= 66 || (tier === 'star' && trend !== 'cold')) {
+    allocationLevel = {
+      level: 5,
+      badge: 'L5 Supernova',
+      name: 'Supernova Marquee Allocation',
+      tierCategory: 'Supernova',
+      pastFactor: `Past Form: ${recentAvg} avg pts · Trajectory [${recentScores.join(', ')}] (${trend.toUpperCase()})`,
+      futureFactor: `Future Outlook: ${projectedPoints} proj pts · ${pitchSuitability} pitch fit (${matchupNote})`,
+      recommendedUsage: 'Top Captaincy candidate (2x) · Anchor 1-2 per team',
+      creditTier: '10.0–10.5 cr',
+      projectedRange: '70–95+ pts',
+    };
+  } else if (compositeScore >= 50 || (tier === 'star' && trend === 'cold') || (tier === 'core' && trend === 'hot')) {
+    allocationLevel = {
+      level: 4,
+      badge: 'L4 Premium',
+      name: 'High-Impact Premium Allocation',
+      tierCategory: 'Premium Star',
+      pastFactor: `Past Form: ${recentAvg} avg pts · Trajectory [${recentScores.join(', ')}] (Momentum: ${momentumScore > 0 ? '+' : ''}${momentumScore}%)`,
+      futureFactor: `Future Outlook: ${projectedPoints} proj pts · ${matchupNote}`,
+      recommendedUsage: 'Vice-Captain candidate (1.5x) or Core Strike Bowler',
+      creditTier: '9.0–9.5 cr',
+      projectedRange: '52–69 pts',
+    };
+  } else if (compositeScore >= 38 || tier === 'core') {
+    allocationLevel = {
+      level: 3,
+      badge: 'L3 Core Anchor',
+      name: 'Core Anchor Point Allocation',
+      tierCategory: 'Core Anchor',
+      pastFactor: `Past Form: ${recentAvg} avg pts · Steady floor in recent games`,
+      futureFactor: `Future Outlook: ${projectedPoints} proj pts · Middle overs boundary / wicket specialist`,
+      recommendedUsage: 'Essential lineup balance (allocate 3–5 slots)',
+      creditTier: '8.0–8.5 cr',
+      projectedRange: '38–51 pts',
+    };
+  } else if (compositeScore >= 27 || tier === 'value') {
+    allocationLevel = {
+      level: 2,
+      badge: 'L2 Tactical',
+      name: 'Tactical Differential Allocation',
+      tierCategory: 'Tactical Swing',
+      pastFactor: `Past Form: ${recentAvg} avg pts · High-volatility differential strike`,
+      futureFactor: `Future Outlook: ${projectedPoints} proj pts · Matchup specific weapon`,
+      recommendedUsage: 'Tournament differential pick to jump leaderboards',
+      creditTier: '7.0–7.5 cr',
+      projectedRange: '27–37 pts',
+    };
+  } else {
+    allocationLevel = {
+      level: 1,
+      badge: 'L1 Enabler',
+      name: 'Budget Enabler Allocation',
+      tierCategory: 'Budget Enabler',
+      pastFactor: `Past Form: ${recentAvg} avg pts · Economical UAE domestic talent`,
+      futureFactor: `Future Outlook: ${projectedPoints} proj pts · Key credit-saving utility player`,
+      recommendedUsage: 'Unlocks credit headroom to draft 3–4 Level 4/5 stars',
+      creditTier: '6.0–6.5 cr',
+      projectedRange: '18–26 pts',
+    };
+  }
+
+  const pastPointsAvg = recentAvg;
+  const futurePitchBoost = pitchSuitability === 'Excellent' ? 15 : pitchSuitability === 'Good' ? 8 : 0;
+  const futureOpponentBoost = Math.max(0, Math.round(momentumScore * 0.6));
+  const projectedCeiling = Math.round(projectedPoints * 1.35 + 8);
+  const projectedFloor = Math.max(8, Math.round(projectedPoints * 0.65));
+  const adaptationSummary = `${allocationLevel.name}: Past trajectory (${recentAvg} avg, ${trend}) adapted with future ${pitchSuitability.toLowerCase()} pitch fit & ${matchupNote.toLowerCase()} (${projectedPoints} projected pts, range ${projectedFloor}–${projectedCeiling}).`;
+
   return {
     trend,
     momentumScore,
@@ -311,6 +408,15 @@ export function calculatePlayerForm(p: Player, match: Match, store: AppStore): P
     matchupNote,
     selectionSwing,
     tier,
+    allocationLevel: allocationLevel.level,
+    allocationLabel: allocationLevel.badge,
+    allocationInfo: allocationLevel,
+    pastPointsAvg,
+    futurePitchBoost,
+    futureOpponentBoost,
+    projectedCeiling,
+    projectedFloor,
+    adaptationSummary,
   };
 }
 

@@ -480,10 +480,12 @@ export default function PrizesPage() {
         open={Boolean(claimed)}
         onClose={() => setClaimed(null)}
         prizeTitle={claimed?.title || ''}
-        pointsSpent={claimed?.prize?.points || 0}
+        pointsSpent={claimed?.prize?.pointsCost || 0}
         voucherCode={claimed?.code || ''}
         fulfilment={claimed?.fulfilment}
         team={claimed?.prize?.teamOnly ? teamById(claimed.prize.teamOnly) : null}
+        userPoints={user?.points || 0}
+        userBalance={balance}
       />
 
       {/* Draw Verification Modal */}

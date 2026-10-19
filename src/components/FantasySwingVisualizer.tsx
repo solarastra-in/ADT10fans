@@ -103,6 +103,11 @@ export function FantasySwingVisualizer({
         coreCount: 0,
         valueCount: 0,
         budgetCount: 0,
+        l5Count: 0,
+        l4Count: 0,
+        l3Count: 0,
+        l2Count: 0,
+        l1Count: 0,
         totalProjected: 0,
         avgMomentum: 0,
         hotCount: 0,
@@ -116,6 +121,11 @@ export function FantasySwingVisualizer({
     let coreCount = 0;
     let valueCount = 0;
     let budgetCount = 0;
+    let l5Count = 0;
+    let l4Count = 0;
+    let l3Count = 0;
+    let l2Count = 0;
+    let l1Count = 0;
     let hotCount = 0;
     let risingCount = 0;
     let coldCount = 0;
@@ -130,6 +140,13 @@ export function FantasySwingVisualizer({
       const mult = p.id === captainId ? 2 : p.id === viceCaptainId ? 1.5 : 1;
       totalProjected += (p.form?.projectedPoints || 45) * mult;
       sumMomentum += p.form?.momentumScore || 0;
+
+      const lvl = p.form?.allocationLevel || (p.form?.tier === 'star' ? 5 : p.form?.tier === 'core' ? 3 : 2);
+      if (lvl === 5) l5Count++;
+      else if (lvl === 4) l4Count++;
+      else if (lvl === 3) l3Count++;
+      else if (lvl === 2) l2Count++;
+      else l1Count++;
 
       if (p.form?.tier === 'star') starCount++;
       else if (p.form?.tier === 'core') coreCount++;
@@ -164,6 +181,11 @@ export function FantasySwingVisualizer({
       coreCount,
       valueCount,
       budgetCount,
+      l5Count,
+      l4Count,
+      l3Count,
+      l2Count,
+      l1Count,
       totalProjected: Math.round(totalProjected),
       avgMomentum,
       hotCount,
@@ -457,6 +479,48 @@ export function FantasySwingVisualizer({
               </div>
             </div>
 
+            {/* Multi-Level Point Allocation Architecture Status */}
+            {pickedPlayers.length > 0 && (
+              <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-amber-300 inline-flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    Squad Multi-Level Point Allocation Architecture
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    {pickedPlayers.length}/11 Players Allocated
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 text-center">
+                  <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                    <span className="block text-[10px] font-bold text-amber-300">L5 Supernova</span>
+                    <span className="text-sm font-black text-white">{metrics.l5Count} / 2</span>
+                    <span className="block text-[9px] text-slate-400">10.0–10.5 cr</span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-sky-500/10 border border-sky-500/30">
+                    <span className="block text-[10px] font-bold text-sky-300">L4 Premium</span>
+                    <span className="text-sm font-black text-white">{metrics.l4Count}</span>
+                    <span className="block text-[9px] text-slate-400">9.0–9.5 cr</span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                    <span className="block text-[10px] font-bold text-emerald-300">L3 Core Anchor</span>
+                    <span className="text-sm font-black text-white">{metrics.l3Count}</span>
+                    <span className="block text-[9px] text-slate-400">8.0–8.5 cr</span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-purple-500/10 border border-purple-500/30">
+                    <span className="block text-[10px] font-bold text-purple-300">L2 Tactical</span>
+                    <span className="text-sm font-black text-white">{metrics.l2Count}</span>
+                    <span className="block text-[9px] text-slate-400">7.0–7.5 cr</span>
+                  </div>
+                  <div className="p-2 rounded-lg bg-slate-800/60 border border-slate-700 col-span-2 sm:col-span-1">
+                    <span className="block text-[10px] font-bold text-slate-300">L1 Budget Enabler</span>
+                    <span className="text-sm font-black text-white">{metrics.l1Count}</span>
+                    <span className="block text-[9px] text-slate-400">6.0–6.5 cr</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {pickedPlayers.length === 0 ? (
               <div className="rounded-xl border border-dashed border-slate-800 p-8 text-center">
                 <p className="text-sm text-slate-400 mb-2">No players selected yet.</p>
@@ -471,6 +535,7 @@ export function FantasySwingVisualizer({
                   const isCap = p.id === captainId;
                   const isVc = p.id === viceCaptainId;
                   const form = p.form;
+                  const lvl = form?.allocationLevel || (form?.tier === 'star' ? 5 : form?.tier === 'core' ? 3 : 2);
                   const isExpanded = selectedPlayerDetail === p.id;
 
                   return (
@@ -490,6 +555,22 @@ export function FantasySwingVisualizer({
                             <span className="font-bold text-sm text-white truncate">{p.name}</span>
                             {isCap && <span className="rounded bg-amber-400 px-1.5 py-0.2 text-[10px] font-black text-slate-950">2x C</span>}
                             {isVc && <span className="rounded bg-sky-400 px-1.5 py-0.2 text-[10px] font-black text-slate-950">1.5x VC</span>}
+                            <span
+                              className={cx(
+                                'rounded px-1.5 py-0.2 text-[9px] font-black',
+                                lvl === 5
+                                  ? 'bg-amber-400 text-slate-950'
+                                  : lvl === 4
+                                  ? 'bg-sky-400/20 text-sky-300'
+                                  : lvl === 3
+                                  ? 'bg-emerald-400/20 text-emerald-300'
+                                  : lvl === 2
+                                  ? 'bg-purple-400/20 text-purple-300'
+                                  : 'bg-slate-800 text-slate-300'
+                              )}
+                            >
+                              L{lvl}
+                            </span>
                             {form?.tier === 'star' && (
                               <span className="rounded bg-amber-400/20 px-1.5 py-0.5 text-[9px] font-black text-amber-300">
                                 ⭐ Star

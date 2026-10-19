@@ -310,6 +310,18 @@ export type PlayerTier = 'star' | 'core' | 'value' | 'budget';
 
 export type PointAllocationLevel = 1 | 2 | 3 | 4 | 5;
 
+export interface AllocationLevelInfo {
+  level: PointAllocationLevel;
+  badge: string;
+  name: string;
+  tierCategory: 'Supernova' | 'Premium Star' | 'Core Anchor' | 'Tactical Swing' | 'Budget Enabler';
+  pastFactor: string;
+  futureFactor: string;
+  recommendedUsage: string;
+  creditTier: string;
+  projectedRange: string;
+}
+
 export interface PlayerFormStats {
   trend: FormTrend;
   momentumScore: number; // e.g. +18, +5, -12
@@ -324,6 +336,7 @@ export interface PlayerFormStats {
   // Multi-level adaptable point allocation
   allocationLevel: PointAllocationLevel;
   allocationLabel: string;
+  allocationInfo?: AllocationLevelInfo;
   pastPointsAvg: number;
   futurePitchBoost: number;
   futureOpponentBoost: number;

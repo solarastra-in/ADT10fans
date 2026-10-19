@@ -52,6 +52,8 @@ export default function FantasyMatchPage({ id }: { id: string }) {
   const [step, setStep] = useState<'pick' | 'captain'>('pick');
   const [role, setRole] = useState<'all' | PlayerRole>('all');
   const [teamFilter, setTeamFilter] = useState('all');
+  const [levelFilter, setLevelFilter] = useState<'all' | '5' | '4' | '3' | '2' | '1'>('all');
+  const [expandedAdaptationId, setExpandedAdaptationId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -87,6 +89,7 @@ export default function FantasyMatchPage({ id }: { id: string }) {
   const credits = Math.round(chosen.reduce((s, p) => s + (p.credits || 0), 0) * 10) / 10;
   const perTeam = (tid?: string) => chosen.filter(p => p.teamId === tid).length;
   const perRole = (r: PlayerRole) => chosen.filter(p => p.role === r).length;
+  const perLevel = (lvl: number) => chosen.filter(p => (p.form?.allocationLevel || (p.form?.tier === 'star' ? 5 : 3)) === lvl).length;
   const starCount = chosen.filter(p => p.form?.tier === 'star').length;
 
   if (loading && !data) return <Spinner />;
@@ -242,7 +245,7 @@ export default function FantasyMatchPage({ id }: { id: string }) {
   }
 
   const visible = pool
-    .filter(p => (role === 'all' || p.role === role) && (teamFilter === 'all' || p.teamId === teamFilter))
+    .filter(p => (role === 'all' || p.role === role) && (teamFilter === 'all' || p.teamId === teamFilter) && (levelFilter === 'all' || String(p.form?.allocationLevel ?? (p.form?.tier === 'star' ? 5 : 3)) === levelFilter))
     .sort((x, y) => (y.credits || 0) - (x.credits || 0) || x.name.localeCompare(y.name));
   const complete = picked.length === rules.size;
 
@@ -375,97 +378,279 @@ export default function FantasyMatchPage({ id }: { id: string }) {
             items={[{ id: 'all', label: t('Both teams') }, { id: m.teamA, label: a?.short || m.teamA }, { id: m.teamB, label: b?.short || m.teamB }]}
           />
 
-          <div className="space-y-1.5" data-testid="player-pool">
+          {/* Multi-level Point Allocation Filter Strip */}
+          <div className="flex items-center gap-1.5 flex-wrap p-2.5 rounded-2xl bg-slate-900/90 border border-slate-800 text-xs">
+            <span className="text-[11px] font-black text-slate-300 inline-flex items-center gap-1.5 pr-1">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              Allocation Levels:
+            </span>
+            <button
+              type="button"
+              onClick={() => setLevelFilter('all')}
+              className={cx(
+                'px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer',
+                levelFilter === 'all'
+                  ? 'bg-amber-400 text-slate-950 shadow-sm'
+                  : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+              )}
+            >
+              All ({pool.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setLevelFilter('5')}
+              className={cx(
+                'px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1',
+                levelFilter === '5'
+                  ? 'bg-amber-400 text-slate-950 shadow-sm'
+                  : 'bg-slate-950 text-amber-400 border border-amber-400/40 hover:bg-amber-400/10'
+              )}
+            >
+              ⭐ L5 Supernova ({perLevel(5)} in team)
+            </button>
+            <button
+              type="button"
+              onClick={() => setLevelFilter('4')}
+              className={cx(
+                'px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1',
+                levelFilter === '4'
+                  ? 'bg-sky-400 text-slate-950 shadow-sm'
+                  : 'bg-slate-950 text-sky-400 border border-sky-400/40 hover:bg-sky-400/10'
+              )}
+            >
+              L4 Premium ({perLevel(4)})
+            </button>
+            <button
+              type="button"
+              onClick={() => setLevelFilter('3')}
+              className={cx(
+                'px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1',
+                levelFilter === '3'
+                  ? 'bg-emerald-400 text-slate-950 shadow-sm'
+                  : 'bg-slate-950 text-emerald-400 border border-emerald-400/40 hover:bg-emerald-400/10'
+              )}
+            >
+              L3 Core ({perLevel(3)})
+            </button>
+            <button
+              type="button"
+              onClick={() => setLevelFilter('2')}
+              className={cx(
+                'px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1',
+                levelFilter === '2'
+                  ? 'bg-purple-400 text-slate-950 shadow-sm'
+                  : 'bg-slate-950 text-purple-400 border border-purple-400/40 hover:bg-purple-400/10'
+              )}
+            >
+              L2 Tactical ({perLevel(2)})
+            </button>
+            <button
+              type="button"
+              onClick={() => setLevelFilter('1')}
+              className={cx(
+                'px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1',
+                levelFilter === '1'
+                  ? 'bg-slate-200 text-slate-950 shadow-sm'
+                  : 'bg-slate-950 text-slate-400 border border-slate-700 hover:text-white'
+              )}
+            >
+              L1 Enablers ({perLevel(1)})
+            </button>
+          </div>
+
+          <div className="space-y-2" data-testid="player-pool">
             {visible.map(p => {
               const on = picked.includes(p.id);
               const blocked = !on && Boolean(why(p));
               const tm = teamById(p.teamId);
               const form = p.form;
-              const isStar = form?.tier === 'star';
+              const lvl = form?.allocationLevel || (form?.tier === 'star' ? 5 : form?.tier === 'core' ? 3 : 2);
+              const isExpanded = expandedAdaptationId === p.id;
 
               return (
-                <button
+                <div
                   key={p.id}
-                  type="button"
-                  onClick={() => toggle(p)}
                   className={cx(
-                    'w-full flex items-center gap-3 p-2.5 rounded-xl border text-start transition-colors min-h-[64px]',
+                    'rounded-2xl border transition-all overflow-hidden',
                     on
-                      ? 'bg-amber-400/10 border-amber-400/60'
+                      ? 'bg-amber-400/10 border-amber-400/60 shadow-md'
                       : blocked
-                      ? 'bg-slate-950/40 border-slate-900 opacity-50'
-                      : 'bg-slate-900/80 border-slate-800 hover:border-slate-600'
+                      ? 'bg-slate-950/40 border-slate-900 opacity-60'
+                      : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
                   )}
-                  data-player={p.id}
-                  aria-pressed={on}
                 >
-                  <Avatar name={p.name} src={p.photoUrl} size={40} />
+                  <div className="flex items-center gap-3 p-3 min-h-[68px]">
+                    <Avatar name={p.name} src={p.photoUrl} size={42} />
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-bold text-sm text-white truncate">{p.name}</span>
-                      {isStar && (
-                        <span className="rounded bg-amber-400/20 px-1.5 py-0.2 text-[9px] font-black text-amber-300">
-                          ⭐ Star
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-bold text-sm text-white truncate">{p.name}</span>
+
+                        {/* Allocation Level Badge */}
+                        <span
+                          className={cx(
+                            'rounded-md px-1.5 py-0.5 text-[10px] font-black uppercase tracking-wider',
+                            lvl === 5
+                              ? 'bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 shadow-sm'
+                              : lvl === 4
+                              ? 'bg-sky-400/20 text-sky-300 border border-sky-400/40'
+                              : lvl === 3
+                              ? 'bg-emerald-400/20 text-emerald-300 border border-emerald-400/40'
+                              : lvl === 2
+                              ? 'bg-purple-400/20 text-purple-300 border border-purple-400/40'
+                              : 'bg-slate-800 text-slate-300 border border-slate-700'
+                          )}
+                        >
+                          L{lvl} {lvl === 5 ? 'Supernova' : lvl === 4 ? 'Premium' : lvl === 3 ? 'Core' : lvl === 2 ? 'Tactical' : 'Enabler'}
                         </span>
-                      )}
-                      {form?.trend === 'hot' && (
-                        <span className="rounded bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 text-[9px] font-bold inline-flex items-center gap-0.5">
-                          <Flame className="w-2.5 h-2.5" /> +{form.momentumScore}%
+
+                        {form?.trend === 'hot' && (
+                          <span className="rounded bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 text-[9px] font-bold inline-flex items-center gap-0.5">
+                            <Flame className="w-2.5 h-2.5" /> +{form.momentumScore}% Hot
+                          </span>
+                        )}
+                        {form?.trend === 'rising' && (
+                          <span className="rounded bg-sky-500/20 text-sky-300 px-1.5 py-0.5 text-[9px] font-bold inline-flex items-center gap-0.5">
+                            <TrendingUp className="w-2.5 h-2.5" /> +{form.momentumScore}% Rising
+                          </span>
+                        )}
+                        {form?.trend === 'cold' && (
+                          <span className="rounded bg-cyan-500/20 text-cyan-300 px-1.5 py-0.5 text-[9px] font-bold inline-flex items-center gap-0.5">
+                            <TrendingDown className="w-2.5 h-2.5" /> Value Dip
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 text-[11px] text-slate-400 truncate mt-1">
+                        <span className="inline-flex items-center gap-1.5">
+                          <TeamBadge team={tm} size="xs" />
+                          <span className="font-bold text-slate-300">{tm?.short}</span> · {ROLE_SHORT[p.role]}
                         </span>
+                        {form?.matchupNote && (
+                          <>
+                            <span>·</span>
+                            <span className="text-slate-300 font-medium truncate">{form.matchupNote}</span>
+                          </>
+                        )}
+                        {typeof p.selectedBy === 'number' && data.lineups > 0 && (
+                          <>
+                            <span>·</span>
+                            <span>{p.selectedBy}% picked</span>
+                          </>
+                        )}
+                      </div>
+
+                      {/* Past Performance Sparkline & Future Adaptive Indicators */}
+                      {form?.recentScores && (
+                        <div className="flex items-center gap-2 mt-1.5 text-[10px] text-slate-400">
+                          <span className="text-slate-500">Past:</span>
+                          <div className="flex items-center gap-1">
+                            {form.recentScores.map((score, sIdx) => (
+                              <span
+                                key={sIdx}
+                                className={cx(
+                                  'px-1.5 py-0.2 rounded font-mono font-bold text-[9px]',
+                                  score >= 50 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-300'
+                                )}
+                              >
+                                {score}
+                              </span>
+                            ))}
+                          </div>
+                          <span>·</span>
+                          <span className="text-slate-300 font-medium">Avg: <strong className="text-white">{form.pastPointsAvg || form.recentAvg}</strong></span>
+                          <span>·</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedAdaptationId(isExpanded ? null : p.id);
+                            }}
+                            className="text-amber-400 hover:underline font-bold inline-flex items-center gap-0.5 cursor-pointer ml-auto"
+                          >
+                            {isExpanded ? 'Hide Model' : 'Adaptation Intel ▾'}
+                          </button>
+                        </div>
                       )}
-                      {form?.trend === 'rising' && (
-                        <span className="rounded bg-sky-500/20 text-sky-300 px-1.5 py-0.2 text-[9px] font-bold inline-flex items-center gap-0.5">
-                          <TrendingUp className="w-2.5 h-2.5" /> +{form.momentumScore}%
-                        </span>
-                      )}
-                      {form?.trend === 'cold' && (
-                        <span className="rounded bg-cyan-500/20 text-cyan-300 px-1.5 py-0.2 text-[9px] font-bold inline-flex items-center gap-0.5">
-                          <TrendingDown className="w-2.5 h-2.5" /> Value Dip
+                    </div>
+
+                    {/* Credits & Projected Points */}
+                    <div className="flex flex-col items-end text-end min-w-[56px]">
+                      <span className="text-sm font-black text-white tabular-nums">{p.credits} cr</span>
+                      {form?.projectedPoints && (
+                        <span className="text-[10px] text-amber-400 font-bold tabular-nums">
+                          Proj: {form.projectedPoints} pts
                         </span>
                       )}
                     </div>
 
-                    <div className="flex items-center gap-2 text-[11px] text-slate-400 truncate mt-0.5">
-                      <span className="inline-flex items-center gap-1.5">
-                        <TeamBadge team={tm} size="xs" />
-                        {tm?.short} · {ROLE_SHORT[p.role]}
-                      </span>
-                      {form?.matchupNote && (
-                        <>
-                          <span>·</span>
-                          <span className="text-slate-300 font-medium truncate">{form.matchupNote}</span>
-                        </>
+                    {/* Add / Remove button */}
+                    <button
+                      type="button"
+                      onClick={() => toggle(p)}
+                      aria-pressed={on}
+                      data-player={p.id}
+                      className={cx(
+                        'w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-transform cursor-pointer',
+                        on
+                          ? 'bg-amber-400 text-slate-950 scale-105 shadow-md shadow-amber-500/20'
+                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white'
                       )}
-                      {typeof p.selectedBy === 'number' && data.lineups > 0 && (
-                        <>
-                          <span>·</span>
-                          <span>{p.selectedBy}% picked</span>
-                        </>
+                      title={on ? 'Remove from team' : 'Add to team'}
+                    >
+                      {on ? <Minus className="w-5 h-5 stroke-[2.5]" /> : <Plus className="w-5 h-5 stroke-[2.5]" />}
+                    </button>
+                  </div>
+
+                  {/* Expandable Past & Future Performance Adaptation Intel Panel */}
+                  {isExpanded && form && (
+                    <div className="p-3 bg-slate-950/95 border-t border-slate-800/80 text-xs space-y-2 animate-in fade-in duration-200">
+                      <div className="flex items-center justify-between font-bold text-slate-300 text-[11px]">
+                        <span className="text-amber-400 inline-flex items-center gap-1">
+                          <Sparkles className="w-3.5 h-3.5" />
+                          Multi-Level Adaptive Allocation: Level {lvl}
+                        </span>
+                        <span className="text-slate-400 font-mono">
+                          Floor: {form.projectedFloor || Math.round(form.projectedPoints * 0.65)} pts · Ceiling: {form.projectedCeiling || Math.round(form.projectedPoints * 1.35)} pts
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                        {/* Past Performance Model */}
+                        <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
+                          <span className="text-[10px] uppercase font-black tracking-wider text-sky-400 block">
+                            Past Performance Tracking
+                          </span>
+                          <p className="text-slate-300">
+                            Tournament Historical Average: <strong className="text-white">{form.pastPointsAvg || form.recentAvg} pts</strong>
+                          </p>
+                          <p className="text-slate-400">
+                            Recent trajectory: [{form.recentScores.join(', ')}] pts with {form.trend.toUpperCase()} momentum ({form.momentumScore > 0 ? '+' : ''}{form.momentumScore}%).
+                          </p>
+                        </div>
+
+                        {/* Future Performance Projection */}
+                        <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
+                          <span className="text-[10px] uppercase font-black tracking-wider text-emerald-400 block">
+                            Future Match Outlook & Adaptation
+                          </span>
+                          <p className="text-slate-300">
+                            Sheikh Zayed Pitch Fit: <strong className="text-emerald-400">{form.pitchSuitability}</strong> (+{form.futurePitchBoost || 10} pts boost)
+                          </p>
+                          <p className="text-slate-400">
+                            Tactical Role: {form.matchupNote}. Projected ceiling of {form.projectedCeiling || Math.round(form.projectedPoints * 1.35)} pts in T10 format.
+                          </p>
+                        </div>
+                      </div>
+
+                      {form.adaptationSummary && (
+                        <p className="text-[11px] text-slate-400 italic bg-slate-900/40 p-2 rounded-lg border border-slate-800/50">
+                          {form.adaptationSummary}
+                        </p>
                       )}
                     </div>
-                  </div>
-
-                  {/* Credits & Projected Points */}
-                  <div className="flex flex-col items-end text-end min-w-[50px]">
-                    <span className="text-sm font-black text-slate-200 tabular-nums">{p.credits} cr</span>
-                    {form?.projectedPoints && (
-                      <span className="text-[10px] text-amber-400/90 font-bold tabular-nums">
-                        Proj: {form.projectedPoints}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Add / Remove button */}
-                  <span
-                    className={cx(
-                      'w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-transform',
-                      on ? 'bg-amber-400 text-slate-950 scale-105' : 'bg-slate-800 text-slate-300'
-                    )}
-                  >
-                    {on ? <Minus className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                  </span>
-                </button>
+                  )}
+                </div>
               );
             })}
           </div>

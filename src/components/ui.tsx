@@ -136,6 +136,22 @@ export function TeamDot({ team, size = 12 }: { team?: Pick<Team, 'color'> | null
   return <span className="inline-block rounded-full shrink-0 ring-1 ring-white/10" style={{ width: size, height: size, background: team?.color || '#475569' }} />;
 }
 
+export function getTeamLogoSrc(team?: Team | null): string | null {
+  if (!team) return null;
+  if (team.logo && (team.logo.startsWith('/') || team.logo.startsWith('http'))) {
+    return team.logo;
+  }
+  const id = (team.id || '').toLowerCase();
+  const name = (team.name || '').toLowerCase();
+  if (id.includes('bull') || name.includes('bull')) return '/logos/bulls.svg';
+  if (id.includes('tiger') || name.includes('tiger')) return '/logos/tigers.svg';
+  if (id.includes('lion') || name.includes('lion')) return '/logos/lions.svg';
+  if (id.includes('ace') || name.includes('ace')) return '/logos/aces.svg';
+  if (id.includes('eagle') || name.includes('eagle')) return '/logos/eagles.svg';
+  if (id.includes('champ') || name.includes('champ')) return '/logos/champions.svg';
+  return null;
+}
+
 export function TeamBadge({
   team,
   size = 'md',
@@ -147,13 +163,16 @@ export function TeamBadge({
   className?: string;
   glow?: boolean;
 }) {
+  const [imgFailed, setImgFailed] = useState(false);
+
+  // Generous, high-visibility dimensions optimized for detailed vector heraldic crests
   const dim = {
-    xs: 'w-7 h-7 text-[10px] p-0.5',
-    sm: 'w-10 h-10 sm:w-11 sm:h-11 text-xs p-1',
-    md: 'w-13 h-13 sm:w-14 sm:h-14 text-sm p-1.5',
-    lg: 'w-20 h-20 sm:w-24 sm:h-24 text-lg p-2',
-    xl: 'w-28 h-28 sm:w-32 sm:h-32 text-xl p-2.5',
-    '2xl': 'w-36 h-36 sm:w-44 sm:h-44 text-2xl p-3',
+    xs: 'w-8 h-8 min-w-[32px] min-h-[32px] p-0 text-[10px]',
+    sm: 'w-12 h-12 min-w-[48px] min-h-[48px] p-0.5 text-xs',
+    md: 'w-16 h-16 min-w-[64px] min-h-[64px] p-1 text-sm',
+    lg: 'w-24 h-24 sm:w-28 sm:h-28 min-w-[96px] min-h-[96px] p-1.5 text-lg',
+    xl: 'w-32 h-32 sm:w-36 sm:h-36 min-w-[128px] min-h-[128px] p-2 text-xl',
+    '2xl': 'w-44 h-44 sm:w-52 sm:h-52 min-w-[176px] min-h-[176px] p-2.5 text-2xl',
   }[size];
 
   if (!team) {
@@ -164,34 +183,44 @@ export function TeamBadge({
     );
   }
 
-  const logoSrc = team.logo || (team.id && ['bulls', 'tigers', 'lions', 'aces', 'eagles', 'champions'].includes(team.id) ? `/logos/${team.id}.svg` : null);
+  const logoSrc = !imgFailed ? getTeamLogoSrc(team) : null;
+  const brandColor = team.color || '#38bdf8';
 
   if (logoSrc) {
     return (
       <div
         className={cx(
           dim,
-          'rounded-2xl inline-flex items-center justify-center bg-gradient-to-b from-slate-900/95 via-slate-950/90 to-slate-900/95 border shadow-lg transition-transform shrink-0 relative overflow-hidden group',
-          glow ? 'hover:scale-105' : '',
+          'rounded-2xl inline-flex items-center justify-center border shadow-xl transition-all duration-300 shrink-0 relative overflow-hidden group',
+          glow ? 'hover:scale-105 hover:shadow-2xl' : '',
           className
         )}
         style={{
-          borderColor: team.color ? `${team.color}66` : 'rgba(51,65,85,0.7)',
-          boxShadow: glow && team.color ? `0 4px 16px -2px ${team.color}33, 0 2px 6px -1px rgba(0,0,0,0.6)` : '0 4px 12px rgba(0,0,0,0.5)',
+          background: `radial-gradient(circle at 50% 30%, ${brandColor}22 0%, rgba(15, 23, 42, 0.92) 80%)`,
+          borderColor: `${brandColor}80`,
+          boxShadow: glow
+            ? `0 6px 20px -2px ${brandColor}40, 0 0 14px 1px ${brandColor}20`
+            : '0 4px 14px rgba(0,0,0,0.6)',
         }}
         title={team.name || team.short}
       >
-        {/* Subtle radial highlight behind logo */}
+        {/* Luminous dynamic ambient aura */}
         <div
-          className="absolute inset-0 opacity-20 group-hover:opacity-35 transition-opacity pointer-events-none rounded-2xl"
+          className="absolute inset-0 opacity-25 group-hover:opacity-45 transition-opacity pointer-events-none rounded-2xl"
           style={{
-            background: `radial-gradient(circle at 50% 50%, ${team.color || '#38bdf8'} 0%, transparent 70%)`,
+            background: `radial-gradient(circle at 50% 50%, ${brandColor} 0%, transparent 72%)`,
           }}
         />
+
+        {/* Specular sheen corner reflection */}
+        <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-white/15 pointer-events-none rounded-2xl" />
+
+        {/* Full-visibility vector shield logo */}
         <img
           src={logoSrc}
           alt={team.name || team.short}
-          className="w-full h-full object-contain filter drop-shadow-md shrink-0 relative z-10 transition-transform duration-200 group-hover:scale-105"
+          onError={() => setImgFailed(true)}
+          className="w-full h-full object-contain filter drop-shadow-[0_4px_10px_rgba(0,0,0,0.7)] shrink-0 relative z-10 transition-transform duration-300 group-hover:scale-105"
           loading="lazy"
         />
       </div>
@@ -200,11 +229,12 @@ export function TeamBadge({
 
   return (
     <span
-      className={cx(dim, 'rounded-2xl inline-flex items-center justify-center font-black shrink-0 border shadow-md', className)}
+      className={cx(dim, 'rounded-2xl inline-flex items-center justify-center font-black shrink-0 border shadow-lg', className)}
       style={{
         background: `linear-gradient(135deg, ${team.color}, ${team.secondaryColor || '#0f172a'})`,
         color: '#ffffff',
-        borderColor: `${team.color}88`,
+        borderColor: `${team.color}aa`,
+        boxShadow: glow ? `0 4px 16px ${team.color}40` : undefined,
       }}
       aria-hidden
     >
