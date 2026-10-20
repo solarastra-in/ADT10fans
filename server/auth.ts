@@ -304,29 +304,58 @@ setInterval(() => {
   for (const [k, b] of buckets) if (b.resetAt < now) buckets.delete(k);
 }, 60_000).unref();
 
-// ---------- Email OTP ----------
-function smtpConfig() {
-  const s = db.get().settings.smtp;
-  const host = process.env.SMTP_HOST || (s.enabled ? s.host : '');
-  return {
-    host,
-    port: Number(process.env.SMTP_PORT || s.port || 587),
-    user: process.env.SMTP_USER || s.user,
-    pass: process.env.SMTP_PASS || s.pass,
-    from: process.env.SMTP_FROM || s.from || process.env.SMTP_USER || s.user,
-  };
+export function formatFromAddress(from: string, user: string): string {
+  const f = from?.trim() || '';
+  const u = user?.trim() || '';
+  if (!f && !u) return '';
+  if (f.includes('@')) return f;
+  if (u.includes('@')) {
+    const displayName = f || 'Abu Dhabi T10 Fans';
+    return `"${displayName}" <${u}>`;
+  }
+  return f;
 }
+
+export function smtpConfig() {
+  const store = db.get();
+  const s = store?.settings?.smtp || { host: '', port: 587, user: '', pass: '', from: '', enabled: false };
+  const envOverrides = (store?.settings as any)?.envOverrides || {};
+
+  // Host: Admin settings (if configured) -> env overrides -> process.env
+  const host = (s.host && s.host.trim()) || envOverrides['SMTP_HOST']?.trim() || process.env.SMTP_HOST?.trim() || '';
+  const port = Number(s.port || envOverrides['SMTP_PORT'] || process.env.SMTP_PORT || 587);
+  const user = (s.user && s.user.trim()) || envOverrides['SMTP_USER']?.trim() || process.env.SMTP_USER?.trim() || '';
+
+  // Password: Admin settings (if saved) -> env overrides -> process.env
+  let pass = (s.pass && s.pass.trim()) || envOverrides['SMTP_PASS']?.trim() || process.env.SMTP_PASS?.trim() || '';
+  if (host.includes('gmail.com') && pass.includes(' ')) {
+    pass = pass.replace(/\s+/g, '');
+  }
+
+  const rawFrom = (s.from && s.from.trim()) || envOverrides['SMTP_FROM']?.trim() || process.env.SMTP_FROM?.trim() || '';
+  const from = formatFromAddress(rawFrom, user);
+  const enabled = s.enabled !== undefined ? Boolean(s.enabled) : Boolean(host && user);
+
+  return { host, port, user, pass, from, enabled };
+}
+
 export function smtpConfigured(): boolean {
   const c = smtpConfig();
-  return Boolean(c.host && c.from);
+  return Boolean(c.host && c.from && c.enabled);
 }
+
 export function emailOtpAvailable(): boolean {
   return true;
 }
 
+export function resetSmtpErrorState() {
+  // kept for backwards-compat with callers
+}
+
 export async function sendOtpEmail(to: string, code: string, brand: string): Promise<'sent' | 'dev'> {
   const c = smtpConfig();
-  if (!c.host || !c.from) {
+  if (!c.host || !c.from || !c.enabled) {
+    console.info(`[sendOtpEmail] SMTP not fully configured (host: ${c.host || 'none'}, user: ${c.user || 'none'}). Dev sign-in code for ${to}: ${code}`);
     return 'dev';
   }
   try {
@@ -335,17 +364,30 @@ export async function sendOtpEmail(to: string, code: string, brand: string): Pro
       port: c.port,
       secure: c.port === 465,
       auth: c.user ? { user: c.user, pass: c.pass } : undefined,
+      tls: {
+        rejectUnauthorized: false,
+      },
     });
     await transporter.sendMail({
       from: c.from,
       to,
       subject: `${code} is your ${brand} sign-in code`,
       text: `Your ${brand} sign-in code is ${code}. It expires in 10 minutes. If you didn't request it, ignore this email.`,
-      html: `<p>Your <strong>${brand}</strong> sign-in code is:</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p><p>It expires in 10 minutes. If you didn't request it, you can ignore this email.</p>`,
+      html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;border:1px solid #e2e8f0;border-radius:12px;background:#ffffff">
+        <h2 style="color:#0f172a;margin-top:0">${brand}</h2>
+        <p style="color:#334155;font-size:15px">Your sign-in code is:</p>
+        <div style="font-size:32px;font-weight:800;letter-spacing:8px;color:#0284c7;background:#f0f9ff;padding:16px;border-radius:8px;text-align:center;margin:20px 0;font-family:monospace">${code}</div>
+        <p style="color:#64748b;font-size:13px;margin-bottom:0">This code expires in 10 minutes. If you didn't request this sign-in code, you can safely ignore this email.</p>
+      </div>`,
     });
+    console.info(`[sendOtpEmail] OTP email successfully delivered to ${to}`);
     return 'sent';
   } catch (err: any) {
-    console.warn('[sendOtpEmail] SMTP send failed, falling back to dev mode:', err.message);
+    console.warn('[sendOtpEmail] SMTP send failed:', err.message);
+    if (err.message?.includes('534-5.7.9') || err.message?.includes('Application-specific password')) {
+      console.warn('[sendOtpEmail] Gmail SMTP requires a 16-character App Password. Configure in Admin Portal -> Settings -> Email Delivery (SMTP).');
+    }
+    console.info(`[OTP] Generated sign-in code for ${to}: ${code}`);
     return 'dev';
   }
 }

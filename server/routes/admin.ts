@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { Router } from 'express';
 import { ALL_PERMISSIONS, AdminPermission, AdminRole, db, defaultSettings, SUPER_ADMIN_EMAIL, TEAM_OFFICIAL_PERMISSIONS } from '../db';
-import { adminEmails, IS_PROD, isSuperAdmin, rateLimit, requireAdmin, requireSuperAdmin, requireUser, smtpConfigured, firebaseProjectId } from '../auth';
+import { adminEmails, IS_PROD, isSuperAdmin, rateLimit, requireAdmin, requireSuperAdmin, requireUser, smtpConfigured, firebaseProjectId, resetSmtpErrorState } from '../auth';
 import { bad, newId, num, str, userOf, wrap } from '../http';
 import { runDiscoveryAgent, runSocialAgent, runNewsAgent, runScoresAgent, runContentAgent, runOpsAgent } from '../agents';
 import { geminiConfigured, chatWithGemini, searchGroundingCricket, generateMarketingContent, transcribeAudioVoice } from '../gemini';
@@ -155,6 +155,7 @@ adminRouter.post('/admin/settings', requireAdmin('settings'), (req, res) => {
       from: b.smtp.from !== undefined ? str(b.smtp.from, 160) : s.smtp.from,
       enabled: b.smtp.enabled !== undefined ? Boolean(b.smtp.enabled) : s.smtp.enabled,
     };
+    resetSmtpErrorState();
   }
   db.save();
   res.json({ success: true, settings: maskedSettings() });

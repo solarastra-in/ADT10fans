@@ -86,6 +86,9 @@ export function guessView(store: AppStore, user: User | null, day = dubaiDay()) 
       return {
         playerId: id,
         name: g?.name || id,
+        teamId: g?.teamId,
+        teamName: g?.teamName,
+        role: g?.role,
         correct: id === target.id,
         sameTeam: g ? g.teamId === target.teamId : false,
         sameRole: g ? g.role === target.role : false,

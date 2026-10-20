@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
-import { CalendarDays, Gamepad2, Home, LayoutGrid, Share2, Shield, Languages, LogIn, X } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Award, CalendarDays, ChevronDown, Coins, Gamepad2, Home, LayoutGrid, LogIn, LogOut, Settings, Share2, Shield, Languages, User, X } from 'lucide-react';
 import { Link, navigate, Route, RouteName } from '../router';
 import { useApp } from '../state';
 import { LANGUAGES, useI18n, useT } from '../i18n';
 import { NotificationCenter } from './NotificationCenter';
-import { Avatar, cx } from './ui';
+import { Avatar, Button, cx } from './ui';
 
 export function BrandMark({ compact }: { compact?: boolean }) {
   const { config } = useApp();
@@ -49,6 +49,155 @@ export function LanguagePicker({ className }: { className?: string }) {
   );
 }
 
+export function UserDropdown() {
+  const { user, logout, openTeamPicker, teamById, toast } = useApp();
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    if (open) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [open]);
+
+  if (!user) return null;
+  const team = teamById(user.teamId);
+
+  const handleLogout = async () => {
+    setOpen(false);
+    await logout();
+    toast(t('You have been signed out.'));
+    navigate('/');
+  };
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="inline-flex items-center gap-2 min-h-[44px] ps-1 pe-2 rounded-xl hover:bg-slate-900 border border-transparent hover:border-slate-800 transition-colors"
+        data-testid="profile-link"
+        aria-expanded={open}
+        aria-haspopup="menu"
+      >
+        <Avatar name={user.name} src={user.avatar} size={32} />
+        <span className="hidden md:block text-start leading-tight">
+          <span className="block text-xs font-bold text-white max-w-[120px] truncate">{user.name}</span>
+          <span className="block text-[11px] text-amber-400 font-bold tabular-nums">{t('{n} pts', { n: user.points })}</span>
+        </span>
+        <ChevronDown className={cx('w-3.5 h-3.5 text-slate-400 transition-transform duration-200 hidden sm:block', open && 'rotate-180')} />
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          className="absolute end-0 mt-2 w-64 rounded-2xl bg-slate-900 border border-slate-700/80 shadow-2xl p-2 z-50 text-start"
+        >
+          {/* User brief */}
+          <div className="p-2.5 pb-3 border-b border-slate-800 mb-1">
+            <p className="font-bold text-white text-sm truncate">{user.name}</p>
+            <p className="text-xs text-slate-400 truncate">{user.email}</p>
+            <div className="mt-2 flex items-center justify-between text-xs">
+              <span className="font-bold text-amber-400 tabular-nums">{t('{n} points', { n: user.points })}</span>
+              {team ? (
+                <span className="text-[11px] font-semibold text-slate-300 flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full" style={{ background: team.color }} />
+                  {team.short || team.name}
+                </span>
+              ) : (
+                <button type="button" onClick={() => { setOpen(false); openTeamPicker(); }} className="text-[11px] text-amber-400 font-bold hover:underline">
+                  {t('Pick team')}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Quick Navigation Links */}
+          <div className="space-y-0.5">
+            <Link
+              to="/profile"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-200 hover:text-white hover:bg-slate-800/80"
+              role="menuitem"
+            >
+              <User className="w-4 h-4 text-slate-400" />
+              {t('My Profile & Stats')}
+            </Link>
+            <Link
+              to="/profile#details"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-200 hover:text-white hover:bg-slate-800/80"
+              role="menuitem"
+            >
+              <Settings className="w-4 h-4 text-slate-400" />
+              {t('Update Profile Details')}
+            </Link>
+            <Link
+              to="/profile#badges"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-200 hover:text-white hover:bg-slate-800/80"
+              role="menuitem"
+            >
+              <Award className="w-4 h-4 text-amber-400" />
+              {t('Badges & Achievements')}
+            </Link>
+            <Link
+              to="/profile#points"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-200 hover:text-white hover:bg-slate-800/80"
+              role="menuitem"
+            >
+              <Coins className="w-4 h-4 text-emerald-400" />
+              {t('Points History')}
+            </Link>
+            <Link
+              to="/games"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-200 hover:text-white hover:bg-slate-800/80"
+              role="menuitem"
+            >
+              <Gamepad2 className="w-4 h-4 text-sky-400" />
+              {t('Daily Games')}
+            </Link>
+            {user.role === 'admin' && (
+              <Link
+                to="/admin"
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-amber-300 hover:text-amber-200 hover:bg-slate-800/80"
+                role="menuitem"
+              >
+                <Shield className="w-4 h-4 text-amber-400" />
+                {t('Admin Console')}
+              </Link>
+            )}
+          </div>
+
+          {/* Quick Logout Action */}
+          <div className="pt-1.5 mt-1.5 border-t border-slate-800">
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition-colors"
+              role="menuitem"
+              data-testid="logout-button"
+            >
+              <LogOut className="w-4 h-4 text-rose-400" />
+              {t('Log Out')}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Header({ route }: { route: Route }) {
   const { user, openAuth, config } = useApp();
   const t = useT();
@@ -85,13 +234,7 @@ export function Header({ route }: { route: Route }) {
             </Link>
           )}
           {user ? (
-            <Link to="/profile" className="inline-flex items-center gap-2 min-h-[44px] ps-1 pe-2 rounded-xl hover:bg-slate-900" data-testid="profile-link">
-              <Avatar name={user.name} src={user.avatar} size={32} />
-              <span className="hidden md:block text-start leading-tight">
-                <span className="block text-xs font-bold text-white max-w-[120px] truncate">{user.name}</span>
-                <span className="block text-[11px] text-amber-400 font-bold tabular-nums">{t('{n} pts', { n: user.points })}</span>
-              </span>
-            </Link>
+            <UserDropdown />
           ) : (
             <button type="button" onClick={() => openAuth()} className="inline-flex items-center gap-1.5 min-h-[40px] px-3 rounded-xl bg-amber-400 text-slate-950 text-sm font-black hover:bg-amber-300" data-testid="sign-in">
               <LogIn className="w-4 h-4" /> {t('Sign in')}
@@ -110,7 +253,7 @@ export function Header({ route }: { route: Route }) {
 
 export function BottomNav({ route }: { route: Route }) {
   const t = useT();
-  const { user } = useApp();
+  const { user, logout, toast } = useApp();
   const [more, setMore] = useState(false);
   const current = SECTION_OF[route.name];
   const items: [string, string, React.FC<{ className?: string }>, string][] = [
@@ -133,7 +276,8 @@ export function BottomNav({ route }: { route: Route }) {
     ['/forum', t('Forum')],
     ['/fanspaces', t('Fan Spaces')],
     ['/rules', t('Rules')],
-    [user ? '/profile' : '/rules', user ? t('My profile') : t('How it works')],
+    [user ? '/profile' : '/rules', user ? t('My profile & stats') : t('How it works')],
+    ...(user ? ([['/profile#details', t('Update profile')], ['/profile#badges', t('My badges')]] as [string, string][]) : []),
     ...(user?.role === 'admin' ? ([['/admin', t('Admin console')]] as [string, string][]) : []),
   ];
   return (
@@ -157,7 +301,7 @@ export function BottomNav({ route }: { route: Route }) {
           <div className="absolute inset-0 bg-black/70" onClick={() => setMore(false)} />
           <div className="absolute bottom-0 inset-x-0 bg-slate-900 border-t border-slate-700 rounded-t-3xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))] max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-black text-white">{t('More')}</span>
+              <span className="text-sm font-black text-white">{t('More Navigation')}</span>
               <button type="button" onClick={() => setMore(false)} className="w-10 h-10 rounded-xl text-slate-400 hover:text-white inline-flex items-center justify-center" aria-label={t('Close')}>
                 <X className="w-5 h-5" />
               </button>
@@ -169,6 +313,23 @@ export function BottomNav({ route }: { route: Route }) {
                 </button>
               ))}
             </div>
+            {user && (
+              <div className="mt-4 pt-3 border-t border-slate-800">
+                <Button
+                  variant="danger"
+                  className="w-full flex items-center justify-center gap-2 min-h-[44px]"
+                  onClick={async () => {
+                    setMore(false);
+                    await logout();
+                    toast(t('You have been signed out.'));
+                    navigate('/');
+                  }}
+                >
+                  <LogOut className="w-4 h-4" />
+                  {t('Log Out')}
+                </Button>
+              </div>
+            )}
             <LanguagePicker className="mt-3 w-full [&>select]:w-full" />
           </div>
         </div>

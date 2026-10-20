@@ -198,31 +198,31 @@ export function FantasySwingVisualizer({
   // Star player allocation status
   const starStatus = useMemo(() => {
     const count = metrics.starCount;
-    if (count === 2 || count === 3) {
+    if (count === 3 || count === 4) {
       return {
         tone: 'emerald',
         label: `${count} Stars · Optimal Allocation`,
-        desc: 'Optimal star balance! Marquee match-winners secured alongside versatile core and tactical contributors in your 6-player squad.',
+        desc: 'Optimal star balance! 3–4 marquee match-winners secured within the 100 credits cap, leaving room for in-form core and budget enablers in your 11-player squad.',
       };
     }
     if (count > 4) {
       return {
         tone: 'amber',
         label: `${count} Stars · Star-Heavy Squad`,
-        desc: 'High concentration of marquee stars. Ensure balanced coverage across bowling and batting roles in your 6-player squad.',
+        desc: 'High concentration of marquee stars. Ensure credit budget remains under 100 credits with balanced role coverage in your 11-player squad.',
       };
     }
-    if (count === 1) {
+    if (count === 1 || count === 2) {
       return {
         tone: 'sky',
-        label: `1 Star · Room for More`,
-        desc: 'You have room to add marquee star anchors (L4–L5 Supernova) to boost your ceiling in explosive T10 action.',
+        label: `${count} Stars · Room for More`,
+        desc: 'You have room to add up to 3–4 marquee star anchors (L4–L5 Supernova) to boost your ceiling in explosive T10 action.',
       };
     }
     return {
       tone: 'slate',
       label: '0 Stars Selected',
-      desc: 'Tip: Add 2–3 marquee star players to elevate your scoring potential in high-scoring Abu Dhabi T10 fixtures.',
+      desc: 'Tip: Add 3–4 marquee star players to elevate your scoring potential in high-scoring Abu Dhabi T10 fixtures.',
     };
   }, [metrics.starCount]);
 
@@ -488,7 +488,7 @@ export function FantasySwingVisualizer({
                     Squad Multi-Level Point Allocation Architecture
                   </span>
                   <span className="text-[10px] text-slate-400">
-                    {pickedPlayers.length}/6 Players Allocated
+                    {pickedPlayers.length}/11 Players Allocated
                   </span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 text-center">
@@ -706,7 +706,7 @@ export function FantasySwingVisualizer({
               <div>
                 <h4 className="text-sm font-black text-white">5-Axis Tactical Balance & Swing Radar</h4>
                 <p className="text-xs text-slate-400">
-                  Tactical pentagon comparing your selected 6-player squad against the tournament benchmark.
+                  Tactical pentagon comparing your selected 11-player squad against the tournament benchmark.
                 </p>
               </div>
               <div className="flex items-center gap-4 text-xs font-bold">
@@ -916,7 +916,7 @@ export function FantasySwingVisualizer({
                         <div className="rounded bg-slate-950/60 p-1.5 border border-slate-800">
                           <span className="text-[10px] text-slate-400 block">Squad Size</span>
                           <span className="font-black text-xs text-slate-200 tabular-nums">
-                            {cvPlayers.length}/6
+                            {cvPlayers.length}/11
                           </span>
                         </div>
                       </div>

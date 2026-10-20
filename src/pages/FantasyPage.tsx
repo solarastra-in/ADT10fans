@@ -120,7 +120,7 @@ export default function FantasyPage() {
       <PageHeader
         eyebrow={t('Fantasy')}
         title={t('Dream XI')}
-        subtitle={t('Pick exactly {size} players from the two teams (max {max} from one team). Captain scores {c}x, vice-captain {vc}x with dynamic point allocation based on historical performance and match context. Lineups lock at the first ball.', { size: rules.size, max: rules.maxFromOneTeam, c: rules.captainMultiplier, vc: rules.viceCaptainMultiplier })}
+        subtitle={t('Pick exactly {size} players from the two teams within {cap} Credits (max {max} from one team). Points are balanced so your squad has a few marquee stars and remaining budget enablers. Captain scores {c}x, vice-captain {vc}x. Lineups lock at the first ball.', { size: rules.size, cap: rules.creditCap || 100, max: rules.maxFromOneTeam, c: rules.captainMultiplier, vc: rules.viceCaptainMultiplier })}
         actions={<Link to="/rules#dream-xi" className="text-sm font-bold text-amber-400">{t('Scoring rules')}</Link>}
       />
       {hub.data!.season && (

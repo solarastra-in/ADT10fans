@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   Crown,
+  Dices,
   Flame,
   HelpCircle,
   Info,
@@ -21,6 +22,7 @@ import {
   Trash2,
   TrendingDown,
   TrendingUp,
+  X,
   Zap,
 } from 'lucide-react';
 import { api } from '../api';
@@ -45,6 +47,7 @@ import {
 } from '../components/ui';
 import { FantasySwingVisualizer } from '../components/FantasySwingVisualizer';
 import { SquadSkillRadar } from '../components/SquadSkillRadar';
+import { suggestUniqueTeamName } from '../utils/teamNames';
 import type { LineupPreset, Player, PlayerRole, PlayerWithForm } from '../types';
 
 const ROLES: PlayerRole[] = ['wicketkeeper', 'batter', 'allrounder', 'bowler'];
@@ -114,12 +117,14 @@ export default function FantasyMatchPage({ id }: { id: string }) {
   const [captain, setCaptain] = useState('');
   const [vice, setVice] = useState('');
   const [variationId, setVariationId] = useState('var-1');
-  const [variationName, setVariationName] = useState('Team 1');
+  const [variationName, setVariationName] = useState(() => suggestUniqueTeamName());
   const [step, setStep] = useState<'pick' | 'captain'>('pick');
   const [role, setRole] = useState<'all' | PlayerRole>('all');
   const [teamFilter, setTeamFilter] = useState('all');
   const [levelFilter, setLevelFilter] = useState<'all' | '5' | '4' | '3' | '2' | '1'>('all');
   const [expandedAdaptationId, setExpandedAdaptationId] = useState<string | null>(null);
+  const [infoPlayerId, setInfoPlayerId] = useState<string | null>(null);
+  const [justSaved, setJustSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -127,8 +132,8 @@ export default function FantasyMatchPage({ id }: { id: string }) {
   const a = teamById(m?.teamA);
   const b = teamById(m?.teamB);
   usePageMeta(
-    m ? t('Dream XI Super 6: {a} vs {b}', { a: a?.name || '', b: b?.name || '' }) : null,
-    t('Draft a balanced 6-player squad across Wicketkeeper, Batter, All-Rounder, and Bowler. Captain scores 2x, Vice-Captain 1.5x.'),
+    m ? t('Dream XI: {a} vs {b}', { a: a?.name || '', b: b?.name || '' }) : null,
+    t('Draft a balanced 11-player squad across Wicketkeeper, Batter, All-Rounder, and Bowler under a 100 Credits budget. Captain scores 2x, Vice-Captain 1.5x.'),
     config?.brandName
   );
 
@@ -144,7 +149,7 @@ export default function FantasyMatchPage({ id }: { id: string }) {
       setCaptain(data.fantasyTeam.captainId);
       setVice(data.fantasyTeam.viceCaptainId || '');
       setVariationId(data.fantasyTeam.variationId || 'var-1');
-      setVariationName(data.fantasyTeam.variationName || 'Team 1');
+      setVariationName(data.fantasyTeam.variationName || suggestUniqueTeamName());
     }
   }, [data?.fantasyTeam]);
 
@@ -153,14 +158,31 @@ export default function FantasyMatchPage({ id }: { id: string }) {
   const byId = useMemo(() => new Map(pool.map(p => [p.id, p])), [pool]);
   const chosen = picked.map(pid => byId.get(pid)).filter(Boolean) as PlayerWithForm[];
   const totalSquadProj = Math.round(chosen.reduce((s, p) => s + (p.form?.projectedPoints || 70), 0));
+  const totalCreditsUsed = Math.round(chosen.reduce((s, p) => s + (p.credits ?? 8.0), 0) * 10) / 10;
+  const budgetLimit = rules?.creditCap || 100;
+  const remainingCredits = Math.round((budgetLimit - totalCreditsUsed) * 10) / 10;
+  const isUnderBudget = totalCreditsUsed <= budgetLimit;
+
   const perTeam = (tid?: string) => chosen.filter(p => p.teamId === tid).length;
   const perRole = (r: PlayerRole) => chosen.filter(p => p.role === r).length;
   const perLevel = (lvl: number) => chosen.filter(p => (p.form?.allocationLevel || (p.form?.tier === 'star' ? 5 : 3)) === lvl).length;
-  const starCount = chosen.filter(p => p.form?.tier === 'star').length;
+
+  const isTop = (p: PlayerWithForm): boolean => {
+    const form = p.form;
+    if (typeof form?.allocationLevel === 'number' && form.allocationLevel >= 4) return true;
+    if (form?.tier === 'star' || p.isIcon) return true;
+    return (p.credits ?? 8.0) >= 9.5;
+  };
+
+  const topCount = chosen.filter(p => isTop(p)).length;
+  const maxTop = rules?.maxTopPlayers || 4;
+  const isTopLimitOk = topCount <= maxTop;
 
   // Balanced squad checks: at least 1 of each role (WK, BAT, AR, BOWL)
   const missingRoles = ROLES.filter(r => perRole(r) < (rules?.roleMin ?? 1));
   const isSquadBalanced = missingRoles.length === 0;
+  const isSquadComplete = rules ? picked.length === rules.size : false;
+  const complete = isSquadComplete && isSquadBalanced && isUnderBudget && isTopLimitOk;
 
   if (loading && !data) return <Spinner />;
   if (error || !data || !m || !rules) return <ErrorBox message={error || t('Match not found')} onRetry={reload} />;
@@ -170,15 +192,34 @@ export default function FantasyMatchPage({ id }: { id: string }) {
     if (picked.length >= rules.size) return t('Squad is full ({size}/{size} players selected)', { size: rules.size });
     if (perTeam(p.teamId) >= rules.maxFromOneTeam) return t('Max {n} from one team', { n: rules.maxFromOneTeam });
     if (perRole(p.role) >= rules.roleMax) {
-      return t('Max {n} {role}s allowed in 6-player squad', {
+      return t('Max {n} {role}s allowed in squad', {
         n: rules.roleMax,
         role: ROLE_INFO[p.role].label,
       });
     }
 
+    // Budget check: ensure remaining picks have at least 7.0 credits each
+    const pCost = p.credits ?? 8.0;
+    const remainingPicks = rules.size - picked.length - 1;
+    const minRequiredForRemaining = remainingPicks * 7.0;
+    if (totalCreditsUsed + pCost + minRequiredForRemaining > budgetLimit) {
+      return t('Budget exceeded: need at least {need} credits for remaining {picks} picks ({rem} credits left)', {
+        need: minRequiredForRemaining.toFixed(1),
+        picks: remainingPicks,
+        rem: remainingCredits.toFixed(1),
+      });
+    }
+
+    // Top player / star allocation constraint: team can only have few good players
+    if (isTop(p) && topCount >= maxTop) {
+      return t('Max {max} top/star players allowed ({count} selected). Fill remaining spots with mediocre/budget enablers.', {
+        max: maxTop,
+        count: topCount,
+      });
+    }
+
     // Enforce balanced squad across all 4 roles:
     const remainingSpots = rules.size - picked.length - 1;
-    // Which required roles will still be missing if we pick candidate p?
     const rolesStillMissing = ROLES.filter(r => r !== p.role && perRole(r) < rules.roleMin);
     if (rolesStillMissing.length > remainingSpots) {
       const missingLabels = rolesStillMissing.map(r => ROLE_INFO[r].singular).join(', ');
@@ -210,22 +251,29 @@ export default function FantasyMatchPage({ id }: { id: string }) {
       setCaptain(target.captainId);
       setVice(target.viceCaptainId || '');
       setVariationId(target.variationId || 'var-1');
-      setVariationName(target.variationName || `Team ${vId.replace('var-', '')}`);
+      setVariationName(target.variationName || suggestUniqueTeamName());
       setStep('pick');
       toast(t('Loaded variation: {name}', { name: target.variationName || vId }));
     }
   };
 
+  const handleSuggestName = () => {
+    const newName = suggestUniqueTeamName([...savedTeams.map(s => s.variationName || ''), variationName]);
+    setVariationName(newName);
+    toast(t('Suggested unique team name: {name}', { name: newName }));
+  };
+
   const handleCreateNewVariation = () => {
     const nextSlot = savedTeams.length + 1;
     const newId = `var-${nextSlot}`;
+    const newName = suggestUniqueTeamName(savedTeams.map(s => s.variationName || ''));
     setVariationId(newId);
-    setVariationName(`Team ${nextSlot}`);
+    setVariationName(newName);
     setPicked([]);
     setCaptain('');
     setVice('');
     setStep('pick');
-    toast(t('New squad slot {name} created. Pick your 6 players or select a smart preset!', { name: `Team ${nextSlot}` }));
+    toast(t('New squad slot "{name}" created. Pick your 11 players or select a smart preset!', { name: newName }));
   };
 
   const handleApplyPreset = (preset: LineupPreset) => {
@@ -248,9 +296,12 @@ export default function FantasyMatchPage({ id }: { id: string }) {
     try {
       const r = await api.submitFantasy(m.id, picked, captain, vice, variationId, variationName);
       setUser(r.user);
-      toast(t('Dream XI variation "{name}" saved and persisted.', { name: variationName }));
+      setJustSaved(true);
+      toast(t('Squad Saved! Your team "{name}" is locked in for the match.', { name: variationName }), 'success');
+      setTimeout(() => {
+        setJustSaved(false);
+      }, 2600);
       reload();
-      setStep('pick');
     } catch (e: any) {
       setErr(e.message);
     } finally {
@@ -330,8 +381,6 @@ export default function FantasyMatchPage({ id }: { id: string }) {
   const visible = pool
     .filter(p => (role === 'all' || p.role === role) && (teamFilter === 'all' || p.teamId === teamFilter) && (levelFilter === 'all' || String(p.form?.allocationLevel ?? (p.form?.tier === 'star' ? 5 : 3)) === levelFilter))
     .sort((x, y) => (y.form?.projectedPoints || 0) - (x.form?.projectedPoints || 0) || x.name.localeCompare(y.name));
-  const isSquadComplete = picked.length === rules.size;
-  const complete = isSquadComplete && isSquadBalanced;
 
   return (
     <div className="space-y-4 pb-24">
@@ -342,18 +391,28 @@ export default function FantasyMatchPage({ id }: { id: string }) {
 
       {/* Variation Switcher & Manager Bar */}
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-900/80 p-2.5 border border-slate-800 text-xs">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="font-bold text-slate-300 inline-flex items-center gap-1">
             <Layers className="w-3.5 h-3.5 text-amber-400" />
-            {t('Variation')}:
+            {t('Team Name')}:
           </span>
           <input
             type="text"
             value={variationName}
             onChange={e => setVariationName(e.target.value)}
-            className="rounded bg-slate-950 px-2.5 py-1 font-bold text-white border border-slate-700 focus:border-amber-400 focus:outline-none max-w-[150px]"
-            placeholder="e.g. Team 1"
+            className="rounded bg-slate-950 px-2.5 py-1 font-bold text-white border border-slate-700 focus:border-amber-400 focus:outline-none min-w-[160px]"
+            placeholder="Unique squad name"
           />
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={handleSuggestName}
+            className="text-amber-400 text-xs px-2 hover:bg-amber-400/10 flex items-center gap-1 cursor-pointer"
+            title={t('Suggest a unique creative cricket team name')}
+          >
+            <Dices className="w-3.5 h-3.5" />
+            <span>{t('Suggest Name')}</span>
+          </Button>
         </div>
 
         <div className="flex items-center gap-1.5 flex-wrap">
@@ -365,7 +424,7 @@ export default function FantasyMatchPage({ id }: { id: string }) {
                 type="button"
                 onClick={() => handleSelectVariation(st.variationId || 'var-1')}
                 className={cx(
-                  'rounded-lg px-2.5 py-1 font-bold text-xs transition-all border',
+                  'rounded-lg px-2.5 py-1 font-bold text-xs transition-all border cursor-pointer',
                   isCur
                     ? 'bg-amber-400 text-slate-950 border-amber-400 shadow-sm'
                     : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-600'
@@ -403,25 +462,25 @@ export default function FantasyMatchPage({ id }: { id: string }) {
         onSelectVariation={handleSelectVariation}
       />
 
-      {/* Real-time counters: Squad Size (6 max), Total Squad Projected Points, Stars, and Team distributions */}
+      {/* Real-time counters: Squad Size (11 max), Budget (100 credits cap), Stars (Few good players), and Team distributions */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center" data-testid="xi-counters">
         <Card className="p-2 border border-amber-500/30 bg-slate-900/90">
           <p className={cx('text-lg font-black tabular-nums', complete ? 'text-emerald-400' : 'text-amber-400')}>
             {picked.length}/{rules.size}
           </p>
-          <p className="text-[11px] text-slate-300 font-semibold">{t('Squad ({size} Max)', { size: rules.size })}</p>
+          <p className="text-[11px] text-slate-300 font-semibold">{t('Squad ({size} Players)', { size: rules.size })}</p>
         </Card>
         <Card className="p-2">
-          <p className="text-lg font-black text-amber-300 tabular-nums">
-            {totalSquadProj} <span className="text-xs font-normal text-slate-400">pts</span>
+          <p className={cx('text-lg font-black tabular-nums', isUnderBudget ? 'text-emerald-300' : 'text-rose-400')}>
+            {totalCreditsUsed} <span className="text-xs font-normal text-slate-400">/ {budgetLimit}</span>
           </p>
-          <p className="text-[11px] text-slate-400">{t('Squad Proj. Points')}</p>
+          <p className="text-[11px] text-slate-400">{remainingCredits >= 0 ? `${remainingCredits} credits left` : 'Over Budget!'}</p>
         </Card>
         <Card className="p-2 col-span-2 sm:col-span-1">
-          <p className={cx('text-lg font-black tabular-nums', starCount >= 2 ? 'text-emerald-400' : 'text-sky-300')}>
-            {starCount} ⭐
+          <p className={cx('text-lg font-black tabular-nums', isTopLimitOk ? (topCount >= 3 ? 'text-emerald-400' : 'text-sky-300') : 'text-rose-400')}>
+            {topCount}/{maxTop} ⭐
           </p>
-          <p className="text-[11px] text-slate-400">{t('Star Anchors')}</p>
+          <p className="text-[11px] text-slate-400">{t('Stars (Max {n})', { n: maxTop })}</p>
         </Card>
         <Card className="p-2">
           <p className={cx('text-lg font-black tabular-nums', perTeam(m.teamA) > rules.maxFromOneTeam ? 'text-red-400' : 'text-white')}>
@@ -445,7 +504,7 @@ export default function FantasyMatchPage({ id }: { id: string }) {
         squadSizeLimit={rules.size}
       />
 
-      {/* Balanced Squad Requirement Board (6 Players across 4 Roles) */}
+      {/* Balanced Squad Requirement Board (11 Players across 4 Roles) */}
       <div className="rounded-2xl border border-slate-800 bg-slate-900/90 p-3.5 sm:p-4 space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
@@ -454,11 +513,11 @@ export default function FantasyMatchPage({ id }: { id: string }) {
                 <Shield className="h-3.5 w-3.5" />
               </span>
               <h4 className="text-sm font-black text-white">
-                {t('Balanced Squad Requirement (6 Players Across Roles)')}
+                {t('Balanced Squad Requirement (11 Players Across Roles)')}
               </h4>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              {t('Every 6-player squad must include at least 1 Wicketkeeper, 1 Batter, 1 All-Rounder, and 1 Bowler (Max {max} per role).', { max: rules.roleMax })}
+              {t('Every 11-player squad must include at least 1 Wicketkeeper, 1 Batter, 1 All-Rounder, and 1 Bowler (Max {max} per role).', { max: rules.roleMax })}
             </p>
           </div>
 
@@ -661,6 +720,18 @@ export default function FantasyMatchPage({ id }: { id: string }) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-bold text-sm text-white truncate">{p.name}</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setInfoPlayerId(infoPlayerId === p.id ? null : p.id);
+                          }}
+                          aria-label={t('View stats for {name}', { name: p.name })}
+                          title={t('Historical metrics & career stats')}
+                          className="p-1 rounded-full text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+                        >
+                          <Info className="w-3.5 h-3.5" />
+                        </button>
 
                         {/* Role Category Badge */}
                         {(() => {
@@ -779,15 +850,17 @@ export default function FantasyMatchPage({ id }: { id: string }) {
                       )}
                     </div>
 
-                    {/* Refined Base Point Projection (No player valuation displayed) */}
-                    <div className="flex flex-col items-end text-end min-w-[70px]">
+                    {/* Base Point Projection & Credits */}
+                    <div className="flex flex-col items-end text-end min-w-[76px]">
                       <div className="inline-flex items-baseline gap-1">
                         <span className="text-base font-black text-amber-400 tabular-nums">
                           {form?.projectedPoints || 70}
                         </span>
                         <span className="text-[10px] font-bold text-slate-400">pts</span>
                       </div>
-                      <span className="text-[10px] text-slate-400 font-medium">Base Proj.</span>
+                      <span className="text-[11px] font-black text-slate-200 tabular-nums">
+                        {p.credits ?? 8.0} <span className="text-[10px] font-medium text-slate-400">credits</span>
+                      </span>
                       {form?.recentAvg && (
                         <span className="text-[9px] text-slate-500 font-mono">
                           Past: {form.pastPointsAvg || form.recentAvg} avg
@@ -968,7 +1041,17 @@ export default function FantasyMatchPage({ id }: { id: string }) {
                 {complete ? (
                   <span className="text-emerald-400 font-bold inline-flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    {t('Balanced Squad Complete (6/6) · {pts} Proj Pts', { pts: totalSquadProj })}
+                    {t('Balanced Squad (11/11) · {credits} credits · {pts} Proj Pts', { credits: totalCreditsUsed, pts: totalSquadProj })}
+                  </span>
+                ) : isSquadComplete && !isUnderBudget ? (
+                  <span className="text-rose-400 font-bold inline-flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    {t('Over budget ({credits}/{max} credits). Swap top stars for budget enablers.', { credits: totalCreditsUsed, max: budgetLimit })}
+                  </span>
+                ) : isSquadComplete && !isTopLimitOk ? (
+                  <span className="text-amber-400 font-bold inline-flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    {t('Max {max} stars allowed ({count} picked). Balance with mediocre players.', { max: maxTop, count: topCount })}
                   </span>
                 ) : isSquadComplete && !isSquadBalanced ? (
                   <span className="text-amber-400 font-bold inline-flex items-center gap-1">
@@ -979,10 +1062,11 @@ export default function FantasyMatchPage({ id }: { id: string }) {
                   </span>
                 ) : (
                   <span>
-                    {t('{n} more to pick ({cur}/{size})', {
+                    {t('{n} more to pick ({cur}/{size}) · {rem} credits left', {
                       n: rules.size - picked.length,
                       cur: picked.length,
                       size: rules.size,
+                      rem: remainingCredits.toFixed(1),
                     })}
                     {missingRoles.length > 0 && (
                       <span className="text-amber-400/90 ml-1.5 font-medium">
@@ -992,9 +1076,34 @@ export default function FantasyMatchPage({ id }: { id: string }) {
                   </span>
                 )}
               </span>
-              <Button disabled={!complete} onClick={() => setStep('captain')} data-testid="xi-next">
-                {t('Next')}: {t('captain')}
-              </Button>
+              {complete && captain && vice ? (
+                <Button
+                  disabled={!complete}
+                  loading={saving}
+                  onClick={save}
+                  data-testid="xi-quick-save"
+                  className={cx(
+                    'transition-all duration-300 font-bold cursor-pointer',
+                    justSaved ? '!bg-emerald-500 !text-slate-950 hover:!bg-emerald-400 !border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.7)] scale-105' : ''
+                  )}
+                >
+                  {justSaved ? (
+                    <span className="inline-flex items-center gap-1.5 font-black text-slate-950 animate-in zoom-in-75 duration-300">
+                      <CheckCircle2 className="w-4 h-4 stroke-[2.5] text-slate-950" />
+                      {t('Squad Saved!')}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5">
+                      <Check className="w-4 h-4" />
+                      {t('Submit Team')}
+                    </span>
+                  )}
+                </Button>
+              ) : (
+                <Button disabled={!complete} onClick={() => setStep('captain')} data-testid="xi-next">
+                  {t('Next')}: {t('captain')}
+                </Button>
+              )}
             </>
           ) : (
             <>
@@ -1005,13 +1114,191 @@ export default function FantasyMatchPage({ id }: { id: string }) {
                 <Crown className="w-3.5 h-3.5 text-amber-400" />
                 {captain ? byId.get(captain)?.name : t('pick a captain')}
               </span>
-              <Button disabled={!captain || !vice} loading={saving} onClick={save} data-testid="xi-save">
-                <Check className="w-4 h-4" /> {t('Save "{name}"', { name: variationName })}
+              <Button
+                disabled={!captain || !vice || !complete}
+                loading={saving}
+                onClick={save}
+                data-testid="xi-save"
+                className={cx(
+                  'transition-all duration-300 font-bold cursor-pointer',
+                  justSaved ? '!bg-emerald-500 !text-slate-950 hover:!bg-emerald-400 !border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.7)] scale-105' : ''
+                )}
+              >
+                {justSaved ? (
+                  <span className="inline-flex items-center gap-1.5 font-black text-slate-950 animate-in zoom-in-75 duration-300">
+                    <CheckCircle2 className="w-4 h-4 stroke-[2.5] text-slate-950" />
+                    {t('Squad Saved!')}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Check className="w-4 h-4" /> {t('Submit Team "{name}"', { name: variationName })}
+                  </span>
+                )}
               </Button>
             </>
           )}
         </div>
       </div>
+
+      {/* Historical Performance Metrics Popover Modal */}
+      {(() => {
+        const infoPlayer = infoPlayerId ? byId.get(infoPlayerId) : null;
+        if (!infoPlayer) return null;
+        const hist = infoPlayer.form?.historicalMetrics;
+        const tm = teamById(infoPlayer.teamId);
+        const rConf = ROLE_INFO[infoPlayer.role];
+        const RIcon = rConf.icon;
+
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200"
+            onClick={() => setInfoPlayerId(null)}
+          >
+            <div
+              className="relative w-full max-w-lg rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl shadow-black/90 space-y-4 max-h-[90vh] overflow-y-auto"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-3">
+                  <Avatar name={infoPlayer.name} src={infoPlayer.photoUrl} size={48} />
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-base font-black text-white">{infoPlayer.name}</h3>
+                      {(infoPlayer.form?.tier === 'star' || isTop(infoPlayer)) && (
+                        <span className="text-amber-400 text-sm" title="Star / Marquee Player">⭐</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
+                      <TeamBadge team={tm} size="xs" />
+                      <span className="font-bold text-slate-300">{tm?.name}</span>
+                      <span>·</span>
+                      <span className={cx('font-bold inline-flex items-center gap-1', rConf.badgeText)}>
+                        <RIcon className="w-3 h-3" />
+                        {rConf.singular}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setInfoPlayerId(null)}
+                  className="rounded-lg p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                  aria-label="Close"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Fantasy Cost & Valuation Bar */}
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-xl bg-slate-950/70 p-2.5 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 uppercase font-black block">Cost (Credits)</span>
+                  <span className="text-base font-black text-white tabular-nums">{infoPlayer.credits ?? 8.0} <span className="text-xs text-slate-400 font-semibold">{t('credits')}</span></span>
+                </div>
+                <div className="rounded-xl bg-slate-950/70 p-2.5 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 uppercase font-black block">Base Proj.</span>
+                  <span className="text-base font-black text-amber-300 tabular-nums">{infoPlayer.form?.projectedPoints || 70} <span className="text-xs text-slate-400 font-normal">pts</span></span>
+                </div>
+                <div className="rounded-xl bg-slate-950/70 p-2.5 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 uppercase font-black block">Avg Pts / Match</span>
+                  <span className="text-base font-black text-emerald-400 tabular-nums">{hist?.avgPointsPerMatch || infoPlayer.form?.pastPointsAvg || infoPlayer.form?.recentAvg || 65}</span>
+                </div>
+              </div>
+
+              {/* Historical Performance Metrics Grid */}
+              <div>
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-300 mb-2 flex items-center gap-1.5">
+                  <Award className="w-3.5 h-3.5 text-amber-400" />
+                  {t('Historical Performance Metrics')}
+                </h4>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+                  <div className="rounded-xl bg-slate-950/50 p-2 border border-slate-800">
+                    <span className="text-[10px] text-slate-400 block">{t('Matches')}</span>
+                    <span className="text-sm font-black text-white">{hist?.matches || 22}</span>
+                  </div>
+                  <div className="rounded-xl bg-slate-950/50 p-2 border border-slate-800">
+                    <span className="text-[10px] text-slate-400 block">{t('Total Runs')}</span>
+                    <span className="text-sm font-black text-sky-300">{hist?.totalRuns || 0}</span>
+                    <span className="text-[9px] text-slate-500 block">HS: {hist?.highestScore || 0}</span>
+                  </div>
+                  <div className="rounded-xl bg-slate-950/50 p-2 border border-slate-800">
+                    <span className="text-[10px] text-slate-400 block">{t('Strike Rate')}</span>
+                    <span className="text-sm font-black text-amber-300">{hist?.strikeRate || 0}</span>
+                    <span className="text-[9px] text-slate-500 block">Avg: {hist?.battingAvg || 0}</span>
+                  </div>
+                  <div className="rounded-xl bg-slate-950/50 p-2 border border-slate-800">
+                    <span className="text-[10px] text-slate-400 block">{t('Wickets')}</span>
+                    <span className="text-sm font-black text-emerald-300">{hist?.totalWickets || 0}</span>
+                    <span className="text-[9px] text-slate-500 block">Econ: {hist?.economy || 0}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Additional Historical Breakdown: Boundaries, Catches, Stumpings */}
+              <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                <div className="rounded-xl bg-slate-950/50 p-2 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block">{t('Boundaries')}</span>
+                  <span className="text-xs font-black text-slate-200">
+                    {hist?.boundaryCount || 0} 4s · {hist?.sixCount || 0} 6s
+                  </span>
+                </div>
+                <div className="rounded-xl bg-slate-950/50 p-2 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block">{t('Fielding')}</span>
+                  <span className="text-xs font-black text-slate-200">
+                    {hist?.catches || 0} catches {hist?.stumpings ? `· ${hist.stumpings} stumpings` : ''}
+                  </span>
+                </div>
+                <div className="rounded-xl bg-slate-950/50 p-2 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 block">{t('Best Bowling')}</span>
+                  <span className="text-xs font-black text-slate-200">
+                    {hist?.bestBowling || '—'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Form Trajectory & Pitch Fit */}
+              <div className="rounded-xl bg-slate-950/60 p-3 border border-slate-800 text-xs space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400 font-medium">{t('Recent Match Scores')}:</span>
+                  <div className="flex items-center gap-1">
+                    {(infoPlayer.form?.recentScores || []).map((sc, i) => (
+                      <span key={i} className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-800 text-slate-200">
+                        {sc}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-slate-400">
+                  <span>{t('Pitch Suitability')}:</span>
+                  <strong className="text-emerald-400">{infoPlayer.form?.pitchSuitability}</strong>
+                </div>
+                <div className="flex items-center justify-between text-slate-400">
+                  <span>{t('Match Context')}:</span>
+                  <span className="text-slate-300 font-medium truncate max-w-[200px]">{infoPlayer.form?.matchupNote}</span>
+                </div>
+              </div>
+
+              {/* Action Footer */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                <Button variant="ghost" size="sm" onClick={() => setInfoPlayerId(null)}>
+                  {t('Close')}
+                </Button>
+                <Button
+                  size="sm"
+                  variant={picked.includes(infoPlayer.id) ? 'danger' : 'primary'}
+                  onClick={() => {
+                    toggle(infoPlayer);
+                    setInfoPlayerId(null);
+                  }}
+                >
+                  {picked.includes(infoPlayer.id) ? t('Remove from Squad') : t('Add to Squad')}
+                </Button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

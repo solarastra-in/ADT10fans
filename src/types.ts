@@ -343,6 +343,23 @@ export interface PlayerFormStats {
   projectedCeiling: number;
   projectedFloor: number;
   adaptationSummary: string;
+  historicalMetrics?: PlayerHistoricalMetrics;
+}
+
+export interface PlayerHistoricalMetrics {
+  matches: number;
+  totalRuns: number;
+  highestScore: number;
+  strikeRate: number;
+  battingAvg: number;
+  totalWickets: number;
+  economy: number;
+  bestBowling: string;
+  catches: number;
+  stumpings: number;
+  avgPointsPerMatch: number;
+  boundaryCount: number;
+  sixCount: number;
 }
 
 export interface PlayerWithForm extends Player {
@@ -429,7 +446,7 @@ export interface GuessState {
   available: boolean;
   maxGuesses?: number;
   clues?: { label: string; value: string }[];
-  guesses?: { playerId: string; name: string; correct: boolean; sameTeam: boolean; sameRole: boolean }[];
+  guesses?: { playerId: string; name: string; teamId?: string; teamName?: string; role?: string; correct: boolean; sameTeam: boolean; sameRole: boolean }[];
   finished?: boolean;
   solved?: boolean;
   points?: number;
@@ -454,7 +471,7 @@ export interface GamesToday {
   guess: GuessState;
   superOver: SuperOverState;
   leaderboards: { guess: { userId: string; name: string; avatar: string; teamId: string | null; points: number }[]; superover: { userId: string; name: string; avatar: string; teamId: string | null; points: number }[] };
-  players: { id: string; name: string; teamId: string }[];
+  players: { id: string; name: string; teamId: string; role?: string }[];
 }
 
 export interface PrizeDraw {

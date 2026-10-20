@@ -793,8 +793,37 @@ export function defaultSettings(): SystemSettings {
     referralRewardPoints: 50,
     referralMaxRewarded: 10,
     lockReminderMinutes: Math.max(5, Number(process.env.LOCK_REMINDER_MINUTES) || 30),
-    smtp: { host: '', port: 587, user: '', pass: '', from: '', enabled: false },
+    smtp: {
+      host: process.env.SMTP_HOST || '',
+      port: Number(process.env.SMTP_PORT) || 587,
+      user: process.env.SMTP_USER || '',
+      pass: process.env.SMTP_PASS || '',
+      from: process.env.SMTP_FROM || (process.env.SMTP_USER ? `"Abu Dhabi T10 Fans" <${process.env.SMTP_USER}>` : ''),
+      enabled: Boolean(process.env.SMTP_HOST),
+    },
   };
+}
+
+export function seedSmtpFromEnv(s: AppStore['settings']['smtp']): boolean {
+  let changed = false;
+  if (!s.host && process.env.SMTP_HOST) { s.host = process.env.SMTP_HOST; changed = true; }
+  if ((!s.port || s.port === 587) && process.env.SMTP_PORT) { s.port = Number(process.env.SMTP_PORT) || 587; changed = true; }
+  if (!s.user && process.env.SMTP_USER) { s.user = process.env.SMTP_USER; changed = true; }
+  if (!s.pass && process.env.SMTP_PASS) { s.pass = process.env.SMTP_PASS; changed = true; }
+  if (!s.from) {
+    if (process.env.SMTP_FROM) {
+      s.from = process.env.SMTP_FROM;
+      changed = true;
+    } else if (s.user || process.env.SMTP_USER) {
+      s.from = `"Abu Dhabi T10 Fans" <${s.user || process.env.SMTP_USER}>`;
+      changed = true;
+    }
+  }
+  if (!s.enabled && (s.host || process.env.SMTP_HOST)) {
+    s.enabled = true;
+    changed = true;
+  }
+  return changed;
 }
 
 /** A brand-new store. Teams, squads and verified handles are added by seedOfficial.initializeStore(). */
@@ -964,10 +993,10 @@ export function migrate(raw: any): AppStore {
     if (typeof u.pointsSpent !== 'number') u.pointsSpent = 0;
   }
   for (const t of out.forumThreads as any[]) if (t.userAvatar && STOCK_IMAGE.test(t.userAvatar)) t.userAvatar = '';
-  for (const c of out.forumComments as any[]) if (c.userAvatar && STOCK_IMAGE.test(c.userAvatar)) c.userAvatar = '';
   for (const t of out.teams as any[]) {
-    for (const p of t.squad || []) delete p.stats; // unverified stats from an earlier version
+    for (const p of t.squad || []) delete p.stats;
   }
+  seedSmtpFromEnv(out.settings.smtp);
   out.schemaVersion = SCHEMA_VERSION;
   return out as AppStore;
 }
@@ -1180,6 +1209,7 @@ class DatabaseManager {
 }
 
 export const db = new DatabaseManager();
+db.onLoad(store => seedSmtpFromEnv(store.settings.smtp));
 
 if (!process.env.VERCEL) {
   for (const sig of ['SIGINT', 'SIGTERM'] as const) {

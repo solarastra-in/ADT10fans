@@ -107,8 +107,7 @@ coreRouter.post('/auth/otp/request', rateLimit('otp-req', 5, 10 * 60_000), wrap(
     console.error('[OTP] email send failed:', e?.message);
     return bad(res, 'We could not send the email. Please try again or use Google sign-in.', 502);
   }
-  if (mode === 'dev') console.log(`[OTP][dev] code for ${email}: ${code}`);
-  res.json({ success: true, message: `We sent a 6-digit code to ${email}.`, ...(mode === 'dev' ? { devCode: code } : {}) });
+  res.json({ success: true, message: `We sent a 6-digit code to ${email}.` });
 }));
 
 coreRouter.post('/auth/otp/verify', rateLimit('otp-verify', 20, 10 * 60_000), (req, res) => {

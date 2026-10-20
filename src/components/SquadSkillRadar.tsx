@@ -38,7 +38,7 @@ export function SquadSkillRadar({
   pickedPlayers,
   captainId,
   viceCaptainId,
-  squadSizeLimit = 6,
+  squadSizeLimit = 11,
   className,
 }: SquadSkillRadarProps) {
   const t = useT();
@@ -220,7 +220,7 @@ export function SquadSkillRadar({
             </span>
           </div>
           <p className="mt-0.5 text-xs text-slate-400">
-            {t("Aggregate skill distribution across Batting, Bowling, and Fielding for your 6-player squad.")}
+            {t("Aggregate skill distribution across Batting, Bowling, and Fielding for your 11-player squad.")}
           </p>
         </div>
 

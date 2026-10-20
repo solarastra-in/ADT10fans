@@ -44,7 +44,6 @@ export function AuthModal() {
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [sent, setSent] = useState(false);
-  const [devCode, setDevCode] = useState<string | null>(null);
   const [loading, setLoading] = useState<'google' | 'send' | 'verify' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,7 +60,6 @@ export function AuthModal() {
     closeAuth();
     setSent(false);
     setCode('');
-    setDevCode(null);
     toast(created ? t('Welcome to the fan hub, {name}!', { name: user.name }) : t('Signed in as {name}', { name: user.name }));
     await reloadAll().catch(() => undefined);
     if (!user.teamId) openTeamPicker();
@@ -97,9 +95,9 @@ export function AuthModal() {
     setLoading('send');
     setError(null);
     try {
-      const r = await api.requestOtp(email.trim());
+      await api.requestOtp(email.trim());
       setSent(true);
-      setDevCode(r.devCode || null);
+      setCode('');
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -165,7 +163,14 @@ export function AuthModal() {
               </Notice>
               {devCode && (
                 <Notice tone="warn">
-                  {t('Development mode (no email server): your code is')} <strong className="font-mono tracking-widest" data-testid="dev-code">{devCode}</strong>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span>
+                      {t('Dev code auto-filled')}: <strong className="font-mono tracking-widest text-base text-amber-300" data-testid="dev-code">{devCode}</strong>
+                    </span>
+                    <button type="button" onClick={() => setCode(devCode)} className="text-xs font-bold text-amber-400 hover:underline">
+                      {t('Re-fill')}
+                    </button>
+                  </div>
                 </Notice>
               )}
               <label className="block">

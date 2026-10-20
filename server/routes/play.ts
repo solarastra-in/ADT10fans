@@ -400,7 +400,7 @@ playRouter.get('/games/today', (req, res) => {
     guess: guessView(store, user, day),
     superOver: superOverState(store, user, day),
     leaderboards: { guess: todayLeaderboard(store, 'guess', day), superover: todayLeaderboard(store, 'superover', day) },
-    players: store.teams.flatMap(t => t.squad.map(p => ({ id: p.id, name: p.name, teamId: t.id }))).sort((a, b) => a.name.localeCompare(b.name)),
+    players: store.teams.flatMap(t => t.squad.map(p => ({ id: p.id, name: p.name, teamId: t.id, role: p.role }))).sort((a, b) => a.name.localeCompare(b.name)),
   });
 });
 
