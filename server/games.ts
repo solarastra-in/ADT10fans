@@ -30,16 +30,16 @@ db.onLoad(store => {
 });
 
 /** Deterministic number in [0, 1) for a key. */
-function roll(store: AppStore, key: string): number {
+export function roll(store: AppStore, key: string): number {
   const h = crypto.createHmac('sha256', gameSecret(store)).update(key).digest();
   return h.readUInt32BE(0) / 0x100000000;
 }
 
-function findPlay(store: AppStore, userId: string, game: GamePlay['game'], day: string) {
+export function findPlay(store: AppStore, userId: string, game: GamePlay['game'], day: string) {
   return store.gamePlays.find(p => p.userId === userId && p.game === game && p.day === day);
 }
 
-function startPlay(store: AppStore, userId: string, game: GamePlay['game'], day: string, state: any): GamePlay {
+export function startPlay(store: AppStore, userId: string, game: GamePlay['game'], day: string, state: any): GamePlay {
   const now = new Date().toISOString();
   const play: GamePlay = { userId, game, day, state, finished: false, points: 0, createdAt: now, updatedAt: now };
   store.gamePlays.push(play);
@@ -51,7 +51,7 @@ function startPlay(store: AppStore, userId: string, game: GamePlay['game'], day:
 // ---------- Guess the Player ----------
 const GUESS_MAX = 5;
 
-function allPlayers(store: AppStore): (Player & { teamName: string })[] {
+export function allPlayers(store: AppStore): (Player & { teamName: string })[] {
   return store.teams.flatMap(t => t.squad.map(p => ({ ...p, teamName: t.name })));
 }
 

@@ -6,6 +6,7 @@ import type {
   ProfileResponse, FanSpace, FanSpaceBooking, Approval, AgentRun, ForumReportView, Reaction, ProposalSettings,
   YouthCupSchool, CreatorPartner, CommentaryAudioFeed, SuperfanPassportTier,
   AdminFanPoints, PointsHistory, PointsEntry, PlayerWithForm, LineupPreset, MatchSwingInsights, PlayerDetail,
+  ConnectionsState, GridState, StatQuestion, StatWarsResult, DuelView,
 } from './types';
 
 const TOKEN_KEY = 't10_auth_token';
@@ -127,6 +128,7 @@ export const api = {
   getPlayer: (id: string) => pub<PlayerDetail>(`/api/players/${encodeURIComponent(id)}`),
   seedOfficialTeams: (overwrite = false, teamId?: string) => post<Ok & { teams: Team[]; handles: SocialHandle[]; created: string[]; updated: string[]; skipped: string[]; summary: string }>('/api/admin/teams/seed-official', { overwrite, teamId }),
   saveTeam: (team: Partial<Team>) => post<Ok & { team: Team; teams: Team[] }>('/api/teams', team),
+  resolvePlayerLinks: (opts: { all?: boolean; teamId?: string } = {}) => post<Ok & { checked: number; updated: number; report: string[] }>('/api/admin/players/links/resolve', opts),
   saveSquad: (teamId: string, squad: Partial<Player>[], force = false) => post<Ok & { team: Team; teams: Team[] }>(`/api/teams/${encodeURIComponent(teamId)}/squad`, { squad, force }),
   deleteTeam: (id: string) => del<Ok & { teams: Team[] }>(`/api/teams/${encodeURIComponent(id)}`),
   getHandles: (params?: { teamId?: string; platform?: string }) => req<{ handles: SocialHandle[] }>(`/api/handles${qs(params)}`),
@@ -185,6 +187,14 @@ export const api = {
 
   // ----- daily games -----
   getGamesToday: () => req<GamesToday>('/api/games/today'),
+  submitConnections: (playerIds: string[]) => post<Ok & { connections: ConnectionsState; user: User }>('/api/games/connections', { playerIds }),
+  submitGrid: (cell: string, playerId: string) => post<Ok & { grid: GridState; user: User }>('/api/games/grid', { cell, playerId }),
+  startStatWars: (duel?: string) => post<Ok & { startedAt: string; seconds: number; questions: StatQuestion[] }>('/api/games/statwars/start', duel ? { duel } : {}),
+  finishStatWars: (answers: ('a' | 'b' | null)[], duel?: string) => post<Ok & StatWarsResult>('/api/games/statwars/finish', duel ? { answers, duel } : { answers }),
+  getDuels: () => req<{ mine: DuelView[]; open: DuelView[] }>('/api/duels'),
+  getDuel: (code: string) => req<{ duel: DuelView }>(`/api/duels/${encodeURIComponent(code)}`),
+  createDuel: (open: boolean) => post<Ok & { duel: DuelView }>('/api/duels', { open }),
+  joinDuel: (code: string) => post<Ok & { duel: DuelView }>(`/api/duels/${encodeURIComponent(code)}/join`, {}),
   submitGuess: (playerId: string) => post<Ok & { guess: GuessState; user: User }>('/api/games/guess', { playerId }),
   playSuperOverBall: (shot: Shot) => post<Ok & { superOver: SuperOverState; user: User }>('/api/games/superover', { shot }),
 

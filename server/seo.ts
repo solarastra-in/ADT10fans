@@ -415,8 +415,34 @@ export function renderPage(rawPath: string, store: AppStore, base: string): Rend
         body: shell('Pick XI', 'Pick 11 players for each match, within 100 credits and no more than 7 from one team.', `<ul>${upcoming.map(m => `<li><a href="/fantasy/${encodeURIComponent(m.id)}">${esc(matchTitle(store, m))}</a> – locks ${esc(fmtDate(m.startsAt))}</li>`).join('')}</ul><p><a href="/rules#dream-xi">How points are scored</a></p>`),
       });
     }
+    case 'games': {
+      if (parts[1] === 'duel' && parts[2]) {
+        // Invite links: shareable (with a preview) but not worth indexing.
+        return page({ robots: 'noindex, follow', title: 'Stat Wars duel: can you beat my score?', description: `A 60-second Stat Wars challenge on ${brand}: the same questions for both fans, the higher score wins.`, body: shell('Stat Wars duel', 'Same questions, 60 seconds each. The higher score wins.', '<p><a href="/games">All games</a></p>') });
+      }
+      if (parts[1]) return notFound();
+      return page({
+        title: 'Cricket games: Squad Connections, Cricket Grid, Stat Wars',
+        description: 'Daily skill games for Abu Dhabi T10 fans: group players in Squad Connections, fill the Cricket Grid, race the clock in Stat Wars and challenge friends to duels. Free, with points for the season leaderboard.',
+        jsonLd: [
+          {
+            '@context': 'https://schema.org',
+            '@type': 'ItemList',
+            name: 'Daily cricket games',
+            itemListElement: ['Squad Connections', 'Cricket Grid', 'Stat Wars', 'Guess the Player', 'Super Over'].map((name, i) => ({ '@type': 'ListItem', position: i + 1, name, url: `${base}/games` })),
+          },
+        ],
+        body: shell(
+          'Daily cricket games',
+          'New puzzles every day at midnight UAE time. One go at each, points for the season leaderboard.',
+          '<h2>Squad Connections</h2><p>Sixteen players, four hidden groups of four: a team, a role, how they bat or bowl, or their signing. Four mistakes allowed.</p>' +
+            '<h2>Cricket Grid</h2><p>Three teams down the side, three traits across the top. Name a player for each square; the fewer fans who picked the same player, the more it scores.</p>' +
+            '<h2>Stat Wars</h2><p>Sixty seconds of head-to-head questions from this season\'s real scorecards. Challenge a friend to a duel on the same questions.</p>' +
+            '<h2>Guess the Player and Super Over</h2><p>Guess the mystery player in five tries, and bat a Super Over to beat the day\'s target.</p>',
+        ),
+      });
+    }
     case 'play':
-    case 'games':
     case 'contests':
     case 'prizes':
     case 'leaderboard':
@@ -429,7 +455,6 @@ export function renderPage(rawPath: string, store: AppStore, base: string): Rend
       if (parts[1]) return notFound();
       const meta: Record<string, [string, string, string]> = {
         play: ['Play: Pick XI, daily games and predictions', 'Free games for Abu Dhabi T10 fans: Pick XI fantasy, Guess the Player, Super Over and match predictions. Earn points for your team.', 'Play'],
-        games: ['Daily cricket games: Guess the Player and Super Over', 'Two new games every day: guess the mystery Abu Dhabi T10 player in five tries, and bat a Super Over to beat the day\'s target.', 'Daily games'],
         contests: ['Match predictions and quizzes', 'Predict match winners, top scorers and sixes, and take instant T10 quizzes for points.', 'Predictions'],
         prizes: ['Prizes and prize draws', 'Spend your fan points on rewards, and enter free prize draws with a verifiable result.', 'Prizes'],
         leaderboard: ['Fan leaderboard and Fan Wars', 'The top fans of the season and the Fan Wars table: which franchise has the most active supporters.', 'Leaderboard'],

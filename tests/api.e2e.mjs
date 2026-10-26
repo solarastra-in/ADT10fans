@@ -659,6 +659,106 @@ ok('robots.txt blocks admin and API', /Disallow: \/admin/.test((await html('/rob
   await post('/api/admin/settings', { referralMaxRewarded: 10 }, A);
 }
 
+// ============ 14b. Skill games: Squad Connections, Cricket Grid, Stat Wars, duels ============
+{
+  const G1 = (await login('gamer1@test.dev')).token;
+  const G2 = (await login('gamer2@test.dev')).token;
+  const allTeams = (await get('/api/teams')).json.teams;
+  const pl = new Map(allTeams.flatMap(t => t.squad.map(p => [p.id, p])));
+  const bowl = p => (p.bowlingStyle || '').toLowerCase();
+  // The same traits as server/arcade.ts, by label, so the test can check answers independently.
+  const traits = {
+    'Left-hand batter': p => /left-hand/i.test(p.battingStyle || ''),
+    Wicketkeeper: p => p.role === 'wicketkeeper' || Boolean(p.isKeeper),
+    'Off-spinner': p => /offbreak/.test(bowl(p)),
+    'Leg-spinner or wrist-spinner': p => /legbreak|wrist-spin/.test(bowl(p)),
+    'Left-arm orthodox spinner': p => /left-arm orthodox/.test(bowl(p)),
+    'Left-arm seamer': p => /^left-arm (fast|medium)/.test(bowl(p)),
+    'Right-arm fast or fast-medium': p => /^right-arm fast/.test(bowl(p)),
+    'Right-arm medium pace': p => bowl(p) === 'right-arm medium',
+    'Icon or Platinum signing': p => p.isIcon || /icon|platinum/i.test(p.category || ''),
+    'Batting all-rounder': p => p.cricbuzzRole === 'Batting Allrounder',
+    'Bowling all-rounder': p => p.cricbuzzRole === 'Bowling Allrounder',
+    'Specialist batter': p => p.role === 'batter',
+    'Specialist bowler': p => p.role === 'bowler',
+    "Doesn't bowl": p => !p.bowlingStyle,
+  };
+  const traitOf = label => {
+    if (traits[label]) return traits[label];
+    const team = allTeams.find(t => label === `Plays for ${t.name}` || label === t.name);
+    return team ? p => p.teamId === team.id : null;
+  };
+
+  // Squad Connections
+  let today = (await get('/api/games/today', G1)).json;
+  ok('Squad Connections: 16 players, groups hidden', today.connections.available && today.connections.remaining.length === 16 && today.connections.groups.length === 0, today.connections);
+  ok('the puzzle carries no answers', !JSON.stringify(today.connections).includes('traitId'));
+  const ids = today.connections.remaining.map(p => p.id);
+  const tries = [ids.slice(0, 4), ids.slice(4, 8), ids.slice(8, 12), ids.slice(12, 16), [ids[0], ids[5], ids[10], ids[15]], [ids[1], ids[6], ids[11], ids[12]], [ids[2], ids[7], ids[8], ids[13]], [ids[3], ids[4], ids[9], ids[14]]];
+  let c1;
+  for (const t of tries) {
+    c1 = await post('/api/games/connections', { playerIds: t }, G1);
+    if (c1.json.connections?.finished) break;
+  }
+  ok('Connections ends after 4 mistakes (or a solve) and reveals the groups', c1.json.connections.finished && c1.json.connections.groups.length === 4, c1.json);
+  const groups = c1.json.connections.groups;
+  ok('every revealed group really shares its trait', groups.every(g => g.players.every(p => traitOf(g.label)?.(pl.get(p.id)))), groups.map(g => g.label));
+  ok('no player fits two groups (one answer only)', groups.every(g => g.players.every(p => groups.filter(h => h !== g).every(h => !traitOf(h.label)(pl.get(p.id))))));
+  ok('a finished puzzle cannot be played again', (await post('/api/games/connections', { playerIds: groups[0].players.map(p => p.id) }, G1)).status === 400);
+  const before2 = (await me(G2)).points;
+  let c2;
+  for (const g of groups) c2 = await post('/api/games/connections', { playerIds: g.players.map(p => p.id) }, G2);
+  ok('another fan solves it without mistakes: 4 x 10 + 20 = 60 points', c2.json.connections.solved && c2.json.connections.points === 60 && (await me(G2)).points === before2 + 60, c2.json.connections);
+
+  // Cricket Grid
+  today = (await get('/api/games/today', G1)).json;
+  const grid = today.grid;
+  ok('Cricket Grid: 3 teams x 3 traits', grid.available && grid.rows.length === 3 && grid.cols.length === 3 && grid.guessesLeft === 9, grid);
+  const fits = (r, c) => [...pl.values()].filter(p => p.teamId === grid.rows[r].teamId && traits[grid.cols[c].label](p));
+  ok('every square has at least two possible players', [0, 1, 2].every(r => [0, 1, 2].every(c => fits(r, c).length >= 2)));
+  const right = fits(0, 0)[0];
+  const wrongPick = [...pl.values()].find(p => p.teamId !== grid.rows[0].teamId);
+  const g1 = await post('/api/games/grid', { cell: '0-0', playerId: right.id }, G1);
+  ok('a correct pick fills the square and shows how many fans picked it', g1.json.grid.correct && g1.json.grid.cells['0-0'].id === right.id && g1.json.grid.cells['0-0'].pickedBy === 100 && g1.json.grid.guessesLeft === 8, g1.json);
+  const g2 = await post('/api/games/grid', { cell: '0-1', playerId: wrongPick.id }, G1);
+  ok('a wrong pick uses a guess and leaves the square empty', !g2.json.grid.correct && !g2.json.grid.cells['0-1'] && g2.json.grid.guessesLeft === 7);
+  ok('a player cannot be used twice', (await post('/api/games/grid', { cell: '1-1', playerId: right.id }, G1)).status === 400);
+  const other = fits(0, 0)[1];
+  await post('/api/games/grid', { cell: '0-0', playerId: other.id }, G2);
+  ok('rarity: a pick shared by half the fans shows 50%', (await get('/api/games/today', G1)).json.grid.cells['0-0'].pickedBy === 50);
+
+  // Stat Wars (this season's real figures: match 1 was completed with a scorecard above)
+  ok('Stat Wars is open once the season has figures', today.statWars.available, today.statWars);
+  const run = await post('/api/games/statwars/start', {}, G1);
+  ok('a run starts with questions but no answers', run.status === 200 && run.json.questions.length >= 10 && run.json.questions.every(q => q.answer === undefined && q.values === undefined && q.a.name && q.b.name), run.json);
+  ok('only one run at a time', (await post('/api/games/statwars/start', {}, G1)).status === 400);
+  const done = await post('/api/games/statwars/finish', { answers: run.json.questions.map(() => 'a') }, G1);
+  const review = done.json.review;
+  const expect = review.filter(q => q.right).length * 3 - review.filter(q => !q.right).length;
+  ok('answers are marked from real season figures', review.every(q => (q.answer === 'a') === (/lower/.test(q.prompt) ? q.values[0] < q.values[1] : q.values[0] > q.values[1])), review.slice(0, 3));
+  ok('score: 3 per correct, -1 per wrong, never below 0', done.json.score === Math.max(0, expect + done.json.timeBonus), { score: done.json.score, expect, bonus: done.json.timeBonus });
+  ok('one scoring run a day', (await post('/api/games/statwars/start', {}, G1)).status === 400);
+
+  // Duels
+  const duel = await post('/api/duels', { open: true }, G1);
+  ok('a fan starts a duel and gets a code', duel.status === 200 && /^[A-Z0-9]{6}$/.test(duel.json.duel.code), duel.json);
+  const code = duel.json.duel.code;
+  const d1 = await post('/api/games/statwars/start', { duel: code }, G1);
+  await post('/api/games/statwars/finish', { duel: code, answers: d1.json.questions.map(q => 'a') }, G1);
+  ok('an open duel is listed for other fans once its creator has played', (await get('/api/duels', G2)).json.open.some(d => d.code === code));
+  ok('the challenger\'s score stays hidden until you have played', (await get(`/api/duels/${code}`, G2)).json.duel.challenger.score === null);
+  ok('another fan accepts the duel', (await post(`/api/duels/${code}/join`, {}, G2)).json.duel.opponent?.played === false);
+  const d2 = await post('/api/games/statwars/start', { duel: code }, G2);
+  ok('both fans get the same questions', JSON.stringify(d2.json.questions) === JSON.stringify(d1.json.questions));
+  const g2Before = (await me(G2)).points;
+  const fin = await post('/api/games/statwars/finish', { duel: code, answers: d2.json.questions.map(() => 'b') }, G2);
+  const dv = fin.json.duel;
+  ok('the duel is decided when both have played', dv.status === 'done' && dv.challenger.score !== null && dv.opponent.score !== null, dv);
+  const g2Won = dv.winnerId && dv.winnerId !== dv.challenger.userId;
+  ok('winner gets 15 points, the other 3', (await me(G2)).points === g2Before + (g2Won ? 15 : 3));
+  ok('a third fan cannot take a duel that is taken', (await post(`/api/duels/${code}/join`, {}, F1)).status === 400);
+}
+
 // ============ 15. Account deletion ============
 const t4 = (await post('/api/forum/threads', { title: 'Lions thread here', content: 'Lions fans assemble here please' }, F4)).json.thread;
 ok('delete needs confirmation', (await del('/api/me', F4, {})).status === 400);

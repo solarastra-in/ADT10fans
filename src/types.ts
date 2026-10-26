@@ -517,11 +517,114 @@ export interface SuperOverState {
   bonus: number;
   last?: { shot: Shot; outcome: number | 'W' };
 }
+export interface GamePlayer {
+  id: string;
+  name: string;
+  photoUrl: string | null;
+  teamId: string;
+}
+
+export interface ConnectionsState {
+  day: string;
+  available: boolean;
+  maxMistakes?: number;
+  mistakes?: number;
+  finished?: boolean;
+  solved?: boolean;
+  points?: number;
+  groups?: { label: string; color: 'yellow' | 'green' | 'blue' | 'purple'; found: boolean; players: GamePlayer[] }[];
+  remaining?: GamePlayer[];
+  guesses?: string[][];
+  correct?: boolean;
+  oneAway?: boolean;
+  label?: string | null;
+}
+
+export interface GridState {
+  day: string;
+  available: boolean;
+  rows?: { id: string; label: string; teamId: string }[];
+  cols?: { id: string; label: string }[];
+  guessesLeft?: number;
+  finished?: boolean;
+  points?: number;
+  cells?: Record<string, GamePlayer & { pickedBy: number }>;
+  sizes?: Record<string, number>;
+  rarity?: number;
+  correct?: boolean;
+}
+
+export interface StatWarsState {
+  day: string;
+  available: boolean;
+  seconds: number;
+  questions: number;
+  played: boolean;
+  inProgress: boolean;
+  result: { correct: number; wrong: number; score: number; timeBonus: number; elapsedMs: number; late: boolean } | null;
+}
+
+export interface StatQuestion {
+  id: string;
+  prompt: string;
+  unit: string;
+  a: GamePlayer;
+  b: GamePlayer;
+}
+
+export interface StatWarsResult {
+  correct: number;
+  wrong: number;
+  answered: number;
+  score: number;
+  timeBonus: number;
+  elapsedMs: number;
+  late: boolean;
+  review: (StatQuestion & { answer: 'a' | 'b'; values: [number, number]; given: 'a' | 'b' | null; right: boolean })[];
+  duel?: DuelView;
+  user?: User;
+}
+
+export interface DuelSide {
+  userId: string;
+  name: string;
+  avatar: string;
+  teamId: string | null;
+  played: boolean;
+  score: number | null;
+  correct: number | null;
+  seconds: number | null;
+}
+
+export interface DuelView {
+  code: string;
+  open: boolean;
+  status: 'waiting' | 'done' | 'expired';
+  createdAt: string;
+  expiresAt: string;
+  challenger: DuelSide | null;
+  opponent: DuelSide | null;
+  winnerId: string | null;
+  youCanPlay: boolean;
+  youCanJoin: boolean;
+}
+
+type BoardRow = { userId: string; name: string; avatar: string; teamId: string | null; points: number };
+
 export interface GamesToday {
   day: string;
   guess: GuessState;
   superOver: SuperOverState;
-  leaderboards: { guess: { userId: string; name: string; avatar: string; teamId: string | null; points: number }[]; superover: { userId: string; name: string; avatar: string; teamId: string | null; points: number }[] };
+  connections: ConnectionsState;
+  grid: GridState;
+  statWars: StatWarsState;
+  leaderboards: {
+    guess: BoardRow[];
+    superover: BoardRow[];
+    connections: BoardRow[];
+    grid: (BoardRow & { squares: number; rarity: number })[];
+    statwars: (BoardRow & { correct: number })[];
+  };
   players: { id: string; name: string; teamId: string; role?: string }[];
 }
 

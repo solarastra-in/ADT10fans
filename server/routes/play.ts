@@ -8,6 +8,9 @@ import { creditsFor, DREAM_XI, fantasySeasonTotals, lineupLocked, lineupPool, sc
 import { GameError, guessView, playBall, submitGuess, superOverState, todayLeaderboard, dubaiDay, Shot } from '../games';
 import { notifyFantasyResults } from '../reminders';
 import { awardPoints } from '../points';
+import {
+  connectionsView, createDuel, duelView, findDuel, finishStatWars, gridLeaderboard, gridView, joinDuel, startStatWars, statWarsLeaderboard, statWarsView, submitConnections, submitGrid,
+} from '../arcade';
 
 export const playRouter = Router();
 
@@ -399,7 +402,16 @@ playRouter.get('/games/today', (req, res) => {
     day,
     guess: guessView(store, user, day),
     superOver: superOverState(store, user, day),
-    leaderboards: { guess: todayLeaderboard(store, 'guess', day), superover: todayLeaderboard(store, 'superover', day) },
+    connections: connectionsView(store, user, day),
+    grid: gridView(store, user, day),
+    statWars: statWarsView(store, user, day),
+    leaderboards: {
+      guess: todayLeaderboard(store, 'guess', day),
+      superover: todayLeaderboard(store, 'superover', day),
+      connections: todayLeaderboard(store, 'connections', day),
+      grid: gridLeaderboard(store, day),
+      statwars: statWarsLeaderboard(store, day),
+    },
     players: store.teams.flatMap(t => t.squad.map(p => ({ id: p.id, name: p.name, teamId: t.id, role: p.role }))).sort((a, b) => a.name.localeCompare(b.name)),
   });
 });
@@ -425,5 +437,104 @@ playRouter.post('/games/superover', requireUser, rateLimit('game', 60, 60_000), 
   } catch (e: any) {
     if (e instanceof GameError) return bad(res, e.message);
     throw e;
+  }
+});
+
+// ---------- skill games: Squad Connections, Cricket Grid, Stat Wars, duels ----------
+const gameError = (res: any, e: any) => {
+  if (e instanceof GameError) return bad(res, e.message);
+  throw e;
+};
+
+playRouter.post('/games/connections', requireUser, rateLimit('game', 60, 60_000), (req, res) => {
+  try {
+    const user = userOf(req);
+    const ids = Array.isArray(req.body?.playerIds) ? req.body.playerIds.map((x: unknown) => str(x, 80)) : [];
+    const view = submitConnections(db.get(), user, ids);
+    db.save();
+    res.json({ success: true, connections: view, user: selfUser(user) });
+  } catch (e) {
+    gameError(res, e);
+  }
+});
+
+playRouter.post('/games/grid', requireUser, rateLimit('game', 60, 60_000), (req, res) => {
+  try {
+    const user = userOf(req);
+    const view = submitGrid(db.get(), user, str(req.body?.cell, 5), str(req.body?.playerId, 80));
+    db.save();
+    res.json({ success: true, grid: view, user: selfUser(user) });
+  } catch (e) {
+    gameError(res, e);
+  }
+});
+
+/** Starts a 60-second run: today's (one that scores) or a duel's (body.duel = code). */
+playRouter.post('/games/statwars/start', requireUser, rateLimit('game', 60, 60_000), (req, res) => {
+  try {
+    const user = userOf(req);
+    const store = db.get();
+    const duel = req.body?.duel ? findDuel(store, str(req.body.duel, 12)) : undefined;
+    if (req.body?.duel && !duel) return bad(res, 'Duel not found', 404);
+    const run = startStatWars(store, user, { duel });
+    db.save();
+    res.json({ success: true, ...run });
+  } catch (e) {
+    gameError(res, e);
+  }
+});
+
+playRouter.post('/games/statwars/finish', requireUser, rateLimit('game', 60, 60_000), (req, res) => {
+  try {
+    const user = userOf(req);
+    const store = db.get();
+    const duel = req.body?.duel ? findDuel(store, str(req.body.duel, 12)) : undefined;
+    if (req.body?.duel && !duel) return bad(res, 'Duel not found', 404);
+    const r = finishStatWars(store, user, req.body?.answers, { duel });
+    db.save();
+    res.json({ success: true, ...r, user: selfUser(user) });
+  } catch (e) {
+    gameError(res, e);
+  }
+});
+
+playRouter.get('/duels', (req, res) => {
+  const user = getAuthUser(req);
+  const store = db.get();
+  const mine = user ? store.duels.filter(d => d.createdBy === user.id || d.opponentId === user.id).slice(-30).reverse() : [];
+  const open = store.duels.filter(d => d.open && d.status === 'waiting' && !d.opponentId && +new Date(d.expiresAt) > Date.now() && d.createdBy !== user?.id && d.runs[d.createdBy]?.finishedAt).slice(-20).reverse();
+  res.json({ mine: mine.map(d => duelView(store, d, user)), open: open.map(d => duelView(store, d, user)) });
+});
+
+playRouter.get('/duels/:code', (req, res) => {
+  const store = db.get();
+  const d = findDuel(store, req.params.code);
+  if (!d) return bad(res, 'Duel not found', 404);
+  res.json({ duel: duelView(store, d, getAuthUser(req)) });
+});
+
+playRouter.post('/duels', requireUser, rateLimit('duel', 20, 60 * 60_000), (req, res) => {
+  try {
+    const user = userOf(req);
+    const store = db.get();
+    const d = createDuel(store, user, Boolean(req.body?.open));
+    db.save();
+    res.json({ success: true, duel: duelView(store, d, user) });
+  } catch (e) {
+    gameError(res, e);
+  }
+});
+
+playRouter.post('/duels/:code/join', requireUser, rateLimit('duel', 20, 60 * 60_000), (req, res) => {
+  try {
+    const user = userOf(req);
+    const store = db.get();
+    const d = findDuel(store, req.params.code);
+    if (!d) return bad(res, 'Duel not found', 404);
+    joinDuel(store, user, d);
+    db.save();
+    res.json({ success: true, duel: duelView(store, d, user) });
+  } catch (e) {
+    gameError(res, e);
   }
 });

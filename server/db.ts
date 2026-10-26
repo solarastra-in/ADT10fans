@@ -452,7 +452,8 @@ export const REACTIONS: ReactionEmoji[] = ['👏', '🔥', '😂', '😮', '💯
 export type PointsSource =
   | 'checkin' | 'guess' | 'superover' | 'dream-xi' | 'prediction' | 'quiz'
   | 'forum-thread' | 'forum-reply' | 'forum-removed' | 'badge' | 'referral'
-  | 'prize' | 'prize-refund' | 'admin';
+  | 'prize' | 'prize-refund' | 'admin'
+  | 'connections' | 'grid' | 'statwars' | 'duel' | 'fan-post' | 'fan-of-day';
 
 /** One change to a fan's points (see server/points.ts). */
 export interface PointsEntry {
@@ -716,7 +717,7 @@ export interface PassportInterest {
 /** One play of a daily game. Unique per (userId, game, day). */
 export interface GamePlay {
   userId: string;
-  game: 'guess' | 'superover';
+  game: 'guess' | 'superover' | 'connections' | 'grid' | 'statwars';
   /** Dubai calendar day, YYYY-MM-DD. */
   day: string;
   state: any;
@@ -726,8 +727,67 @@ export interface GamePlay {
   updatedAt: string;
 }
 
+/** A head-to-head Stat Wars challenge: both fans answer the same questions against the clock. */
+export interface Duel {
+  id: string;
+  /** Short code in the invite link (/games/duel/CODE). */
+  code: string;
+  game: 'statwars';
+  seed: string;
+  createdBy: string;
+  createdByName: string;
+  opponentId: string | null;
+  opponentName?: string;
+  /** Open challenges can be accepted by any signed-in fan; private ones only through the link. */
+  open: boolean;
+  createdAt: string;
+  expiresAt: string;
+  runs: Record<string, { startedAt: string; finishedAt?: string; score?: number; correct?: number; answered?: number; elapsedMs?: number }>;
+  status: 'waiting' | 'done' | 'expired';
+  winnerId?: string | null;
+}
+
+/** A fan's post on the fan wall: a photo and/or a few lines about being a fan. */
+export interface FanPost {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  teamId: string | null;
+  text: string;
+  /** Uploaded photo (our storage) or an https image link. */
+  photoUrl?: string | null;
+  photoPath?: string | null;
+  photoWidth?: number;
+  photoHeight?: number;
+  kind: 'moment' | 'matchday' | 'memorabilia' | 'travel' | 'other';
+  matchId?: string | null;
+  reactions: Record<string, string[]>;
+  reports: { userId: string; reason: string; at: string }[];
+  status: 'live' | 'hidden' | 'pending';
+  /** Days (Dubai) this post was chosen as Fan of the Day. */
+  featuredOn?: string[];
+  createdAt: string;
+  updatedAt?: string;
+}
+
+/** The admins' pick of the day. */
+export interface FanOfTheDay {
+  day: string;
+  postId: string;
+  userId: string;
+  userName: string;
+  points: number;
+  note?: string;
+  chosenBy: string;
+  chosenAt: string;
+}
+
 export interface AppStore {
   schemaVersion: number;
+  duels: Duel[];
+  fanPosts: FanPost[];
+  fansOfTheDay: FanOfTheDay[];
   sessions: Session[];
   passportInterest: PassportInterest[];
   claimedBadges: Record<string, boolean>;
@@ -840,6 +900,9 @@ export function seedSmtpFromEnv(s: AppStore['settings']['smtp']): boolean {
 export function emptyStore(): AppStore {
   return {
     schemaVersion: SCHEMA_VERSION,
+    duels: [],
+    fanPosts: [],
+    fansOfTheDay: [],
     sessions: [],
     passportInterest: [],
     claimedBadges: {},

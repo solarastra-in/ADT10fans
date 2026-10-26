@@ -3,7 +3,7 @@ import React, { useEffect, useSyncExternalStore } from 'react';
 /** A small path router: every page has its own URL so it can be shared, indexed and opened directly. */
 export type RouteName =
   | 'home' | 'matches' | 'match' | 'teams' | 'team' | 'players' | 'player' | 'social' | 'videos' | 'news'
-  | 'play' | 'fantasy' | 'fantasyMatch' | 'games' | 'contests' | 'prizes' | 'leaderboard' | 'fans'
+  | 'play' | 'fantasy' | 'fantasyMatch' | 'games' | 'duel' | 'fanwall' | 'fanPost' | 'contests' | 'prizes' | 'leaderboard' | 'fans'
   | 'forum' | 'thread' | 'fanspaces' | 'growth' | 'profile' | 'rules' | 'privacy' | 'terms' | 'admin' | 'proposal' | 'notFound';
 
 export interface Route {
@@ -28,6 +28,9 @@ const TABLE: [RegExp, RouteName, string[]][] = [
   [/^\/fantasy$/, 'fantasy', []],
   [/^\/fantasy\/([^/]+)$/, 'fantasyMatch', ['id']],
   [/^\/games$/, 'games', []],
+  [/^\/games\/duel\/([A-Za-z0-9]{6})$/, 'duel', ['code']],
+  [/^\/fanwall$/, 'fanwall', []],
+  [/^\/fanwall\/([\w-]{1,40})$/, 'fanPost', ['id']],
   [/^\/contests$/, 'contests', []],
   [/^\/(prizes|draws)$/, 'prizes', ['_']],
   [/^\/leaderboard$/, 'leaderboard', []],

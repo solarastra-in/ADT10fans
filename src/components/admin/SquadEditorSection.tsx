@@ -58,7 +58,20 @@ type PlayerDraft = {
   photoUrl: string;
   cricbuzzProfileUrl: string;
   credits: string;
+  links: Record<EditableLink, string>;
 };
+
+/** Links an admin can set; Cricbuzz has its own field above. */
+type EditableLink = 'espncricinfo' | 'wikipedia' | 'instagram' | 'x' | 'facebook' | 'youtube';
+const LINK_FIELDS: { key: EditableLink; label: string; placeholder: string }[] = [
+  { key: 'espncricinfo', label: 'ESPNcricinfo profile', placeholder: 'https://www.espncricinfo.com/cricketers/…' },
+  { key: 'wikipedia', label: 'Wikipedia article', placeholder: 'https://en.wikipedia.org/wiki/…' },
+  { key: 'instagram', label: 'Instagram', placeholder: 'https://www.instagram.com/…/' },
+  { key: 'x', label: 'X', placeholder: 'https://x.com/…' },
+  { key: 'facebook', label: 'Facebook', placeholder: 'https://www.facebook.com/…' },
+  { key: 'youtube', label: 'YouTube channel', placeholder: 'https://www.youtube.com/@…' },
+];
+const noLinks = (): Record<EditableLink, string> => ({ espncricinfo: '', wikipedia: '', instagram: '', x: '', facebook: '', youtube: '' });
 
 const emptyPlayerDraft = (teamId: string): PlayerDraft => ({
   id: genId(teamId || 'player'),
@@ -75,6 +88,7 @@ const emptyPlayerDraft = (teamId: string): PlayerDraft => ({
   photoUrl: '',
   cricbuzzProfileUrl: '',
   credits: '',
+  links: noLinks(),
 });
 
 const fromPlayer = (p: Player): PlayerDraft => ({
@@ -93,6 +107,7 @@ const fromPlayer = (p: Player): PlayerDraft => ({
   cricbuzzProfileUrl: p.cricbuzzProfileUrl || '',
   // Credits shown in the API are already the effective value; keep blank only for brand-new players.
   credits: typeof p.creditsOverride === 'number' ? String(p.creditsOverride) : '',
+  links: { ...noLinks(), ...Object.fromEntries(Object.entries(p.links || {}).filter(([k]) => k !== 'cricbuzz')) } as Record<EditableLink, string>,
 });
 
 export const SquadEditorSection: React.FC<{
@@ -198,11 +213,18 @@ export const SquadEditorSection: React.FC<{
     if (draft.credits.trim() && (!(Number(draft.credits) >= 4) || Number(draft.credits) > 15)) errors.credits = 'Credits must be between 4 and 15 (or blank for automatic)';
     if (draft.photoUrl.trim() && !/^https:\/\//.test(draft.photoUrl.trim())) errors.photoUrl = 'Photo link must start with https://';
     if (draft.cricbuzzProfileUrl.trim() && !/^https:\/\//.test(draft.cricbuzzProfileUrl.trim())) errors.cricbuzzProfileUrl = 'Profile link must start with https://';
+    for (const f of LINK_FIELDS) if (draft.links[f.key].trim() && !/^https:\/\//.test(draft.links[f.key].trim())) errors[`link-${f.key}`] = 'Link must start with https://';
 
     setPlayerErrors(errors);
     if (Object.keys(errors).length > 0) return;
 
+    // Start from the stored player so fields the form does not show (Cricbuzz id, image id, notes,
+    // looked-up ids and link sources) are kept. They used to be dropped on every edit.
+    const original = !isNew && index !== undefined && index >= 0 ? workingSquad[index] : undefined;
+    const links: Player['links'] = { ...(original?.links?.cricbuzz ? { cricbuzz: original.links.cricbuzz } : {}) };
+    for (const f of LINK_FIELDS) if (draft.links[f.key].trim()) links[f.key] = draft.links[f.key].trim();
     const formattedPlayer: Player = {
+      ...(original || {}),
       id: draft.id || genId(activeTeam.id),
       teamId: activeTeam.id,
       name: draft.name.trim(),
@@ -217,6 +239,7 @@ export const SquadEditorSection: React.FC<{
       photoUrl: draft.photoUrl.trim() || undefined,
       cricbuzzProfileUrl: draft.cricbuzzProfileUrl.trim() || undefined,
       credits: draft.credits.trim() ? Math.round(Number(draft.credits) * 2) / 2 : undefined,
+      links: Object.keys(links).length ? links : undefined,
     };
 
     if (isNew) {
@@ -444,6 +467,24 @@ export const SquadEditorSection: React.FC<{
                 icon={<UserPlus className="w-4 h-4" />}
               >
                 Add Player to Squad
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() =>
+                  run('find-links', async () => {
+                    if (isDirty && !window.confirm('Save or discard your squad changes first: finding links reloads the squad. Continue and discard them?')) return;
+                    const r = await api.resolvePlayerLinks({ all: true, teamId: activeTeam.id });
+                    await onRefreshAll();
+                    setIsDirty(false);
+                    setNotice({ kind: 'ok', text: `Checked ${r.checked} player(s), links found for ${r.updated}. ${r.report.join(' ')}` });
+                  })
+                }
+                loading={busy === 'find-links'}
+                disabled={!!busy}
+                title="ESPNcricinfo, Wikipedia and official social accounts, matched by Cricbuzz id. Links you typed are kept."
+              >
+                Find player links
               </Button>
               <Button
                 variant="secondary"
@@ -944,6 +985,25 @@ export const SquadEditorSection: React.FC<{
                 }
               />
             </Field>
+
+            <div className="space-y-3 rounded-xl border border-slate-800 p-3">
+              <p className="text-xs text-slate-400">
+                Career stats and official accounts shown on the player card. <strong className="text-slate-200">Find player links</strong> fills these by matching ids (Cricbuzz → ESPNcricinfo → Wikidata); anything you type here is kept and never replaced.
+              </p>
+              {LINK_FIELDS.map(f => {
+                const source = workingSquad[editingPlayer.index ?? -1]?.linkSources?.[f.key];
+                return (
+                  <Field key={f.key} label={f.label} hint={source && source !== 'admin' ? `Found automatically (${source})` : undefined} error={playerErrors[`link-${f.key}`]}>
+                    <TextInput
+                      type="url"
+                      placeholder={f.placeholder}
+                      value={editingPlayer.draft.links[f.key]}
+                      onChange={e => setEditingPlayer(prev => (prev ? { ...prev, draft: { ...prev.draft, links: { ...prev.draft.links, [f.key]: e.target.value } } } : null))}
+                    />
+                  </Field>
+                );
+              })}
+            </div>
           </form>
         </Sheet>
       )}

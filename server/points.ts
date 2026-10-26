@@ -31,6 +31,12 @@ export const SOURCE_LABEL: Record<PointsSource, string> = {
   prize: 'Prize claim',
   'prize-refund': 'Prize claim cancelled',
   admin: 'Adjustment by the organisers',
+  connections: 'Squad Connections',
+  grid: 'Cricket Grid',
+  statwars: 'Stat Wars',
+  duel: 'Stat Wars duel',
+  'fan-post': 'Fan wall post',
+  'fan-of-day': 'Fan of the Day',
 };
 
 export const balanceOf = (u: Pick<User, 'points' | 'pointsSpent'>) => Math.max(0, (u.points || 0) - (u.pointsSpent || 0));
