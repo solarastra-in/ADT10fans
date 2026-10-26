@@ -138,7 +138,7 @@ export function FantasySwingVisualizer({
 
     for (const p of pickedPlayers) {
       const mult = p.id === captainId ? 2 : p.id === viceCaptainId ? 1.5 : 1;
-      totalProjected += (p.form?.projectedPoints || 45) * mult;
+      totalProjected += (p.form?.projectedPoints ?? 0) * mult;
       sumMomentum += p.form?.momentumScore || 0;
 
       const lvl = p.form?.allocationLevel || (p.form?.tier === 'star' ? 5 : p.form?.tier === 'core' ? 3 : 2);
@@ -159,7 +159,7 @@ export function FantasySwingVisualizer({
 
       if (p.role === 'batter' || p.role === 'allrounder') {
         batterCount++;
-        sumBatterSR += (p.form?.projectedPoints || 40) > 50 ? 190 : 165;
+        sumBatterSR += (p.form?.projectedPoints ?? 0) > 50 ? 190 : 165;
       }
       if (p.role === 'bowler' || p.role === 'allrounder') {
         bowlerCount++;
@@ -440,16 +440,17 @@ export function FantasySwingVisualizer({
               <Zap className="h-4 w-4 text-emerald-400" />
               Pitch & Swing Outlook
             </span>
-            <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
-              Powerplay Bias
-            </span>
           </div>
           <p className="text-[11px] text-slate-300 font-medium">
-            {swingInsights?.pitchProfile.condition || 'Fast outfield, powerplay boundary carry with true bounce.'}
+            {swingInsights?.pitchProfile.condition || 'No completed matches this season yet'}
           </p>
           <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
-            <span>Expected Score: <strong className="text-slate-200">120–135</strong></span>
-            <span>Pace {swingInsights?.pitchProfile.paceVsSpin.pacePct || 62}% vs Spin {swingInsights?.pitchProfile.paceVsSpin.spinPct || 38}%</span>
+            <span>{swingInsights?.pitchProfile.expectedScore}</span>
+            {swingInsights && swingInsights.pitchProfile.paceVsSpin.paceWickets + swingInsights.pitchProfile.paceVsSpin.spinWickets > 0 ? (
+              <span>
+                Wickets: pace {swingInsights.pitchProfile.paceVsSpin.pacePct}% · spin {swingInsights.pitchProfile.paceVsSpin.spinPct}%
+              </span>
+            ) : null}
           </div>
         </div>
       </div>
@@ -583,7 +584,7 @@ export function FantasySwingVisualizer({
                               {tm?.short} · {ROLE_SHORT[p.role]}
                             </span>
                             <span className="font-semibold text-amber-300 tabular-nums">
-                              {form?.projectedPoints || 70} <span className="text-[10px] text-slate-400 font-normal">pts proj</span>
+                              {form?.projectedPoints ?? 0} <span className="text-[10px] text-slate-400 font-normal">pts proj</span>
                             </span>
                             {typeof p.selectedBy === 'number' && (
                               <>
@@ -596,9 +597,10 @@ export function FantasySwingVisualizer({
 
                         {/* Graphical Swing Sparkline (Recent 3 matches) */}
                         <div className="hidden sm:flex flex-col items-end gap-1 px-2">
-                          <span className="text-[10px] text-slate-500 font-bold">Recent Match Scores</span>
+                          <span className="text-[10px] text-slate-500 font-bold">This season</span>
                           <div className="flex items-end gap-1 h-6">
-                            {(form?.recentScores || [40, 50, 60]).map((score, sIdx) => {
+                            {!form?.recentScores?.length && <span className="text-[10px] text-slate-600">—</span>}
+                            {(form?.recentScores || []).map((score, sIdx) => {
                               const heightPct = Math.min(100, Math.max(20, Math.round((score / 90) * 100)));
                               return (
                                 <div key={sIdx} className="flex flex-col items-center">
@@ -640,7 +642,7 @@ export function FantasySwingVisualizer({
                             {form?.momentumScore && form.momentumScore > 0 ? `+${form.momentumScore}%` : `${form?.momentumScore || 0}%`}
                           </span>
                           <span className="text-[10px] text-slate-400 mt-0.5 tabular-nums">
-                            Proj: <strong className="text-amber-400">{form?.projectedPoints || 45}</strong> pts
+                            Proj: <strong className="text-amber-400">{form?.projectedPoints ?? 0}</strong> pts
                           </span>
                         </div>
 
@@ -881,7 +883,7 @@ export function FantasySwingVisualizer({
                 const cvPlayers = cv.playerIds.map(id => byId.get(id)).filter(Boolean) as PlayerWithForm[];
                 const cvCredits = Math.round(cvPlayers.reduce((s, p) => s + (p.credits || 8.5), 0) * 10) / 10;
                 const cvStars = cvPlayers.filter(p => p.form?.tier === 'star').length;
-                const cvProj = Math.round(cvPlayers.reduce((s, p) => s + (p.form?.projectedPoints || 45) * (p.id === cv.captainId ? 2 : p.id === cv.viceCaptainId ? 1.5 : 1), 0));
+                const cvProj = Math.round(cvPlayers.reduce((s, p) => s + (p.form?.projectedPoints ?? 0) * (p.id === cv.captainId ? 2 : p.id === cv.viceCaptainId ? 1.5 : 1), 0));
                 const capP = byId.get(cv.captainId || '');
                 const vcP = byId.get(cv.viceCaptainId || '');
                 const isSelected = cv.name.includes(activeVariationName);
@@ -1028,7 +1030,7 @@ export function FantasySwingVisualizer({
                               {ROLE_SHORT[p.role]}
                             </td>
                             <td className="py-2.5 px-2 text-amber-300 font-bold tabular-nums whitespace-nowrap">
-                              <span>{p.form?.projectedPoints || 70} pts</span>
+                              <span>{p.form?.projectedPoints ?? 0} pts</span>
                             </td>
                             <td className="py-2.5 px-2 text-center whitespace-nowrap">
                               {isCoreLock ? (

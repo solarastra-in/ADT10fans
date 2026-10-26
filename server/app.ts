@@ -19,6 +19,7 @@ import { fanSpacesRouter } from './routes/fanspaces';
 import { adminRouter } from './routes/admin';
 import { scraperRouter } from './routes/scraper';
 import { injectIntoTemplate, renderPage, robotsTxt, sitemapXml } from './seo';
+import { ogPng, type OgKind } from './ogImage';
 
 export const app = express();
 
@@ -38,6 +39,7 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     res.setHeader('Access-Control-Max-Age', '86400');
     res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Robots-Tag', 'noindex');
     if (req.method === 'OPTIONS') return res.status(204).end();
   }
   next();
@@ -82,6 +84,16 @@ function baseUrl(req: Request) {
 }
 app.get('/robots.txt', (req, res) => res.type('text/plain').send(robotsTxt(baseUrl(req))));
 app.get('/sitemap.xml', (req, res) => res.type('application/xml').send(sitemapXml(db.get(), baseUrl(req))));
+
+// Share images (1200x630) for players, matches, teams and the site.
+app.get('/og/:kind(player|match|team|site)/:id.png', (req, res) => {
+  const out = ogPng(db.get(), req.params.kind as OgKind, req.params.id);
+  if (out === null) return res.status(404).type('text/plain').send('Not found');
+  if (out === 'no-renderer') return res.redirect(302, '/logos/adt10.png');
+  // Matches change during play; players and teams rarely.
+  res.setHeader('Cache-Control', `public, max-age=300, s-maxage=${req.params.kind === 'match' ? 60 : 3600}, stale-while-revalidate=86400`);
+  res.type('image/png').send(out);
+});
 
 // ---------- pages (server-rendered SEO + the app) ----------
 type TemplateLoader = (url: string) => Promise<string>;

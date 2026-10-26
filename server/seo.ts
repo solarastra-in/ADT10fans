@@ -1,4 +1,8 @@
 import { AppStore, Match, Player, Team } from './db';
+import { ogUrl } from './ogImage';
+import { LINK_KEYS, LINK_LABELS, linksFor } from './playerLinks';
+import { statsFor } from './playerStats';
+import { resolvePlayer } from './fantasy';
 
 /**
  * Server-rendered SEO for every public page.
@@ -16,6 +20,7 @@ export interface RenderedPage {
   canonical: string;
   robots: string;
   image?: string;
+  imageAlt?: string;
   type: 'website' | 'article' | 'profile';
   jsonLd: object[];
   body: string;
@@ -82,10 +87,32 @@ function sportsEvent(store: AppStore, m: Match, base: string) {
     startDate: m.startsAt,
     eventStatus: m.status === 'abandoned' ? 'https://schema.org/EventCancelled' : 'https://schema.org/EventScheduled',
     eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
-    location: { '@type': 'Place', name: m.venue || store.settings.venue, address: 'Abu Dhabi, United Arab Emirates' },
+    endDate: new Date(+new Date(m.startsAt) + 3 * 3600_000).toISOString(),
+    location: { '@type': 'Place', name: m.venue || store.settings.venue, address: { '@type': 'PostalAddress', addressLocality: 'Abu Dhabi', addressCountry: 'AE' } },
     competitor: [a, b].filter(Boolean).map(t => ({ '@type': 'SportsTeam', name: t!.name, url: `${base}${teamPath(t!)}` })),
+    ...(a ? { homeTeam: { '@type': 'SportsTeam', name: a.name, url: `${base}${teamPath(a)}` } } : {}),
+    ...(b ? { awayTeam: { '@type': 'SportsTeam', name: b.name, url: `${base}${teamPath(b)}` } } : {}),
+    organizer: { '@type': 'SportsOrganization', name: 'Abu Dhabi T10', url: 'https://www.abudhabit10.com' },
+    image: [ogUrl(base, 'match', m.id)],
+    description: m.status === 'completed' && m.result ? m.result : `Match ${m.matchNo} of the ${store.settings.seasonLabel || 'Abu Dhabi T10'}`,
     url: `${base}${matchPath(m)}`,
   };
+}
+
+/** schema.org BreadcrumbList: [name, path] pairs from the home page down. */
+function breadcrumbs(base: string, trail: [string, string][]) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [['Home', '/'] as [string, string], ...trail].map(([name, path], i) => ({ '@type': 'ListItem', position: i + 1, name, item: `${base}${path}` })),
+  };
+}
+
+/** Links a scorecard name to the player's page when it matches someone in the two squads. */
+function playerName(store: AppStore, m: Match, name: string) {
+  const pool = store.teams.filter(t => t.id === m.teamA || t.id === m.teamB).flatMap(t => t.squad);
+  const p = resolvePlayer(name, pool);
+  return p ? `<a href="${playerPath(p)}">${esc(name)}</a>` : esc(name);
 }
 
 export function renderPage(rawPath: string, store: AppStore, base: string): RenderedPage {
@@ -105,6 +132,8 @@ export function renderPage(rawPath: string, store: AppStore, base: string): Rend
     robots: 'index, follow, max-image-preview:large',
     type: 'website',
     jsonLd: [],
+    image: ogUrl(base, 'site'),
+    imageAlt: `${brand}: ${season}`,
     ...p,
     title: p.title.includes(brand) ? p.title : `${p.title} | ${brand}`,
     description: clip(p.description),
@@ -127,7 +156,16 @@ export function renderPage(rawPath: string, store: AppStore, base: string): Rend
         title: `${brand}: ${season} fixtures, squads, Pick XI and fan games`,
         description: `${season} at ${store.settings.venue}: live scores, all six squads, official team videos and posts, Pick XI fantasy, daily games, predictions, prizes and the fan forum.`,
         jsonLd: [
-          { '@context': 'https://schema.org', '@type': 'WebSite', name: brand, url: `${base}/`, description: store.settings.tagline || 'The Abu Dhabi T10 fan hub' },
+          { '@context': 'https://schema.org', '@type': 'WebSite', name: brand, url: `${base}/`, description: store.settings.tagline || 'The Abu Dhabi T10 fan hub', inLanguage: ['en', 'ar', 'hi', 'ur'] },
+          {
+            '@context': 'https://schema.org',
+            '@type': 'SportsOrganization',
+            name: 'Abu Dhabi T10',
+            sport: 'Cricket',
+            url: 'https://www.abudhabit10.com',
+            sameAs: store.handles.filter(h => !h.teamId && h.status === 'verified').map(h => h.url),
+            member: store.teams.map(t => ({ '@type': 'SportsTeam', name: t.name, url: `${base}${teamPath(t)}` })),
+          },
           {
             '@context': 'https://schema.org',
             '@type': 'SportsEvent',
@@ -159,17 +197,25 @@ export function renderPage(rawPath: string, store: AppStore, base: string): Rend
             : `${matchTitle(store, m)}, ${season} match ${m.matchNo}, ${fmtDate(m.startsAt)} at ${m.venue}. Squads, Pick XI and predictions.`;
         const card = (inn: any) =>
           inn
-            ? `<h2>${esc(inn.teamName || teamName(store, inn.teamId))} ${esc(inn.totalRuns)}/${esc(inn.wickets)} (${esc(inn.overs)} ov)</h2><table><thead><tr><th>Batter</th><th>R</th><th>B</th><th>4s</th><th>6s</th></tr></thead><tbody>${(inn.batting || []).map((b: any) => `<tr><td>${esc(b.batsman)} <small>${esc(b.dismissal)}</small></td><td>${esc(b.runs)}</td><td>${esc(b.balls)}</td><td>${esc(b.fours)}</td><td>${esc(b.sixes)}</td></tr>`).join('')}</tbody></table>`
+            ? `<h2>${esc(inn.teamName || teamName(store, inn.teamId))} ${esc(inn.totalRuns)}/${esc(inn.wickets)} (${esc(inn.overs)} ov)</h2><table><thead><tr><th>Batter</th><th>R</th><th>B</th><th>4s</th><th>6s</th></tr></thead><tbody>${(inn.batting || []).map((b: any) => `<tr><td>${playerName(store, m, b.batsman)} <small>${esc(b.dismissal)}</small></td><td>${esc(b.runs)}</td><td>${esc(b.balls)}</td><td>${esc(b.fours)}</td><td>${esc(b.sixes)}</td></tr>`).join('')}</tbody></table>` +
+              ((inn.bowling || []).length ? `<table><thead><tr><th>Bowler</th><th>O</th><th>R</th><th>W</th></tr></thead><tbody>${inn.bowling.map((b: any) => `<tr><td>${playerName(store, m, b.bowler)}</td><td>${esc(b.overs)}</td><td>${esc(b.runs)}</td><td>${esc(b.wickets)}</td></tr>`).join('')}</tbody></table>` : '')
             : '';
+        const squads = [m.teamA, m.teamB]
+          .map(id => store.teams.find(t => t.id === id))
+          .filter(Boolean)
+          .map(t => `<h2>${esc(t!.name)} squad</h2><ul>${t!.squad.map(p => `<li><a href="${playerPath(p)}">${esc(p.name)}</a> – ${esc(ROLE[p.role])}</li>`).join('')}</ul>`)
+          .join('');
         return page({
           title,
           description: desc,
           type: 'article',
-          jsonLd: [sportsEvent(store, m, base)],
+          image: ogUrl(base, 'match', m.id),
+          imageAlt: `${matchTitle(store, m)}, match ${m.matchNo}`,
+          jsonLd: [sportsEvent(store, m, base), breadcrumbs(base, [['Matches', '/matches'], [`Match ${m.matchNo}: ${matchTitle(store, m)}`, matchPath(m)]])],
           body: shell(
             `${matchTitle(store, m)} – Match ${m.matchNo}`,
             `${fmtDate(m.startsAt)} · ${m.venue}${m.result ? ` · ${m.result}` : ''}`,
-            card(m.scorecard?.innings1) + card(m.scorecard?.innings2) + `<p><a href="/fantasy/${encodeURIComponent(m.id)}">Pick XI for this match</a></p>`,
+            card(m.scorecard?.innings1) + card(m.scorecard?.innings2) + `<p><a href="/fantasy/${encodeURIComponent(m.id)}">Pick XI for this match</a></p>` + (m.status === 'upcoming' ? squads : ''),
           ),
         });
       }
@@ -192,14 +238,17 @@ export function renderPage(rawPath: string, store: AppStore, base: string): Rend
         return page({
           title: `${t.name} squad ${season.match(/\d{4}/)?.[0] || ''}: players, fixtures and official channels`.replace(/\s+/g, ' '),
           description: `${t.name} at the ${season}: full ${t.squad.length}-player squad${t.iconPlayer ? ` led by icon player ${t.iconPlayer}` : ''}${t.headCoach ? `, head coach ${t.headCoach}` : ''}. Fixtures, results, videos and official social accounts.`,
-          image: t.logo,
+          image: ogUrl(base, 'team', t.id),
+          imageAlt: `${t.name} squad`,
           jsonLd: [
+            breadcrumbs(base, [['Teams', '/teams'], [t.name, teamPath(t)]]),
             {
               '@context': 'https://schema.org',
               '@type': 'SportsTeam',
               name: t.name,
               sport: 'Cricket',
               url: `${base}${teamPath(t)}`,
+              ...(t.logo ? { logo: t.logo.startsWith('http') ? t.logo : `${base}${t.logo}` } : {}),
               memberOf: { '@type': 'SportsOrganization', name: 'Abu Dhabi T10' },
               ...(t.headCoach ? { coach: { '@type': 'Person', name: t.headCoach } } : {}),
               athlete: t.squad.map(p => ({ '@type': 'Person', name: p.name, url: `${base}${playerPath(p)}` })),
@@ -231,19 +280,74 @@ export function renderPage(rawPath: string, store: AppStore, base: string): Rend
         const team = store.teams.find(t => t.squad.some(p => p.id === parts[1]));
         const p = team?.squad.find(x => x.id === parts[1]);
         if (!team || !p) return notFound();
+        const role = ROLE[p.role].toLowerCase();
+        const links = linksFor(p);
+        const sameAs = LINK_KEYS.map(k => links[k]).filter(Boolean) as string[];
+        const s = statsFor(store, p.id);
+        const seasonLine = s?.matches
+          ? [s.innings ? `${s.runs} runs${s.strikeRate ? ` at a strike rate of ${s.strikeRate}` : ''}` : '', s.ballsBowled ? `${s.wickets} wicket(s)${s.economy ? `, economy ${s.economy}` : ''}` : '']
+              .filter(Boolean)
+              .join(' and ')
+          : '';
+        const category = p.isIcon || p.category === 'Icon' ? 'icon player' : p.category ? `${p.category} signing` : '';
+        const description =
+          `${p.name} plays for ${team.name} at the ${season} as ${/^[aeiou]/i.test(role) ? 'an' : 'a'} ${role}${category ? ` (${category})` : ''}.` +
+          (seasonLine ? ` This season: ${seasonLine} in ${s!.matches} match(es).` : '') +
+          `${p.battingStyle ? ` ${p.battingStyle}.` : ''}${p.bowlingStyle ? ` ${p.bowlingStyle}.` : ''} Player card, Pick XI points and career stats.`;
+        const statRows = s?.matches
+          ? `<h2>${esc(season)} statistics</h2><table><tbody>` +
+            [
+              ['Matches', s.matches],
+              ...(s.innings ? [['Runs', s.runs], ['Highest score', `${s.highest}${s.highestNotOut ? '*' : ''}`], ['Strike rate', s.strikeRate ?? '—'], ['Average', s.average ?? '—'], ['Fours / sixes', `${s.fours} / ${s.sixes}`]] : []),
+              ...(s.ballsBowled ? [['Wickets', s.wickets], ['Economy', s.economy ?? '—'], ['Best bowling', s.best ? `${s.best.wickets}/${s.best.runs}` : '—']] : []),
+              ['Catches', s.catches + s.stumpings],
+            ]
+              .map(([k, v]) => `<tr><th scope="row">${esc(k)}</th><td>${esc(v)}</td></tr>`)
+              .join('') +
+            `</tbody></table>`
+          : `<p>${esc(p.name)} has not played a completed match this season yet.</p>`;
+        const fixtures = store.matches.filter(m => m.teamA === team.id || m.teamB === team.id).sort((a, b) => +new Date(a.startsAt) - +new Date(b.startsAt));
         return page({
-          title: `${p.name} – ${team.name} ${ROLE[p.role].toLowerCase()}`,
-          description: `${p.name} plays for ${team.name} at the ${season} as a ${ROLE[p.role].toLowerCase()}${p.category ? ` (${p.category} signing)` : ''}.${p.battingStyle ? ` ${p.battingStyle}.` : ''}${p.bowlingStyle ? ` ${p.bowlingStyle}.` : ''}`,
+          title: `${p.name}: ${team.name} ${role}, stats and profile`,
+          description,
           type: 'profile',
-          image: p.photoUrl,
-          jsonLd: [{ '@context': 'https://schema.org', '@type': 'Person', name: p.name, url: `${base}${playerPath(p)}`, memberOf: { '@type': 'SportsTeam', name: team.name, url: `${base}${teamPath(team)}` }, ...(p.cricbuzzProfileUrl ? { sameAs: [p.cricbuzzProfileUrl] } : {}) }],
-          body: shell(p.name, `${ROLE[p.role]} for ${team.name}.`, `<p><a href="${teamPath(team)}">${esc(team.name)} squad</a>${p.cricbuzzProfileUrl ? ` · <a href="${esc(p.cricbuzzProfileUrl)}" rel="noopener">Career stats on Cricbuzz</a>` : ''}</p>`),
+          image: ogUrl(base, 'player', p.id),
+          imageAlt: `${p.name}, ${team.name}`,
+          jsonLd: [
+            breadcrumbs(base, [['Players', '/players'], [team.name, teamPath(team)], [p.name, playerPath(p)]]),
+            {
+              '@context': 'https://schema.org',
+              '@type': 'ProfilePage',
+              url: `${base}${playerPath(p)}`,
+              ...(p.linksCheckedAt ? { dateModified: p.linksCheckedAt } : {}),
+              mainEntity: {
+                '@type': 'Person',
+                name: p.name,
+                url: `${base}${playerPath(p)}`,
+                description,
+                jobTitle: 'Professional cricketer',
+                ...(p.nationality ? { nationality: { '@type': 'Country', name: p.nationality } } : {}),
+                memberOf: { '@type': 'SportsTeam', name: team.name, sport: 'Cricket', url: `${base}${teamPath(team)}` },
+                ...(p.wikidataId ? { identifier: `https://www.wikidata.org/wiki/${p.wikidataId}` } : {}),
+                ...(sameAs.length ? { sameAs } : {}),
+              },
+            },
+          ],
+          body: shell(
+            p.name,
+            `${ROLE[p.role]} for ${team.name}${category ? `, ${category}` : ''}.${p.battingStyle ? ` ${p.battingStyle}.` : ''}${p.bowlingStyle ? ` ${p.bowlingStyle}.` : ''}`,
+            statRows +
+              (sameAs.length ? `<h2>Career stats and official accounts</h2><ul>${LINK_KEYS.filter(k => links[k]).map(k => `<li><a href="${esc(links[k])}" rel="noopener">${esc(LINK_LABELS[k])}</a></li>`).join('')}</ul>` : '') +
+              `<h2>${esc(team.name)} fixtures</h2><ul>${fixtures.map(m => matchLine(store, m)).join('') || '<li>Fixtures not published yet.</li>'}</ul>` +
+              `<p><a href="${teamPath(team)}">${esc(team.name)} squad</a> · <a href="/players">All players</a></p>`,
+          ),
         });
       }
       const all = store.teams.flatMap(t => t.squad.map(p => ({ p, t })));
       return page({
-        title: `${season} players`,
-        description: `All ${all.length} players in the ${season} squads, by team and role.`,
+        title: `${season} players: every squad, roles and stats`,
+        description: `All ${all.length} players in the ${season} squads, by team and role, with season stats, Pick XI points and links to career stats.`,
+        jsonLd: [{ '@context': 'https://schema.org', '@type': 'ItemList', name: `${season} players`, numberOfItems: all.length, itemListElement: all.map(({ p }, i) => ({ '@type': 'ListItem', position: i + 1, url: `${base}${playerPath(p)}`, name: p.name })) }],
         body: shell(`${season} players`, '', store.teams.map(t => `<h2>${esc(t.name)}</h2><ul>${t.squad.map(p => `<li><a href="${playerPath(p)}">${esc(p.name)}</a> – ${esc(ROLE[p.role])}</li>`).join('')}</ul>`).join('')),
       });
     }
@@ -262,7 +366,33 @@ export function renderPage(rawPath: string, store: AppStore, base: string): Rend
             : kind === 'videos'
               ? `Watch the latest videos from the league's and teams' official YouTube channels, right on the site.`
               : `Posts and videos from the verified accounts of the league and all six franchises, in one place.`,
-        jsonLd: [{ '@context': 'https://schema.org', '@type': 'CollectionPage', name: heading, url: `${base}/${kind}` }],
+        jsonLd: [
+          { '@context': 'https://schema.org', '@type': 'CollectionPage', name: heading, url: `${base}/${kind}` },
+          ...(kind === 'videos'
+            ? [
+                {
+                  '@context': 'https://schema.org',
+                  '@type': 'ItemList',
+                  itemListElement: items
+                    .filter(f => f.videoId)
+                    .slice(0, 20)
+                    .map((f, i) => ({
+                      '@type': 'ListItem',
+                      position: i + 1,
+                      item: {
+                        '@type': 'VideoObject',
+                        name: f.title,
+                        description: f.summary || `${f.title} – ${f.source}`,
+                        thumbnailUrl: [f.image || `https://i.ytimg.com/vi/${f.videoId}/hqdefault.jpg`],
+                        uploadDate: f.publishedAt,
+                        contentUrl: `https://www.youtube.com/watch?v=${f.videoId}`,
+                        embedUrl: `https://www.youtube-nocookie.com/embed/${f.videoId}`,
+                      },
+                    })),
+                },
+              ]
+            : []),
+        ],
         body: shell(heading, items.length ? '' : 'New posts appear here as soon as the official accounts publish them.', `<ul>${items.map(f => `<li><a href="${esc(f.url)}" rel="noopener">${esc(f.title)}</a> – ${esc(f.source)}</li>`).join('')}</ul>`),
       });
     }
@@ -271,6 +401,9 @@ export function renderPage(rawPath: string, store: AppStore, base: string): Rend
         const m = store.matches.find(x => x.id === parts[1]);
         if (!m) return notFound();
         return page({
+          image: ogUrl(base, 'match', m.id),
+          imageAlt: `${matchTitle(store, m)}, match ${m.matchNo}`,
+          jsonLd: [breadcrumbs(base, [['Pick XI', '/fantasy'], [matchTitle(store, m), `/fantasy/${encodeURIComponent(m.id)}`]])],
           title: `Pick XI: ${matchTitle(store, m)} (match ${m.matchNo})`,
           description: `Pick your Pick XI for ${matchTitle(store, m)}: 11 players, 100 credits, captain scores double. Free to play; points count towards the season leaderboard.`,
           body: shell(`Pick XI: ${matchTitle(store, m)}`, `Lineups lock at ${fmtDate(m.startsAt)}.`, `<p><a href="${matchPath(m)}">Match page</a> · <a href="/rules#dream-xi">Scoring rules</a></p>`),
@@ -331,6 +464,7 @@ export function renderPage(rawPath: string, store: AppStore, base: string): Rend
           description: t.content.replace(/\s+/g, ' '),
           type: 'article',
           jsonLd: [
+            breadcrumbs(base, [['Forum', '/forum'], [t.title, `/forum/${encodeURIComponent(t.id)}`]]),
             {
               '@context': 'https://schema.org',
               '@type': 'DiscussionForumPosting',
@@ -372,9 +506,13 @@ export function injectIntoTemplate(template: string, p: RenderedPage, brand: str
     `<meta property="og:description" content="${esc(p.description)}" />`,
     `<meta property="og:url" content="${esc(p.canonical)}" />`,
     p.image ? `<meta property="og:image" content="${esc(p.image)}" />` : '',
+    p.image && /\/og\//.test(p.image) ? `<meta property="og:image:width" content="1200" />\n    <meta property="og:image:height" content="630" />\n    <meta property="og:image:type" content="image/png" />` : '',
+    p.image && p.imageAlt ? `<meta property="og:image:alt" content="${esc(p.imageAlt)}" />` : '',
+    `<meta property="og:locale" content="en_GB" />`,
     `<meta name="twitter:card" content="${p.image ? 'summary_large_image' : 'summary'}" />`,
     `<meta name="twitter:title" content="${esc(p.title)}" />`,
     `<meta name="twitter:description" content="${esc(p.description)}" />`,
+    p.image ? `<meta name="twitter:image" content="${esc(p.image)}" />` : '',
     jsonLd,
   ]
     .filter(Boolean)
@@ -391,25 +529,46 @@ export function injectIntoTemplate(template: string, p: RenderedPage, brand: str
     .replace('<div id="root"></div>', `<div id="root">${p.body}</div>`);
 }
 
+/**
+ * Sitemap with image entries (the share image of each player, team and match). lastmod is only given
+ * when the date is known: claiming every page changed today makes search engines ignore the field.
+ */
 export function sitemapXml(store: AppStore, base: string) {
-  const today = new Date().toISOString().slice(0, 10);
-  const urls: { loc: string; lastmod?: string; priority?: string }[] = [];
-  for (const p of INDEXABLE_STATIC) urls.push({ loc: p, priority: p === '/' ? '1.0' : '0.7' });
+  const urls: { loc: string; lastmod?: string; image?: string; imageTitle?: string }[] = [];
+  const latestMatch = store.matches.map(m => m.updatedAt).filter(Boolean).sort().pop()?.slice(0, 10);
+  const latestFeed = store.feedItems.map(f => f.publishedAt).filter(Boolean).sort().pop()?.slice(0, 10);
+  const latestThread = store.forumThreads.filter(t => !t.hidden).map(t => t.lastActivityAt || t.createdAt).sort().pop()?.slice(0, 10);
+  const staticLastmod: Record<string, string | undefined> = { '/': latestMatch, '/matches': latestMatch, '/fantasy': latestMatch, '/videos': latestFeed, '/news': latestFeed, '/social': latestFeed, '/forum': latestThread };
+  for (const p of INDEXABLE_STATIC) urls.push({ loc: p, lastmod: staticLastmod[p] });
   if (store.youthSchools.length || store.creatorPartners.length || store.commentaryFeeds.length) urls.push({ loc: '/growth' });
-  for (const t of store.teams) urls.push({ loc: teamPath(t), lastmod: t.updatedAt?.slice(0, 10), priority: '0.8' });
-  for (const t of store.teams) for (const p of t.squad) urls.push({ loc: playerPath(p), lastmod: t.updatedAt?.slice(0, 10), priority: '0.5' });
+  for (const t of store.teams) urls.push({ loc: teamPath(t), lastmod: t.updatedAt?.slice(0, 10), image: ogUrl(base, 'team', t.id), imageTitle: t.name });
+  for (const t of store.teams) for (const p of t.squad) urls.push({ loc: playerPath(p), lastmod: (p.linksCheckedAt || t.updatedAt)?.slice(0, 10), image: ogUrl(base, 'player', p.id), imageTitle: `${p.name}, ${t.name}` });
   for (const m of store.matches) {
-    urls.push({ loc: matchPath(m), lastmod: m.updatedAt?.slice(0, 10), priority: '0.8' });
-    if (m.status === 'upcoming') urls.push({ loc: `/fantasy/${encodeURIComponent(m.id)}`, lastmod: m.updatedAt?.slice(0, 10), priority: '0.6' });
+    urls.push({ loc: matchPath(m), lastmod: m.updatedAt?.slice(0, 10), image: ogUrl(base, 'match', m.id), imageTitle: `${matchTitle(store, m)}, match ${m.matchNo}` });
+    if (m.status === 'upcoming') urls.push({ loc: `/fantasy/${encodeURIComponent(m.id)}`, lastmod: m.updatedAt?.slice(0, 10) });
   }
-  for (const t of store.forumThreads.filter(x => !x.hidden).slice(0, 2000)) urls.push({ loc: `/forum/${encodeURIComponent(t.id)}`, lastmod: (t.lastActivityAt || t.createdAt).slice(0, 10), priority: '0.4' });
+  for (const t of store.forumThreads.filter(x => !x.hidden).slice(0, 2000)) urls.push({ loc: `/forum/${encodeURIComponent(t.id)}`, lastmod: (t.lastActivityAt || t.createdAt).slice(0, 10) });
+  for (const extra of SITEMAP_EXTRA) urls.push(...extra(store, base));
   return (
-    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
-    urls.map(u => `  <url><loc>${esc(base + u.loc)}</loc><lastmod>${u.lastmod || today}</lastmod>${u.priority ? `<priority>${u.priority}</priority>` : ''}</url>`).join('\n') +
+    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n` +
+    urls
+      .map(
+        u =>
+          `  <url><loc>${esc(base + u.loc)}</loc>${u.lastmod ? `<lastmod>${u.lastmod}</lastmod>` : ''}${u.image ? `<image:image><image:loc>${esc(u.image)}</image:loc>${u.imageTitle ? `<image:title>${esc(u.imageTitle)}</image:title>` : ''}</image:image>` : ''}</url>`,
+      )
+      .join('\n') +
     `\n</urlset>\n`
   );
 }
 
+/** Other modules (the fan wall) add their own URLs to the sitemap. */
+export const SITEMAP_EXTRA: ((store: AppStore, base: string) => { loc: string; lastmod?: string; image?: string; imageTitle?: string }[])[] = [];
+
+/**
+ * The API is not blocked: search engines render pages with JavaScript, and the app loads its data
+ * from /api, so blocking it left crawlers with a page that could not load. API responses carry
+ * X-Robots-Tag: noindex instead, so they never show up in results themselves.
+ */
 export function robotsTxt(base: string) {
-  return `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /proposal\nDisallow: /profile\nDisallow: /api/\n\nSitemap: ${base}/sitemap.xml\n`;
+  return `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /proposal\nDisallow: /profile\nDisallow: /api/admin/\nDisallow: /api/cron/\n\nSitemap: ${base}/sitemap.xml\n`;
 }

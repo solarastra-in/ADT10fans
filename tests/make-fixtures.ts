@@ -10,6 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import { fixtureKey } from '../server/feeds';
 import { OFFICIAL_2026_TEAMS } from '../server/data/officialTeams';
+import { CRICSHEET_PEOPLE_URL, wikidataUrl } from '../server/playerLinks';
 
 const dir = process.argv[2];
 if (!dir) throw new Error('usage: make-fixtures.ts <dir>');
@@ -181,6 +182,27 @@ put(xo('https://x.com/T10League/status/1990000000000000002'), JSON.stringify({ a
 // 1990000000000000003 has no fixture: X answers 404 (the AI invented it).
 put(`https://www.tiktok.com/oembed?url=${encodeURIComponent('https://www.tiktok.com/@abudhabit10/video/7560000000000000000')}`, JSON.stringify({
   title: '[test] TikTok video confirmed', author_unique_id: 'abudhabit10', author_name: 'Abu Dhabi T10', thumbnail_url: 'https://p16-sign.tiktokcdn.com/test.jpg',
+}));
+
+// ---------- Player links (Cricsheet register + Wikidata) ----------
+// Pollard (Cricbuzz 657) maps to ESPNcricinfo 230559. Max Bryant's Cricbuzz id (13120) is mapped to
+// someone with another surname, so the lookup must refuse it. The social handles are test values.
+put(CRICSHEET_PEOPLE_URL, [
+  'identifier,name,unique_name,key_bcci,key_cricbuzz,key_cricinfo,key_cricinfo_2',
+  'aa11bb22,KA Pollard,KA Pollard,,657,230559,',
+  'cc33dd44,"Smith, J",J Smith,,13120,999001,',
+  'ee55ff66,No Cricbuzz,No Cricbuzz,,,123456,',
+].join('\n') + '\n');
+put(wikidataUrl(['230559']), JSON.stringify({
+  head: { vars: ['id', 'item', 'itemLabel', 'article', 'ig', 'x', 'fb', 'yt'] },
+  results: { bindings: [{
+    id: { type: 'literal', value: '230559' },
+    item: { type: 'uri', value: 'http://www.wikidata.org/entity/Q3196442' },
+    itemLabel: { type: 'literal', value: 'Kieron Pollard' },
+    article: { type: 'uri', value: 'https://en.wikipedia.org/wiki/Kieron_Pollard' },
+    ig: { type: 'literal', value: 'test_pollard_ig' },
+    x: { type: 'literal', value: 'test_pollard_x' },
+  }] },
 }));
 
 fs.writeFileSync(path.join(dir, 'fixture-ids.json'), JSON.stringify(FIXTURE, null, 2));

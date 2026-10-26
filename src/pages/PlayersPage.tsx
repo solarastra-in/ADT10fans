@@ -2,7 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import { useApp } from '../state';
 import { useT } from '../i18n';
-import { Link, usePageMeta } from '../router';
+import { usePageMeta } from '../router';
+import { playerLinkProps } from '../components/PlayerCard';
 import { Avatar, PageHeader, Pill, Tabs, inputCls, ROLE_LABEL } from '../components/ui';
 
 export default function PlayersPage() {
@@ -32,7 +33,7 @@ export default function PlayersPage() {
         {list.map(p => {
           const tm = teamById(p.teamId);
           return (
-            <Link key={p.id} to={`/players/${p.id}`} className="flex items-center gap-3 p-3 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-slate-600">
+            <a key={p.id} {...playerLinkProps(p.id)} className="flex items-center gap-3 p-3 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-slate-600">
               <Avatar name={p.name} src={p.photoUrl} size={44} />
               <span className="flex-1 min-w-0">
                 <span className="block text-sm font-bold text-white truncate">{p.name}</span>
@@ -42,7 +43,7 @@ export default function PlayersPage() {
                 </span>
               </span>
               {p.category && <Pill tone={p.category === 'Icon' ? 'amber' : 'blue'}>{t(p.category)}</Pill>}
-            </Link>
+            </a>
           );
         })}
       </div>

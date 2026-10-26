@@ -106,6 +106,56 @@ export interface Player {
   nationality?: string;
   note?: string;
   selectedBy?: number;
+  cricinfoId?: string;
+  wikidataId?: string;
+  links?: Partial<Record<PlayerLinkKey, string>>;
+  linkSources?: Partial<Record<PlayerLinkKey, 'admin' | 'cricsheet' | 'wikidata' | 'squad'>>;
+  linksCheckedAt?: string;
+}
+
+export type PlayerLinkKey = 'espncricinfo' | 'cricbuzz' | 'wikipedia' | 'instagram' | 'x' | 'facebook' | 'youtube';
+
+/** This season's figures from real scorecards (null fields: not batted / not bowled yet). */
+export interface SeasonStats {
+  matches: number;
+  innings: number;
+  runs: number;
+  balls: number;
+  highest: number;
+  highestNotOut: boolean;
+  notOuts: number;
+  fours: number;
+  sixes: number;
+  fifties: number;
+  strikeRate: number | null;
+  average: number | null;
+  ballsBowled: number;
+  runsConceded: number;
+  wickets: number;
+  economy: number | null;
+  best: { wickets: number; runs: number } | null;
+  catches: number;
+  stumpings: number;
+}
+
+export interface PlayerFixture {
+  matchId: string;
+  matchNo: number;
+  opponent: string;
+  startsAt: string;
+  status: string;
+  result?: string;
+  fantasyPoints: number | null;
+  fantasyDetail: string | null;
+  selectedBy: number | null;
+}
+
+export interface PlayerDetail {
+  player: Player;
+  team: Team;
+  fixtures: PlayerFixture[];
+  season: SeasonStats | null;
+  links: { key: PlayerLinkKey; label: string; url: string; handle: string | null }[];
 }
 
 export interface Team {

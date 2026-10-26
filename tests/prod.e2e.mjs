@@ -32,6 +32,18 @@ ok('public pages are cacheable at the edge', /s-maxage/.test((await get('/teams'
 const nf = await get('/does-not-exist');
 ok('404 page with noindex and no caching', nf.status === 404 && /noindex/.test(nf.text) && /no-store/.test(nf.headers.get('cache-control') || ''));
 ok('sitemap is XML', (await get('/sitemap.xml')).text.startsWith('<?xml'));
+const sitemap = (await get('/sitemap.xml')).text;
+ok('sitemap lists player pages with their share images', /\/players\/bulls-kieron-pollard<\/loc>/.test(sitemap) && /<image:loc>[^<]*\/og\/player\/bulls-kieron-pollard\.png<\/image:loc>/.test(sitemap));
+const og = await fetch(BASE + '/og/player/bulls-kieron-pollard.png');
+const ogBytes = new Uint8Array(await og.arrayBuffer());
+ok('share images are real PNGs from the production bundle', og.status === 200 && og.headers.get('content-type') === 'image/png' && ogBytes[1] === 0x50 && ogBytes[2] === 0x4e && ogBytes.length > 20_000, { status: og.status, type: og.headers.get('content-type'), bytes: ogBytes.length });
+ok('share images are cached at the edge', /s-maxage=3600/.test(og.headers.get('cache-control') || ''));
+ok('unknown player has no share image', (await fetch(BASE + '/og/player/nobody.png')).status === 404);
+const playerHtml = (await get('/players/bulls-kieron-pollard')).text;
+ok('player page carries Person structured data and its share image', /"@type":"ProfilePage"/.test(playerHtml) && /"@type":"Person"/.test(playerHtml) && /og\/player\/bulls-kieron-pollard\.png/.test(playerHtml));
+const robots = (await get('/robots.txt')).text;
+ok('crawlers may load the data pages render with (only admin API blocked)', !/Disallow: \/api\/\n/.test(robots) && /Disallow: \/api\/admin\//.test(robots));
+ok('API responses are kept out of search results', (await fetch(BASE + '/api/teams')).headers.get('x-robots-tag') === 'noindex');
 const otp = await fetch(BASE + '/api/auth/otp/request', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'x@test.dev' }) });
 const otpJson = await otp.json();
 ok('production never returns sign-in codes in the response', !('devCode' in otpJson));

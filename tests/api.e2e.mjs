@@ -318,6 +318,23 @@ ok('other fans do not see personal results', !(await get('/api/notifications', F
 ok('anonymous visitors only see public notifications', (await get('/api/notifications')).json.notifications.every(n => n.category !== 'fantasy'));
 const lgs = (await get('/api/fantasy/leaderboard')).json.rows;
 ok('season Dream XI leaderboard', lgs[0].userId === fan1.user.id && lgs[0].matches === 1);
+// Player links: found by joining ids (Cricbuzz -> Cricsheet -> ESPNcricinfo -> Wikidata), never by name.
+const resolved = await post('/api/admin/players/links/resolve', { all: true }, A);
+ok('player links lookup runs for every player', resolved.status === 200 && resolved.json.checked === 108, resolved.json);
+const pollard = (await get('/api/players/bulls-kieron-pollard')).json;
+const linkOf = (pp, key) => pp.links.find(l => l.key === key)?.url;
+ok('ESPNcricinfo link from the Cricsheet register', linkOf(pollard, 'espncricinfo') === 'https://www.espncricinfo.com/cricketers/kieron-pollard-230559', pollard.links);
+ok('Wikipedia and official social accounts from Wikidata', linkOf(pollard, 'wikipedia') === 'https://en.wikipedia.org/wiki/Kieron_Pollard' && linkOf(pollard, 'instagram') === 'https://www.instagram.com/test_pollard_ig/' && linkOf(pollard, 'x') === 'https://x.com/test_pollard_x');
+ok('social link shows the handle', pollard.links.find(l => l.key === 'x').handle === '@test_pollard_x');
+const bryant = (await get(`/api/players/${maxB}`)).json;
+ok('an id that maps to another name is refused (no ESPNcricinfo link)', !linkOf(bryant, 'espncricinfo') && /cricbuzz\.com\/profiles\/13120/.test(linkOf(bryant, 'cricbuzz') || ''), bryant.links);
+// An admin's own link is kept when the lookup runs again.
+const bullsSquad = (await get('/api/teams')).json.teams.find(t => t.id === 'bulls').squad;
+const withAdminLink = bullsSquad.map(p => (p.id === 'bulls-kieron-pollard' ? { ...p, links: { ...p.links, instagram: 'https://www.instagram.com/admin_set_handle/' } } : p));
+ok('admin can set a player link', (await post('/api/teams/bulls/squad', { squad: withAdminLink, confirm: true }, A)).status === 200);
+ok('a link to the wrong site is refused', (await post('/api/teams/bulls/squad', { squad: bullsSquad.map(p => (p.id === 'bulls-kieron-pollard' ? { ...p, links: { instagram: 'https://evil.example/x' } } : p)), confirm: true }, A)).status === 400);
+await post('/api/admin/players/links/resolve', { all: true }, A);
+ok("the lookup never replaces an admin's link", linkOf((await get('/api/players/bulls-kieron-pollard')).json, 'instagram') === 'https://www.instagram.com/admin_set_handle/');
 const playerPage = (await get(`/api/players/${maxB}`)).json;
 ok('player page shows fantasy points per match', playerPage.fixtures[0].fantasyPoints === 32 && playerPage.player.credits === 8, { pts: playerPage.fixtures[0].fantasyPoints, credits: playerPage.player.credits });
 

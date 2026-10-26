@@ -124,6 +124,15 @@ export interface Player {
   /** Free-form note an admin can add (e.g. "replacement for X"). */
   note?: string;
   selectedBy?: number;
+  /** ESPNcricinfo player id (from the Cricsheet register, matched by Cricbuzz id). */
+  cricinfoId?: string;
+  /** Wikidata entry (Q…), matched by ESPNcricinfo id. */
+  wikidataId?: string;
+  /** Career-stats, Wikipedia and official social links (see playerLinks.ts). */
+  links?: Partial<Record<'espncricinfo' | 'cricbuzz' | 'wikipedia' | 'instagram' | 'x' | 'facebook' | 'youtube', string>>;
+  /** Where each link came from; an admin's link is never replaced by the lookup. */
+  linkSources?: Partial<Record<'espncricinfo' | 'cricbuzz' | 'wikipedia' | 'instagram' | 'x' | 'facebook' | 'youtube', 'admin' | 'cricsheet' | 'wikidata' | 'squad'>>;
+  linksCheckedAt?: string;
 }
 
 export interface Team {

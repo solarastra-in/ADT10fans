@@ -26,6 +26,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { api } from '../api';
+import { openPlayerCard } from '../components/PlayerCard';
 import { useApp, useLoad } from '../state';
 import { useT } from '../i18n';
 import { Link, navigate, usePageMeta } from '../router';
@@ -157,7 +158,7 @@ export default function FantasyMatchPage({ id }: { id: string }) {
   const rules = data?.rules;
   const byId = useMemo(() => new Map(pool.map(p => [p.id, p])), [pool]);
   const chosen = picked.map(pid => byId.get(pid)).filter(Boolean) as PlayerWithForm[];
-  const totalSquadProj = Math.round(chosen.reduce((s, p) => s + (p.form?.projectedPoints || 70), 0));
+  const totalSquadProj = Math.round(chosen.reduce((s, p) => s + (p.form?.projectedPoints ?? 0), 0));
   const totalCreditsUsed = Math.round(chosen.reduce((s, p) => s + (p.credits ?? 8.0), 0) * 10) / 10;
   const budgetLimit = rules?.creditCap || 100;
   const remainingCredits = Math.round((budgetLimit - totalCreditsUsed) * 10) / 10;
@@ -808,10 +809,10 @@ export default function FantasyMatchPage({ id }: { id: string }) {
                         )}
                       </div>
 
-                      {/* Past Performance Sparkline & Future Adaptive Indicators */}
-                      {form?.recentScores && (
+                      {/* This season's real Pick XI scores (shown once the player has played) */}
+                      {form?.recentScores?.length ? (
                         <div className="flex items-center gap-2 mt-1.5 text-[10px] text-slate-400">
-                          <span className="text-slate-500">Past:</span>
+                          <span className="text-slate-500">{t('This season')}:</span>
                           <div className="flex items-center gap-1">
                             {form.recentScores.map((score, sIdx) => (
                               <span
@@ -839,7 +840,7 @@ export default function FantasyMatchPage({ id }: { id: string }) {
                             {isExpanded ? 'Hide Model' : 'Adaptation Intel ▾'}
                           </button>
                         </div>
-                      )}
+                      ) : null}
 
                       {/* Blocked reason helper text if user cannot pick this player */}
                       {blocked && (
@@ -853,19 +854,19 @@ export default function FantasyMatchPage({ id }: { id: string }) {
                     {/* Base Point Projection & Credits */}
                     <div className="flex flex-col items-end text-end min-w-[76px]">
                       <div className="inline-flex items-baseline gap-1">
-                        <span className="text-base font-black text-amber-400 tabular-nums">
-                          {form?.projectedPoints || 70}
+                        <span className="text-base font-black text-amber-400 tabular-nums" title={t('Estimate')}>
+                          {form?.projectedPoints ?? '—'}
                         </span>
-                        <span className="text-[10px] font-bold text-slate-400">pts</span>
+                        <span className="text-[10px] font-bold text-slate-400">{t('est. pts')}</span>
                       </div>
                       <span className="text-[11px] font-black text-slate-200 tabular-nums">
                         {p.credits ?? 8.0} <span className="text-[10px] font-medium text-slate-400">credits</span>
                       </span>
-                      {form?.recentAvg && (
+                      {form?.recentScores?.length ? (
                         <span className="text-[9px] text-slate-500 font-mono">
-                          Past: {form.pastPointsAvg || form.recentAvg} avg
+                          {t('Season avg {n}', { n: form.pastPointsAvg || form.recentAvg })}
                         </span>
-                      )}
+                      ) : null}
                     </div>
 
                     {/* Add / Remove button */}
@@ -898,7 +899,7 @@ export default function FantasyMatchPage({ id }: { id: string }) {
                           Multi-Level Adaptive Allocation: Level {lvl}
                         </span>
                         <span className="text-slate-400 font-mono">
-                          Floor: {form.projectedFloor || Math.round(form.projectedPoints * 0.65)} pts · Ceiling: {form.projectedCeiling || Math.round(form.projectedPoints * 1.35)} pts
+                          {t('Estimate {low}–{high} pts', { low: form.projectedFloor, high: form.projectedCeiling })}
                         </span>
                       </div>
 
@@ -906,26 +907,32 @@ export default function FantasyMatchPage({ id }: { id: string }) {
                         {/* Past Performance Model */}
                         <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
                           <span className="text-[10px] uppercase font-black tracking-wider text-sky-400 block">
-                            Past Performance Tracking
+                            {t('This season')}
                           </span>
-                          <p className="text-slate-300">
-                            Tournament Historical Average: <strong className="text-white">{form.pastPointsAvg || form.recentAvg} pts</strong>
-                          </p>
-                          <p className="text-slate-400">
-                            Recent trajectory: [{form.recentScores.join(', ')}] pts with {form.trend.toUpperCase()} momentum ({form.momentumScore > 0 ? '+' : ''}{form.momentumScore}%).
-                          </p>
+                          {form.recentScores.length ? (
+                            <>
+                              <p className="text-slate-300">
+                                {t('Average')}: <strong className="text-white">{form.pastPointsAvg || form.recentAvg} pts</strong>
+                              </p>
+                              <p className="text-slate-400">
+                                {t('Recent Pick XI scores')}: [{form.recentScores.join(', ')}] · {form.trend.toUpperCase()}
+                              </p>
+                            </>
+                          ) : (
+                            <p className="text-slate-400">{t('No completed matches this season yet.')}</p>
+                          )}
                         </div>
 
                         {/* Future Performance Projection */}
                         <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
                           <span className="text-[10px] uppercase font-black tracking-wider text-emerald-400 block">
-                            Future Match Outlook & Adaptation
+                            {t('Estimate for this match')}
                           </span>
                           <p className="text-slate-300">
-                            Sheikh Zayed Pitch Fit: <strong className="text-emerald-400">{form.pitchSuitability}</strong> (+{form.futurePitchBoost || 10} pts boost)
+                            {form.matchupNote}
                           </p>
                           <p className="text-slate-400">
-                            Tactical Role: {form.matchupNote}. Projected ceiling of {form.projectedCeiling || Math.round(form.projectedPoints * 1.35)} pts in T10 format.
+                            {t('About {n} pts (range {low}–{high}), from the signing category and any scores this season.', { n: form.projectedPoints, low: form.projectedFloor, high: form.projectedCeiling })}
                           </p>
                         </div>
                       </div>
@@ -969,7 +976,7 @@ export default function FantasyMatchPage({ id }: { id: string }) {
                         {ROLE_INFO[p.role].short} · {ROLE_INFO[p.role].singular}
                       </span>
                       <span>·</span>
-                      <span>Proj: <strong className="text-amber-400">{form?.projectedPoints || 45} pts</strong></span>
+                      <span>Proj: <strong className="text-amber-400">{form?.projectedPoints ?? 0} pts</strong></span>
                     </span>
                   </span>
                   <button
@@ -1190,93 +1197,75 @@ export default function FantasyMatchPage({ id }: { id: string }) {
                 </button>
               </div>
 
-              {/* Fantasy Cost & Valuation Bar */}
+              {/* Pick XI numbers */}
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="rounded-xl bg-slate-950/70 p-2.5 border border-slate-800">
-                  <span className="text-[10px] text-slate-400 uppercase font-black block">Cost (Credits)</span>
-                  <span className="text-base font-black text-white tabular-nums">{infoPlayer.credits ?? 8.0} <span className="text-xs text-slate-400 font-semibold">{t('credits')}</span></span>
+                  <span className="text-[10px] text-slate-400 uppercase font-black block">{t('Credits')}</span>
+                  <span className="text-base font-black text-white tabular-nums">{infoPlayer.credits ?? '—'}</span>
                 </div>
                 <div className="rounded-xl bg-slate-950/70 p-2.5 border border-slate-800">
-                  <span className="text-[10px] text-slate-400 uppercase font-black block">Base Proj.</span>
-                  <span className="text-base font-black text-amber-300 tabular-nums">{infoPlayer.form?.projectedPoints || 70} <span className="text-xs text-slate-400 font-normal">pts</span></span>
+                  <span className="text-[10px] text-slate-400 uppercase font-black block">{t('Estimate')}</span>
+                  <span className="text-base font-black text-amber-300 tabular-nums">{infoPlayer.form?.projectedPoints ?? '—'} <span className="text-xs text-slate-400 font-normal">pts</span></span>
                 </div>
                 <div className="rounded-xl bg-slate-950/70 p-2.5 border border-slate-800">
-                  <span className="text-[10px] text-slate-400 uppercase font-black block">Avg Pts / Match</span>
-                  <span className="text-base font-black text-emerald-400 tabular-nums">{hist?.avgPointsPerMatch || infoPlayer.form?.pastPointsAvg || infoPlayer.form?.recentAvg || 65}</span>
+                  <span className="text-[10px] text-slate-400 uppercase font-black block">{t('Season avg')}</span>
+                  <span className="text-base font-black text-emerald-400 tabular-nums">{infoPlayer.form?.recentScores?.length ? infoPlayer.form.pastPointsAvg : '—'}</span>
                 </div>
               </div>
 
-              {/* Historical Performance Metrics Grid */}
+              {/* This season's figures from real scorecards (none are shown until the player has played) */}
               <div>
                 <h4 className="text-xs font-black uppercase tracking-wider text-slate-300 mb-2 flex items-center gap-1.5">
                   <Award className="w-3.5 h-3.5 text-amber-400" />
-                  {t('Historical Performance Metrics')}
+                  {t('This season')}
                 </h4>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
-                  <div className="rounded-xl bg-slate-950/50 p-2 border border-slate-800">
-                    <span className="text-[10px] text-slate-400 block">{t('Matches')}</span>
-                    <span className="text-sm font-black text-white">{hist?.matches || 22}</span>
+                {hist && hist.matches > 0 ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+                    <div className="rounded-xl bg-slate-950/50 p-2 border border-slate-800">
+                      <span className="text-[10px] text-slate-400 block">{t('Matches')}</span>
+                      <span className="text-sm font-black text-white">{hist.matches}</span>
+                    </div>
+                    <div className="rounded-xl bg-slate-950/50 p-2 border border-slate-800">
+                      <span className="text-[10px] text-slate-400 block">{t('Runs')}</span>
+                      <span className="text-sm font-black text-sky-300">{hist.totalRuns}</span>
+                      <span className="text-[9px] text-slate-500 block">HS {hist.highestScore} · SR {hist.strikeRate || '—'}</span>
+                    </div>
+                    <div className="rounded-xl bg-slate-950/50 p-2 border border-slate-800">
+                      <span className="text-[10px] text-slate-400 block">{t('Wickets')}</span>
+                      <span className="text-sm font-black text-emerald-300">{hist.totalWickets}</span>
+                      <span className="text-[9px] text-slate-500 block">{t('Econ')} {hist.economy || '—'} · {hist.bestBowling}</span>
+                    </div>
+                    <div className="rounded-xl bg-slate-950/50 p-2 border border-slate-800">
+                      <span className="text-[10px] text-slate-400 block">{t('Fielding')}</span>
+                      <span className="text-sm font-black text-slate-200">{hist.catches + hist.stumpings}</span>
+                      <span className="text-[9px] text-slate-500 block">{hist.boundaryCount} 4s · {hist.sixCount} 6s</span>
+                    </div>
                   </div>
-                  <div className="rounded-xl bg-slate-950/50 p-2 border border-slate-800">
-                    <span className="text-[10px] text-slate-400 block">{t('Total Runs')}</span>
-                    <span className="text-sm font-black text-sky-300">{hist?.totalRuns || 0}</span>
-                    <span className="text-[9px] text-slate-500 block">HS: {hist?.highestScore || 0}</span>
-                  </div>
-                  <div className="rounded-xl bg-slate-950/50 p-2 border border-slate-800">
-                    <span className="text-[10px] text-slate-400 block">{t('Strike Rate')}</span>
-                    <span className="text-sm font-black text-amber-300">{hist?.strikeRate || 0}</span>
-                    <span className="text-[9px] text-slate-500 block">Avg: {hist?.battingAvg || 0}</span>
-                  </div>
-                  <div className="rounded-xl bg-slate-950/50 p-2 border border-slate-800">
-                    <span className="text-[10px] text-slate-400 block">{t('Wickets')}</span>
-                    <span className="text-sm font-black text-emerald-300">{hist?.totalWickets || 0}</span>
-                    <span className="text-[9px] text-slate-500 block">Econ: {hist?.economy || 0}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Additional Historical Breakdown: Boundaries, Catches, Stumpings */}
-              <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                <div className="rounded-xl bg-slate-950/50 p-2 border border-slate-800">
-                  <span className="text-[10px] text-slate-400 block">{t('Boundaries')}</span>
-                  <span className="text-xs font-black text-slate-200">
-                    {hist?.boundaryCount || 0} 4s · {hist?.sixCount || 0} 6s
-                  </span>
-                </div>
-                <div className="rounded-xl bg-slate-950/50 p-2 border border-slate-800">
-                  <span className="text-[10px] text-slate-400 block">{t('Fielding')}</span>
-                  <span className="text-xs font-black text-slate-200">
-                    {hist?.catches || 0} catches {hist?.stumpings ? `· ${hist.stumpings} stumpings` : ''}
-                  </span>
-                </div>
-                <div className="rounded-xl bg-slate-950/50 p-2 border border-slate-800">
-                  <span className="text-[10px] text-slate-400 block">{t('Best Bowling')}</span>
-                  <span className="text-xs font-black text-slate-200">
-                    {hist?.bestBowling || '—'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Form Trajectory & Pitch Fit */}
-              <div className="rounded-xl bg-slate-950/60 p-3 border border-slate-800 text-xs space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400 font-medium">{t('Recent Match Scores')}:</span>
-                  <div className="flex items-center gap-1">
-                    {(infoPlayer.form?.recentScores || []).map((sc, i) => (
-                      <span key={i} className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-800 text-slate-200">
-                        {sc}
-                      </span>
+                ) : (
+                  <p className="text-xs text-slate-400">{t('No completed matches this season yet.')}</p>
+                )}
+                {(infoPlayer.form?.recentScores?.length || 0) > 0 && (
+                  <div className="mt-2 flex items-center gap-1 text-xs text-slate-400">
+                    <span>{t('Recent Pick XI scores')}:</span>
+                    {infoPlayer.form!.recentScores.map((sc, i) => (
+                      <span key={i} className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-800 text-slate-200">{sc}</span>
                     ))}
                   </div>
-                </div>
-                <div className="flex items-center justify-between text-slate-400">
-                  <span>{t('Pitch Suitability')}:</span>
-                  <strong className="text-emerald-400">{infoPlayer.form?.pitchSuitability}</strong>
-                </div>
-                <div className="flex items-center justify-between text-slate-400">
-                  <span>{t('Match Context')}:</span>
-                  <span className="text-slate-300 font-medium truncate max-w-[200px]">{infoPlayer.form?.matchupNote}</span>
-                </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between gap-2 rounded-xl bg-slate-950/60 p-3 border border-slate-800 text-xs">
+                <span className="text-slate-300">{infoPlayer.form?.matchupNote}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInfoPlayerId(null);
+                    openPlayerCard(infoPlayer.id);
+                  }}
+                  className="shrink-0 font-bold text-amber-300 hover:underline"
+                >
+                  {t('Career stats & profile')}
+                </button>
               </div>
 
               {/* Action Footer */}

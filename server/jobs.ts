@@ -83,6 +83,21 @@ export async function runScheduledJobs(opts: { only?: string[]; force?: boolean 
       out.checks = { error: e?.message || String(e) };
     }
   }
+  // Player links (ESPNcricinfo, Wikipedia, official social accounts): new players, and a re-check
+  // every 14 days. At most once an hour.
+  const lastLinks = db.get().jobLog['jobs:player-links'];
+  if (want('links') && (opts.only?.includes('links') || !lastLinks || Date.now() - +new Date(lastLinks) >= 60 * 60_000)) {
+    try {
+      const { resolvePlayerLinks } = await import('./routes/teams');
+      const r = await resolvePlayerLinks();
+      await db.mutate(s => {
+        s.jobLog['jobs:player-links'] = new Date().toISOString();
+      });
+      if (r.checked) out.links = r;
+    } catch (e: any) {
+      out.links = { error: e?.message || String(e) };
+    }
+  }
   try {
     const removed = await db.mutate(store => housekeeping(store));
     if (Object.keys(removed).length) out.housekeeping = removed;

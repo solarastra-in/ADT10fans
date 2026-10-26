@@ -5,6 +5,7 @@ import { useT } from './i18n';
 import { BottomNav, Footer, Header, Toasts } from './components/Shell';
 import { AuthModal, completeRedirectSignIn } from './components/AuthModal';
 import { TeamPickerModal } from './components/TeamPickerModal';
+import { PlayerCardHost } from './components/PlayerCard';
 import { ErrorBox, Spinner } from './components/ui';
 
 import HomePage from './pages/HomePage';
@@ -151,6 +152,7 @@ function Shell() {
       <BottomNav route={route} />
       <AuthModal />
       <TeamPickerModal />
+      <PlayerCardHost />
       <Toasts />
     </div>
   );

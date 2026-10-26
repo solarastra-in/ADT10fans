@@ -1,55 +1,38 @@
 import React from 'react';
-import { ExternalLink } from 'lucide-react';
 import { api } from '../api';
 import { useApp, useLoad } from '../state';
 import { useT } from '../i18n';
 import { Link, usePageMeta } from '../router';
-import { Avatar, ButtonLink, Card, ErrorBox, Pill, SectionTitle, Spinner, StatTile, TeamBadge, ROLE_LABEL, useFormat } from '../components/ui';
+import { Card, ErrorBox, SectionTitle, Spinner, ROLE_LABEL, useFormat } from '../components/ui';
+import { PlayerCardBody } from '../components/PlayerCard';
 
+/**
+ * A player's profile: the same card fans see when they tap a player (season figures from real
+ * scorecards, Pick XI numbers, career-stats and official social links), plus every fixture with the
+ * player's Pick XI points. The server renders this page with Person structured data for search engines.
+ */
 export default function PlayerPage({ id }: { id: string }) {
   const { teamById, config } = useApp();
   const t = useT();
   const f = useFormat();
   const { data, error, loading, reload } = useLoad(() => api.getPlayer(id), [id]);
   const p = data?.player;
-  usePageMeta(p ? `${p.name} – ${data!.team.name}` : null, p ? t('{name} plays for {team} as a {role}.', { name: p.name, team: data!.team.name, role: t(ROLE_LABEL[p.role]).toLowerCase() }) : undefined, config?.brandName);
+  usePageMeta(
+    p ? `${p.name} – ${data!.team.name}` : null,
+    p ? t('{name} plays for {team} as a {role}.', { name: p.name, team: data!.team.name, role: t(ROLE_LABEL[p.role]).toLowerCase() }) : undefined,
+    config?.brandName,
+  );
   if (loading && !data) return <Spinner />;
   if (error || !p || !data) return <ErrorBox message={error || t('Player not found')} onRetry={reload} />;
-  const team = data.team;
-  const scored = data.fixtures.filter(x => x.fantasyPoints !== null);
-  const avg = scored.length ? Math.round((scored.reduce((s, x) => s + (x.fantasyPoints || 0), 0) / scored.length) * 10) / 10 : null;
 
   return (
-    <div className="space-y-6">
-      <nav className="text-xs text-slate-500">
-        <Link to="/players" className="hover:text-white">{t('Players')}</Link> / {p.name}
+    <div className="space-y-6 max-w-2xl">
+      <nav className="text-xs text-slate-500" aria-label={t('Breadcrumb')}>
+        <Link to="/players" className="hover:text-white">{t('Players')}</Link> / <Link to={`/teams/${data.team.id}`} className="hover:text-white">{data.team.name}</Link> / <span className="text-slate-300">{p.name}</span>
       </nav>
-      <Card className="p-5 sm:p-6 flex flex-col sm:flex-row gap-5 sm:items-center">
-        <Avatar name={p.name} src={p.photoUrl} size={96} />
-        <div className="flex-1 min-w-0 space-y-2">
-          <h1 className="text-2xl sm:text-3xl font-black text-white">{p.name}</h1>
-          <Link to={`/teams/${team.id}`} className="inline-flex items-center gap-2 text-sm font-bold text-slate-200 hover:text-amber-300">
-            <TeamBadge team={teamById(team.id) || team} size="sm" /> {team.name}
-          </Link>
-          <div className="flex flex-wrap gap-2">
-            <Pill>{t(ROLE_LABEL[p.role])}</Pill>
-            {p.category && <Pill tone={p.category === 'Icon' ? 'amber' : 'blue'}>{t('{category} signing', { category: t(p.category) })}</Pill>}
-            {p.nationality && <Pill>{p.nationality}</Pill>}
-          </div>
-          <p className="text-sm text-slate-400">{[p.battingStyle, p.bowlingStyle].filter(Boolean).join(' · ')}</p>
-        </div>
-        {p.cricbuzzProfileUrl && (
-          <ButtonLink to={p.cricbuzzProfileUrl} external variant="secondary">
-            {t('Career stats on Cricbuzz')} <ExternalLink className="w-4 h-4" />
-          </ButtonLink>
-        )}
+      <Card className="overflow-hidden p-0">
+        <PlayerCardBody data={data} onPage />
       </Card>
-
-      <div className="grid grid-cols-3 gap-2">
-        <StatTile label={t('Pick XI credits')} value={p.credits ?? '—'} accent />
-        <StatTile label={t('Matches scored')} value={scored.length} />
-        <StatTile label={t('Avg Pick XI points')} value={avg ?? '—'} />
-      </div>
 
       <section>
         <SectionTitle title={t('Fixtures')} />

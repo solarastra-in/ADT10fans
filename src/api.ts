@@ -5,7 +5,7 @@ import type {
   PrizeItem, PrizeRedemption, PollView, FanWarsRow, PublicFan, FanBase, ReferralSummary, CricketDataCandidate, FeedHealthRow,
   ProfileResponse, FanSpace, FanSpaceBooking, Approval, AgentRun, ForumReportView, Reaction, ProposalSettings,
   YouthCupSchool, CreatorPartner, CommentaryAudioFeed, SuperfanPassportTier,
-  AdminFanPoints, PointsHistory, PointsEntry, PlayerWithForm, LineupPreset, MatchSwingInsights,
+  AdminFanPoints, PointsHistory, PointsEntry, PlayerWithForm, LineupPreset, MatchSwingInsights, PlayerDetail,
 } from './types';
 
 const TOKEN_KEY = 't10_auth_token';
@@ -124,7 +124,7 @@ export const api = {
 
   // ----- teams, players, handles -----
   getTeams: () => pub<{ teams: Team[] }>('/api/teams'),
-  getPlayer: (id: string) => pub<{ player: Player; team: Team; fixtures: { matchId: string; matchNo: number; opponent: string; startsAt: string; status: string; result?: string; fantasyPoints: number | null; fantasyDetail: string | null; selectedBy: number | null }[] }>(`/api/players/${encodeURIComponent(id)}`),
+  getPlayer: (id: string) => pub<PlayerDetail>(`/api/players/${encodeURIComponent(id)}`),
   seedOfficialTeams: (overwrite = false, teamId?: string) => post<Ok & { teams: Team[]; handles: SocialHandle[]; created: string[]; updated: string[]; skipped: string[]; summary: string }>('/api/admin/teams/seed-official', { overwrite, teamId }),
   saveTeam: (team: Partial<Team>) => post<Ok & { team: Team; teams: Team[] }>('/api/teams', team),
   saveSquad: (teamId: string, squad: Partial<Player>[], force = false) => post<Ok & { team: Team; teams: Team[] }>(`/api/teams/${encodeURIComponent(teamId)}/squad`, { squad, force }),

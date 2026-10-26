@@ -4,7 +4,7 @@
   "outputDirectory": "dist",
   "functions": {
     "api/index.ts": {
-      "includeFiles": "{dist/_template.html,firebase-applet-config.json}",
+      "includeFiles": "{dist/_template.html,firebase-applet-config.json,server/assets/fonts/**}",
       "maxDuration": 60
     }
   },

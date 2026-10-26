@@ -255,7 +255,6 @@ export const TeamAnalytics: React.FC<TeamAnalyticsProps> = ({ team, matches, all
   const [activeChartMode, setActiveChartMode] = useState<'trend' | 'nrr' | 'overs' | 'radar'>('trend');
   const [logoDimension, setLogoDimension] = useState<'3d' | 'isometric' | 'neon' | 'prism' | 'quad'>('3d');
   const [tilt, setTilt] = useState<{ x: number; y: number }>({ x: 12, y: -8 });
-  const [simRunRateBoost, setSimRunRateBoost] = useState<number>(0);
   const cardRef = useRef<HTMLDivElement>(null);
 
   // Filter matches for this team and sort by match number
@@ -265,23 +264,14 @@ export const TeamAnalytics: React.FC<TeamAnalyticsProps> = ({ team, matches, all
       .sort((a, b) => a.matchNo - b.matchNo);
   }, [matches, team.id]);
 
-  // Franchise benchmark profile for T10 dynamics
-  const teamProfile = useMemo(() => {
-    const hash = (team.id.charCodeAt(0) + team.id.length * 7) % 10;
-    const baseRR = 11.2 + (hash % 5) * 0.3; // 11.2 - 12.4
-    const powerplayRR = baseRR + 0.6;
-    const deathRR = baseRR + 2.2;
-    const bowlingEcon = 10.4 + ((hash + 3) % 4) * 0.3;
-    const boundaryIdx = 82 + (hash % 15);
-    const chasingProwess = 78 + (hash % 18);
-    const dotBallRate = 72 + ((hash * 3) % 20);
-    return { baseRR, powerplayRR, deathRR, bowlingEcon, boundaryIdx, chasingProwess, dotBallRate };
-  }, [team.id]);
+  // Only completed matches with real scores are used. (Earlier versions filled unplayed matches with
+  // generated scores and gave each team invented "profile" figures from a hash of its id.)
+  const playedMatches = useMemo(() => teamMatches.filter(m => m.status === 'completed' && (m.teamA === team.id ? m.scoreA : m.scoreB)), [teamMatches, team.id]);
 
   // Transform matches into rich analytics points
   const matchPoints = useMemo<MatchPoint[]>(() => {
     let runningWins = 0;
-    return teamMatches.map((m, idx) => {
+    return playedMatches.map((m, idx) => {
       const isTeamA = m.teamA === team.id;
       const oppId = isTeamA ? m.teamB : m.teamA;
       const oppTeam = allTeams.find(t => t.id === oppId);
@@ -326,19 +316,6 @@ export const TeamAnalytics: React.FC<TeamAnalyticsProps> = ({ team, matches, all
         }
 
         isWinner = m.winner === team.id || Boolean(m.result && m.result.toLowerCase().includes(team.name.toLowerCase()) && m.result.toLowerCase().includes('won'));
-      } else {
-        // High-fidelity projection modeled on T10 franchise variance
-        const variance = Math.sin(idx * 1.9 + team.id.charCodeAt(0)) * 1.1;
-        runRate = Math.round((teamProfile.baseRR + variance + simRunRateBoost) * 100) / 100;
-        runs = Math.round(runRate * 10);
-        wickets = Math.max(1, Math.min(6, Math.round(3.5 - variance * 0.8)));
-
-        const oppVariance = Math.cos(idx * 2.3 + (oppId?.charCodeAt(0) || 3)) * 0.9;
-        oppRunRate = Math.round((teamProfile.bowlingEcon + oppVariance) * 100) / 100;
-        oppRuns = Math.round(oppRunRate * 10);
-        oppWickets = Math.max(2, Math.min(8, Math.round(4.2 + oppVariance)));
-
-        isWinner = runRate > oppRunRate;
       }
 
       if (isWinner) runningWins++;
@@ -382,20 +359,20 @@ export const TeamAnalytics: React.FC<TeamAnalyticsProps> = ({ team, matches, all
         timeSlot,
       };
     });
-  }, [teamMatches, team.id, team.name, allTeams, teamProfile, simRunRateBoost]);
+  }, [playedMatches, team.id, team.name, allTeams]);
 
   // High-level aggregates
   const stats = useMemo(() => {
     if (matchPoints.length === 0) {
-      return { avgRunRate: teamProfile.baseRR, totalWins: 0, winRate: 0, highestScore: 138, sixesProj: 64 };
+      return { avgRunRate: 0, totalWins: 0, winRate: 0, highestScore: 0, sixesProj: 0 };
     }
     const avgRunRate = Math.round((matchPoints.reduce((acc, p) => acc + p.runRate, 0) / matchPoints.length) * 100) / 100;
     const totalWins = matchPoints[matchPoints.length - 1]?.cumulativeWins || 0;
     const winRate = Math.round((totalWins / matchPoints.length) * 100);
-    const highestScore = Math.max(...matchPoints.map(p => p.runs), 125);
+    const highestScore = Math.max(...matchPoints.map(p => p.runs));
     const sixesProj = Math.round(matchPoints.reduce((acc, p) => acc + Math.round(p.runRate * 0.65), 0));
     return { avgRunRate, totalWins, winRate, highestScore, sixesProj };
-  }, [matchPoints, teamProfile]);
+  }, [matchPoints]);
 
   // Over-by-Over progression data (Overs 1 to 10)
   const overTrajectoryData = useMemo(() => {
@@ -426,17 +403,22 @@ export const TeamAnalytics: React.FC<TeamAnalyticsProps> = ({ team, matches, all
     });
   }, [stats.avgRunRate]);
 
-  // Multi-dimensional radar metrics (6 dimensions)
+  // Radar from this season's real results (0-100 scales; 50 is the midpoint, not a league figure).
   const radarDimensionsData = useMemo(() => {
+    const n = matchPoints.length || 1;
+    const avgOppRR = matchPoints.reduce((a, p) => a + p.oppRunRate, 0) / n;
+    const avgWkts = matchPoints.reduce((a, p) => a + p.oppWickets, 0) / n;
+    const avgLost = matchPoints.reduce((a, p) => a + p.wickets, 0) / n;
+    const pct = (num: number, den: number) => (den ? Math.round((num / den) * 100) : 0);
     return [
-      { dimension: 'Powerplay Firepower', value: Math.min(98, Math.round(teamProfile.powerplayRR * 7.4)), benchmark: 80, fullMark: 100 },
-      { dimension: 'Death Overs Blast', value: Math.min(99, Math.round(teamProfile.deathRR * 7.1)), benchmark: 82, fullMark: 100 },
-      { dimension: 'Boundary Frequency', value: teamProfile.boundaryIdx, benchmark: 75, fullMark: 100 },
-      { dimension: 'Defending Economy', value: Math.min(95, Math.round((14 - teamProfile.bowlingEcon) * 22)), benchmark: 72, fullMark: 100 },
-      { dimension: 'Dot Ball Resilience', value: teamProfile.dotBallRate, benchmark: 70, fullMark: 100 },
-      { dimension: 'Chasing Mastery', value: teamProfile.chasingProwess, benchmark: 78, fullMark: 100 },
+      { dimension: 'Scoring rate', value: Math.min(99, Math.round((stats.avgRunRate / 16) * 100)), benchmark: 50, fullMark: 100 },
+      { dimension: 'Economy', value: matchPoints.length ? Math.max(0, Math.min(99, Math.round(((16 - avgOppRR) / 16) * 100))) : 0, benchmark: 50, fullMark: 100 },
+      { dimension: 'Wickets taken', value: Math.round((avgWkts / 10) * 100), benchmark: 50, fullMark: 100 },
+      { dimension: 'Wickets kept', value: matchPoints.length ? Math.round(((10 - avgLost) / 10) * 100) : 0, benchmark: 50, fullMark: 100 },
+      { dimension: 'Win rate', value: stats.winRate, benchmark: 50, fullMark: 100 },
+      { dimension: 'Highest total', value: Math.min(99, pct(stats.highestScore, 200)), benchmark: 50, fullMark: 100 },
     ];
-  }, [teamProfile]);
+  }, [matchPoints, stats]);
 
   // Mouse tilt controller for 3D Holographic Crest
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -577,33 +559,6 @@ export const TeamAnalytics: React.FC<TeamAnalyticsProps> = ({ team, matches, all
             </button>
           </div>
 
-          {/* Interactive Simulation / Boost Slider */}
-          <div className="flex items-center gap-2.5 text-xs text-slate-400 bg-slate-950/60 px-3.5 py-1.5 rounded-xl border border-slate-800">
-            <Sliders className="w-3.5 h-3.5 text-amber-400" />
-            <span className="font-semibold">{lbl('Simulate RR Variance')}:</span>
-            <input
-              type="range"
-              min="-1.5"
-              max="2.0"
-              step="0.5"
-              value={simRunRateBoost}
-              onChange={e => setSimRunRateBoost(parseFloat(e.target.value))}
-              className="w-20 accent-amber-400 cursor-pointer"
-            />
-            <span className="font-mono text-white font-bold w-12 text-right">
-              {simRunRateBoost > 0 ? `+${simRunRateBoost}` : simRunRateBoost} RPO
-            </span>
-            {simRunRateBoost !== 0 && (
-              <button
-                type="button"
-                onClick={() => setSimRunRateBoost(0)}
-                className="text-slate-500 hover:text-amber-400 p-0.5 cursor-pointer"
-                title="Reset simulation"
-              >
-                <RotateCcw className="w-3 h-3" />
-              </button>
-            )}
-          </div>
         </div>
       </div>
 

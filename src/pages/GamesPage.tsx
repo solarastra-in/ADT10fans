@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useApp, useLoad } from '../state';
 import { useT } from '../i18n';
 import { Link, usePageMeta } from '../router';
+import { playerLinkProps } from '../components/PlayerCard';
 import { Avatar, Button, Card, ErrorBox, Notice, PageHeader, Pill, SectionTitle, Spinner, cx, inputCls } from '../components/ui';
 import type { GamesToday, GuessState, SuperOverState } from '../types';
 
@@ -147,7 +148,7 @@ function GuessGame({ data, onChange }: { data: GamesToday; onChange: (g: GuessSt
           <Avatar name={g.answer?.name || '?'} src={g.answer?.photoUrl} size={52} />
           <div className="flex-1 min-w-0">
             <p className="text-xs text-slate-400">{g.solved ? t('Solved! +{n} points', { n: g.points || 0 }) : t('Today’s player was')}</p>
-            <Link to={`/players/${g.answer?.id}`} className="block font-black text-white hover:text-amber-300">{g.answer?.name}</Link>
+            {g.answer?.id ? <a {...playerLinkProps(g.answer.id)} className="block font-black text-white hover:text-amber-300">{g.answer.name}</a> : null}
             <p className="text-xs text-slate-400">{teamById(g.answer?.teamId)?.name}</p>
           </div>
           <span className="text-[11px] text-slate-500 text-end">{t('New player in {time}', { time: nextDubaiMidnight() })}</span>

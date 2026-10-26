@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
+    "@resvg/resvg-js": "^2.6.2",
     "@tailwindcss/vite": "^4.3.3",
     "@types/qrcode": "^1.5.5",
     "@vercel/functions": "^2.2.13",
