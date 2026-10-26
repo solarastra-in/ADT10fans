@@ -18,6 +18,7 @@ export default function ProfilePage() {
   const { data, error, loading, reload } = useLoad(() => (user ? api.getProfile() : Promise.resolve(null)), [user?.id]);
   const [form, setForm] = useState({ name: '', avatar: '', country: '', city: '', bio: '' });
   const [saving, setSaving] = useState(false);
+  const [badgeFilter, setBadgeFilter] = useState<'all' | 'unlocked' | 'locked'>('all');
   useEffect(() => {
     if (user) setForm({ name: user.name || '', avatar: user.avatar || '', country: user.country || '', city: user.city || '', bio: user.bio || '' });
   }, [user?.id]);
@@ -69,8 +70,6 @@ export default function ProfilePage() {
       toast(e.message, 'error');
     }
   };
-
-  const [badgeFilter, setBadgeFilter] = useState<'all' | 'unlocked' | 'locked'>('all');
 
   const filteredBadges = (data?.badges || []).filter(b => {
     if (badgeFilter === 'unlocked') return b.unlocked;

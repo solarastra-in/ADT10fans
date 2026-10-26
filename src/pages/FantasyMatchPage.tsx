@@ -875,6 +875,7 @@ export default function FantasyMatchPage({ id }: { id: string }) {
                       onClick={() => toggle(p)}
                       aria-pressed={on}
                       data-player={p.id}
+                      aria-label={`${on ? t('Remove from Squad') : t('Add to Squad')}: ${p.name}`}
                       disabled={Boolean(blocked)}
                       className={cx(
                         'w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-transform',
