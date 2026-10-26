@@ -43,6 +43,26 @@ app.use((req, res, next) => {
   next();
 });
 
+/**
+ * Public data that is the same for every visitor may be cached by the CDN for a few seconds (the
+ * client reads these without the sign-in header). During a match every open page polls scores, so
+ * this keeps that traffic off the server. Live data is cached briefly; squads and tables longer.
+ */
+const CDN_CACHE: [RegExp, number][] = [
+  [/^\/api\/(matches(\/[^/]+)?|scraper\/live)$/, 5],
+  [/^\/api\/(teams|players\/[^/]+|fans|fantasy\/leaderboard|growth-catalysts)$/, 30],
+];
+app.use((req, res, next) => {
+  if (req.method === 'GET' && !req.headers.authorization) {
+    const hit = CDN_CACHE.find(([re]) => re.test(req.path));
+    if (hit) {
+      res.setHeader('Cache-Control', `public, max-age=0, s-maxage=${hit[1]}, stale-while-revalidate=${hit[1] * 6}`);
+      res.setHeader('Vary', 'Authorization');
+    }
+  }
+  next();
+});
+
 installStoreSync(app);
 // Scheduled jobs (reminders, live scores, feed pulls) run after visits when they are due; no cron needed.
 app.use((req, res, next) => {

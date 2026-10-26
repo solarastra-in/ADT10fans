@@ -68,12 +68,12 @@ function qs(params?: Record<string, any>): string {
   return s ? `?${s}` : '';
 }
 
-async function req<T>(url: string, options: RequestInit & { json?: unknown } = {}): Promise<T> {
-  const token = getStoredToken();
+async function req<T>(url: string, options: RequestInit & { json?: unknown; anonymous?: boolean } = {}): Promise<T> {
+  const token = options.anonymous ? null : getStoredToken();
   const headers = new Headers(options.headers || {});
   if (options.json !== undefined) headers.set('Content-Type', 'application/json');
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  const { json, ...rest } = options;
+  const { json, anonymous: _anonymous, ...rest } = options;
   let response: Response;
   try {
     response = await fetch(url, { ...rest, headers, body: json !== undefined ? JSON.stringify(json) : rest.body });
@@ -90,6 +90,17 @@ async function req<T>(url: string, options: RequestInit & { json?: unknown } = {
   return data as T;
 }
 const post = <T>(url: string, json: unknown = {}) => req<T>(url, { method: 'POST', json });
+
+/**
+ * Data that is the same for every visitor (fixtures, scores, squads, players, leaderboards) is read
+ * without the sign-in header, so the CDN can answer it for everyone during a match instead of every
+ * open page reaching the server. Admins read it fresh (past the cache) so they see their own edits.
+ */
+let freshReads = false;
+export const setFreshReads = (on: boolean) => {
+  freshReads = on;
+};
+const pub = <T>(url: string) => (freshReads ? req<T>(`${url}${url.includes('?') ? '&' : '?'}_=${Date.now()}`) : req<T>(url, { anonymous: true }));
 const del = <T>(url: string, json?: unknown) => req<T>(url, { method: 'DELETE', ...(json !== undefined ? { json } : {}) });
 
 type Ok = { success: boolean };
@@ -112,8 +123,8 @@ export const api = {
   getMyPoints: () => req<PointsHistory>('/api/me/points'),
 
   // ----- teams, players, handles -----
-  getTeams: () => req<{ teams: Team[] }>('/api/teams'),
-  getPlayer: (id: string) => req<{ player: Player; team: Team; fixtures: { matchId: string; matchNo: number; opponent: string; startsAt: string; status: string; result?: string; fantasyPoints: number | null; fantasyDetail: string | null; selectedBy: number | null }[] }>(`/api/players/${encodeURIComponent(id)}`),
+  getTeams: () => pub<{ teams: Team[] }>('/api/teams'),
+  getPlayer: (id: string) => pub<{ player: Player; team: Team; fixtures: { matchId: string; matchNo: number; opponent: string; startsAt: string; status: string; result?: string; fantasyPoints: number | null; fantasyDetail: string | null; selectedBy: number | null }[] }>(`/api/players/${encodeURIComponent(id)}`),
   seedOfficialTeams: (overwrite = false, teamId?: string) => post<Ok & { teams: Team[]; handles: SocialHandle[]; created: string[]; updated: string[]; skipped: string[]; summary: string }>('/api/admin/teams/seed-official', { overwrite, teamId }),
   saveTeam: (team: Partial<Team>) => post<Ok & { team: Team; teams: Team[] }>('/api/teams', team),
   saveSquad: (teamId: string, squad: Partial<Player>[], force = false) => post<Ok & { team: Team; teams: Team[] }>(`/api/teams/${encodeURIComponent(teamId)}/squad`, { squad, force }),
@@ -141,8 +152,8 @@ export const api = {
   syncCuratorFeed: () => post<{ success: boolean; feedId: string; posts: FeedItem[]; rawCount: number; message: string }>('/api/curator/sync'),
 
   // ----- matches -----
-  getMatches: (params?: { teamId?: string; status?: string }) => req<{ matches: Match[] }>(`/api/matches${qs(params)}`),
-  getMatch: (id: string) => req<MatchDetail>(`/api/matches/${encodeURIComponent(id)}`),
+  getMatches: (params?: { teamId?: string; status?: string }) => pub<{ matches: Match[] }>(`/api/matches${qs(params)}`),
+  getMatch: (id: string) => pub<MatchDetail>(`/api/matches/${encodeURIComponent(id)}`),
   saveMatch: (match: Partial<Match> & { notify?: boolean }) => post<Ok & { matches: Match[]; targetMatch: Match; notification?: NotificationItem; fantasy?: any }>('/api/matches', match),
   deleteMatch: (id: string) => del<Ok & { matches: Match[] }>(`/api/matches/${id}`),
   liveSyncMatch: (id: string) => post<Ok & { status: string; justCompleted: boolean; scorecard: boolean; scorecardNote?: string; match: Match }>(`/api/admin/matches/${id}/live-sync`),
@@ -165,7 +176,7 @@ export const api = {
   getFantasy: (matchId: string) => req<{ match: Match; locked: boolean; rules: DreamXIRules; pool: PlayerWithForm[]; fantasyTeam: FantasyTeam | null; fantasyTeams?: FantasyTeam[]; lineups: number; presets?: LineupPreset[]; swingInsights?: MatchSwingInsights }>(`/api/fantasy/${encodeURIComponent(matchId)}`),
   submitFantasy: (matchId: string, playerIds: string[], captainId: string, viceCaptainId: string, variationId?: string, variationName?: string) => post<Ok & { fantasyTeam: FantasyTeam; fantasyTeams: FantasyTeam[]; credits: number; user: User }>(`/api/fantasy/${encodeURIComponent(matchId)}`, { playerIds, captainId, viceCaptainId, variationId, variationName }),
   deleteFantasy: (matchId: string, variationId?: string) => del<Ok & { fantasyTeams: FantasyTeam[] }>(`/api/fantasy/${encodeURIComponent(matchId)}${variationId ? `?variationId=${encodeURIComponent(variationId)}` : ''}`),
-  getFantasyLeaderboard: (matchId?: string) => req<{ rows: LeaderRow[] }>(`/api/fantasy/leaderboard${qs({ matchId })}`),
+  getFantasyLeaderboard: (matchId?: string) => pub<{ rows: LeaderRow[] }>(`/api/fantasy/leaderboard${qs({ matchId })}`),
   rescoreFantasy: (matchId: string) => post<Ok & { scored: number; topScore: number; unmatchedNames: string[] }>(`/api/admin/fantasy/${matchId}/score`),
   getLeagues: () => req<{ leagues: FantasyLeague[] }>('/api/fantasy-leagues'),
   createLeague: (name: string) => post<Ok & { league: { id: string; code: string; name: string } }>('/api/fantasy-leagues', { name }),
@@ -196,7 +207,7 @@ export const api = {
 
   // ----- community -----
   getLeaderboard: (teamId?: string) => req<{ fanWars: FanWarsRow[]; topFans: PublicFan[]; myRank: number | null }>(`/api/leaderboard${qs({ teamId })}`),
-  getFanBase: () => req<FanBase>('/api/fans'),
+  getFanBase: () => pub<FanBase>('/api/fans'),
   getForumThreads: (params?: { category?: string; teamId?: string; search?: string; sort?: string; matchId?: string }) => req<{ threads: ForumThread[] }>(`/api/forum/threads${qs(params)}`),
   getForumThreadDetail: (id: string) => req<{ thread: ForumThread; comments: ForumComment[]; canModerate: boolean }>(`/api/forum/threads/${encodeURIComponent(id)}`),
   createForumThread: (data: { title: string; content: string; category?: string; teamId?: string | null; matchId?: string | null; tags?: string[] }) => post<Ok & { thread: ForumThread; pointsAdded: number; user: User }>('/api/forum/threads', data),
@@ -270,7 +281,7 @@ export const api = {
   resetProposalSettings: () => post<Ok & { proposalSettings: ProposalSettings }>('/api/admin/proposal/reset'),
 
   // ----- unofficial scrapers -----
-  getScraperLiveMatches: () => req<{ success: boolean; count: number; sources: string[]; matches: any[] }>('/api/scraper/live'),
+  getScraperLiveMatches: () => pub<{ success: boolean; count: number; sources: string[]; matches: any[] }>('/api/scraper/live'),
   syncMatchFromScraper: (matchId: string, data: { provider: 'cricbuzz' | 'cricinfo'; externalId: string; slug?: string }) => post<{ success: boolean; message: string; match: any }>(`/api/scraper/sync/${matchId}`, data),
   testScraper: (target: { url?: string; matchId?: string }) => post<{ success: boolean; provider: string; matchId: string; summary: any; scorecard: any; inningsCount: number }>('/api/scraper/test', target),
 

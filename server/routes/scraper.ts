@@ -22,8 +22,9 @@ scraperRouter.get('/scraper/live', wrap(async (_req, res) => {
 
 /**
  * Admin endpoint: Fetch details & scorecard for a match from Cricbuzz or Cricinfo.
+ * Admin only: open to everyone, it let any visitor make the server scrape any match id.
  */
-scraperRouter.get('/scraper/match/:provider/:id', wrap(async (req, res) => {
+scraperRouter.get('/scraper/match/:provider/:id', requireAdmin('matches'), wrap(async (req, res) => {
   const provider = req.params.provider === 'cricinfo' ? 'cricinfo' : 'cricbuzz';
   const id = req.params.id;
   const slug = str(req.query.slug, 120);

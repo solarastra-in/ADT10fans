@@ -4,6 +4,7 @@ import { syncAllFeeds } from './feeds';
 import { syncLiveScores } from './liveScores';
 import { runReminders } from './reminders';
 import { runScoresAgent, runSocialHarvesterAgent } from './agents';
+import { housekeeping } from './housekeeping';
 
 /**
  * Scheduled work:
@@ -81,6 +82,12 @@ export async function runScheduledJobs(opts: { only?: string[]; force?: boolean 
     } catch (e: any) {
       out.checks = { error: e?.message || String(e) };
     }
+  }
+  try {
+    const removed = await db.mutate(store => housekeeping(store));
+    if (Object.keys(removed).length) out.housekeeping = removed;
+  } catch (e: any) {
+    out.housekeeping = { error: e?.message || String(e) };
   }
   // Safety net: write anything that changed without being recorded (there should be nothing).
   try {

@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { findBy } from '../indexes';
+import { LIMITS } from '../housekeeping';
 import { db } from '../db';
 import { canManageTeam, getAuthUser, rateLimit, requireAdmin, requireUser, teamScopeOf } from '../auth';
 import { bad, isHttpsUrl, newId, str, userOf, wrap } from '../http';
@@ -63,7 +65,9 @@ notificationsRouter.post('/fcm/register-token', rateLimit('fcm', 20, 60_000), (r
   const user = getAuthUser(req);
   const store = db.get();
   const now = new Date().toISOString();
-  const existing = store.fcmTokens.find(t => t.token === token);
+  const existing = findBy(store.fcmTokens, 'token', token);
+  // Anyone can register a device, so the list is capped; housekeeping trims it back regularly.
+  if (!existing && !user && store.fcmTokens.length >= LIMITS.fcmTokens + 5_000) return bad(res, 'Too many devices are registered right now. Please sign in and try again.', 503);
   if (existing) Object.assign(existing, { userId: user?.id || existing.userId, userEmail: user?.email || existing.userEmail, enabled: true, updatedAt: now });
   else store.fcmTokens.push({ id: newId('fcm'), token, userId: user?.id || null, userEmail: user?.email || null, deviceType: str(req.body?.deviceType, 40) || 'web', userAgent: str(req.body?.userAgent, 300), enabled: true, createdAt: now, updatedAt: now });
   db.save();

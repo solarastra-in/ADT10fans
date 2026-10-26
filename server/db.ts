@@ -1006,8 +1006,12 @@ const DATA_DIR = path.resolve(process.env.DATA_DIR || (process.env.VERCEL ? '/tm
 /** Where older versions kept the whole store as one file; read once to move it into shards. */
 export const STORE_PATH = path.join(DATA_DIR, 't10_store.json');
 
-/** Per-request context (set by storeSync) so code can tell which request is writing. */
-export const requestContext = new AsyncLocalStorage<{ id: string }>();
+/**
+ * Per-request context (set by storeSync) so code can tell which request is writing. Read-only
+ * requests (GET) get the plain store without change tracking, which is faster: nothing they do
+ * is written anyway.
+ */
+export const requestContext = new AsyncLocalStorage<{ id: string; readOnly?: boolean }>();
 
 type InitHook = (store: AppStore) => boolean | void;
 
@@ -1080,6 +1084,10 @@ class ShardEngine implements Engine {
   }
   get() {
     return this.proxy;
+  }
+  /** The store without change tracking, for read-only requests. */
+  getRaw() {
+    return this.raw;
   }
   saved() {
     if (this.changes.empty) this.untrackedSave = true;
@@ -1451,6 +1459,7 @@ class DatabaseManager {
   }
 
   get(): AppStore {
+    if (this.engine instanceof ShardEngine && requestContext.getStore()?.readOnly) return this.engine.getRaw();
     return this.engine.get();
   }
 

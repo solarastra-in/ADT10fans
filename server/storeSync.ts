@@ -21,7 +21,7 @@ const READ_FRESHNESS_MS = 1000;
 export function installStoreSync(app: Express) {
   app.use((req: Request, res: Response, next: NextFunction) => {
     db.ready().then(() => {
-      if (!db.shared) return requestContext.run({ id: crypto.randomUUID() }, () => next());
+      if (!db.shared) return requestContext.run({ id: crypto.randomUUID(), readOnly: ['GET', 'HEAD', 'OPTIONS'].includes(req.method) }, () => next());
       if ((req as any).__storeSyncReplay) return requestContext.run({ id: crypto.randomUUID() }, () => next());
       // Routes that wait on slow outside services make their own short writes (db.mutate runs as a
       // transaction outside a request context), so they never hold this server's write lock while waiting.
@@ -54,7 +54,7 @@ async function handleRead(req: Request, res: Response, next: NextFunction) {
   } catch (e) {
     console.warn('[STORE] refresh failed:', (e as Error)?.message);
   }
-  requestContext.run({ id: crypto.randomUUID() }, () => next());
+  requestContext.run({ id: crypto.randomUUID(), readOnly: true }, () => next());
 }
 
 function handleWrite(app: Express, req: Request, res: Response, next: NextFunction): Promise<void> {

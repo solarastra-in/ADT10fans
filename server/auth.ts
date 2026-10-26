@@ -4,6 +4,7 @@ import path from 'path';
 import type { Request, Response, NextFunction } from 'express';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import nodemailer from 'nodemailer';
+import { findBy } from './indexes';
 import { db, User, SUPER_ADMIN_EMAIL, AdminPermission, AdminUserRecord, TEAM_OFFICIAL_PERMISSIONS } from './db';
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
@@ -181,7 +182,8 @@ export function createSession(userId: string): string {
   const token = crypto.randomBytes(32).toString('base64url');
   const store = db.get();
   const now = Date.now();
-  store.sessions = (store.sessions || []).filter(s => new Date(s.expiresAt).getTime() > now);
+  // Only appended here (expired sessions are removed by the scheduled housekeeping), so a sign-in
+  // writes one small shard and two sign-ins on different servers do not conflict.
   store.sessions.push({
     id: sha256(token),
     userId,
@@ -197,8 +199,9 @@ export function revokeSession(req: Request) {
   const token = bearer(req);
   if (!token) return;
   const store = db.get();
-  const id = sha256(token);
-  store.sessions = (store.sessions || []).filter(s => s.id !== id);
+  const session = findBy(store.sessions, 'id', sha256(token));
+  // Expired in place (removed later by housekeeping), so logging out writes one small shard.
+  if (session) session.expiresAt = new Date(0).toISOString();
   db.save();
 }
 
@@ -213,9 +216,9 @@ export function getAuthUser(req: Request): User | null {
   const token = bearer(req);
   if (!token) return null;
   const store = db.get();
-  const session = (store.sessions || []).find(s => s.id === sha256(token));
+  const session = findBy(store.sessions, 'id', sha256(token));
   if (!session || new Date(session.expiresAt).getTime() < Date.now()) return null;
-  const user = store.users.find(u => u.id === session.userId) || null;
+  const user = findBy(store.users, 'id', session.userId) || null;
   if (user) syncUserRbac(user);
   return user;
 }

@@ -39,7 +39,8 @@ function record(store: AppStore, entry: Omit<PointsEntry, 'id' | 'at'>) {
   const full: PointsEntry = { id: 'pl-' + crypto.randomBytes(6).toString('hex'), at: new Date().toISOString(), ...entry };
   if (!Array.isArray(store.pointsLedger)) store.pointsLedger = [];
   store.pointsLedger.push(full);
-  if (store.pointsLedger.length > MAX_LEDGER) store.pointsLedger.splice(0, store.pointsLedger.length - MAX_LEDGER);
+  // Trimmed in batches: removing entries rewrites the shards they are in, so not on every award.
+  if (store.pointsLedger.length > MAX_LEDGER + 5_000) store.pointsLedger.splice(0, store.pointsLedger.length - MAX_LEDGER);
   return full;
 }
 

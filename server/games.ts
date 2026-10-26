@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { AppStore, GamePlay, Player, Team, User } from './db';
+import { AppStore, db, GamePlay, Player, Team, User } from './db';
 import { awardPoints } from './points';
 
 /**
@@ -15,11 +15,19 @@ import { awardPoints } from './points';
 
 export const dubaiDay = (d = new Date()) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Dubai' });
 
-function gameSecret(store: AppStore): string {
+export function gameSecret(store: AppStore): string {
   if (process.env.GAME_SECRET) return process.env.GAME_SECRET;
   if (!store.jobLog['game-secret']) store.jobLog['game-secret'] = crypto.randomBytes(24).toString('hex');
   return store.jobLog['game-secret'];
 }
+
+// Made when the store loads (and saved), so every server uses the same secret. Made lazily during a
+// page view, each server would invent its own and fans would get different puzzles from different servers.
+db.onLoad(store => {
+  if (process.env.GAME_SECRET || store.jobLog['game-secret']) return false;
+  gameSecret(store);
+  return true;
+});
 
 /** Deterministic number in [0, 1) for a key. */
 function roll(store: AppStore, key: string): number {

@@ -1,0 +1,12 @@
+rules_version = '2';
+
+// Fan photos are uploaded by the site's server (service account, not subject to these rules) after
+// checking the file, and are shown through download links that carry their own token. Browsers get
+// no direct access to the bucket.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -8,30 +8,33 @@ import { TeamPickerModal } from './components/TeamPickerModal';
 import { ErrorBox, Spinner } from './components/ui';
 
 import HomePage from './pages/HomePage';
-import MatchesPage from './pages/MatchesPage';
-import MatchPage from './pages/MatchPage';
-import TeamsPage from './pages/TeamsPage';
-import TeamPage from './pages/TeamPage';
-import PlayersPage from './pages/PlayersPage';
-import PlayerPage from './pages/PlayerPage';
-import SocialPage from './pages/SocialPage';
-import PlayPage from './pages/PlayPage';
-import FantasyPage from './pages/FantasyPage';
-import FantasyMatchPage from './pages/FantasyMatchPage';
-import GamesPage from './pages/GamesPage';
-import ContestsPage from './pages/ContestsPage';
-import PrizesPage from './pages/PrizesPage';
-import LeaderboardPage from './pages/LeaderboardPage';
-import FansPage from './pages/FansPage';
-import ForumPage from './pages/ForumPage';
-import ThreadPage from './pages/ThreadPage';
-import FanSpacesPage from './pages/FanSpacesPage';
-import GrowthPage from './pages/GrowthPage';
-import ProfilePage from './pages/ProfilePage';
-import InfoPage from './pages/InfoPage';
-import AdminPage from './pages/AdminPage';
-import ProposalPage from './pages/ProposalPage';
 import NotFoundPage from './pages/NotFoundPage';
+
+// Every page except the home page is its own chunk, loaded when it is first opened: visitors no
+// longer download the admin console, the Pick XI analytics and the charts just to read a score.
+const MatchesPage = React.lazy(() => import('./pages/MatchesPage'));
+const MatchPage = React.lazy(() => import('./pages/MatchPage'));
+const TeamsPage = React.lazy(() => import('./pages/TeamsPage'));
+const TeamPage = React.lazy(() => import('./pages/TeamPage'));
+const PlayersPage = React.lazy(() => import('./pages/PlayersPage'));
+const PlayerPage = React.lazy(() => import('./pages/PlayerPage'));
+const SocialPage = React.lazy(() => import('./pages/SocialPage'));
+const PlayPage = React.lazy(() => import('./pages/PlayPage'));
+const FantasyPage = React.lazy(() => import('./pages/FantasyPage'));
+const FantasyMatchPage = React.lazy(() => import('./pages/FantasyMatchPage'));
+const GamesPage = React.lazy(() => import('./pages/GamesPage'));
+const ContestsPage = React.lazy(() => import('./pages/ContestsPage'));
+const PrizesPage = React.lazy(() => import('./pages/PrizesPage'));
+const LeaderboardPage = React.lazy(() => import('./pages/LeaderboardPage'));
+const FansPage = React.lazy(() => import('./pages/FansPage'));
+const ForumPage = React.lazy(() => import('./pages/ForumPage'));
+const ThreadPage = React.lazy(() => import('./pages/ThreadPage'));
+const FanSpacesPage = React.lazy(() => import('./pages/FanSpacesPage'));
+const GrowthPage = React.lazy(() => import('./pages/GrowthPage'));
+const ProfilePage = React.lazy(() => import('./pages/ProfilePage'));
+const InfoPage = React.lazy(() => import('./pages/InfoPage'));
+const AdminPage = React.lazy(() => import('./pages/AdminPage'));
+const ProposalPage = React.lazy(() => import('./pages/ProposalPage'));
 
 function Page() {
   const route = useRoute();
@@ -138,7 +141,9 @@ function Shell() {
           <ErrorBox message={t('Could not load the site: {error}', { error: bootError })} onRetry={() => window.location.reload()} />
         ) : (
           <PageBoundary resetKey={route.path}>
-            <Page />
+            <React.Suspense fallback={<Spinner />}>
+              <Page />
+            </React.Suspense>
           </PageBoundary>
         )}
       </main>

@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { api, clearStoredToken } from './api';
+import { api, setFreshReads, clearStoredToken } from './api';
 import type { Match, PublicConfig, Team, User } from './types';
 
 export interface Toast {
@@ -76,11 +76,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       .finally(() => setReady(true));
   }, [reloadAll]);
 
-  // Live matches refresh every 30 seconds; otherwise every 5 minutes.
+  // Admins read public data past the CDN cache, so their own edits show at once.
+  useEffect(() => {
+    setFreshReads(user?.role === 'admin');
+  }, [user]);
+
+  // Live matches refresh every 30 seconds; otherwise every 5 minutes. Not while the tab is hidden;
+  // coming back to it refreshes straight away.
   const hasLive = matches.some(m => m.status === 'live');
   useEffect(() => {
-    const id = setInterval(() => refreshMatches().catch(() => undefined), hasLive ? 30_000 : 300_000);
-    return () => clearInterval(id);
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      refreshMatches().catch(() => undefined);
+    };
+    const id = setInterval(tick, hasLive ? 30_000 : 300_000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && hasLive) tick();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [hasLive, refreshMatches]);
 
   const toast = useCallback((text: string, kind: Toast['kind'] = 'success') => {
