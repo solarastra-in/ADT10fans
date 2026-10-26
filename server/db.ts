@@ -443,6 +443,10 @@ export interface SystemSettings {
   referralMaxRewarded: number;
   /** Minutes before the first ball when the "lineups lock soon" reminder goes out. */
   lockReminderMinutes: number;
+  /** Points for the fan whose post the admins pick as Fan of the Day. */
+  fanOfTheDayPoints: number;
+  /** Which fan wall posts wait for an admin before fans see them. */
+  fanWallReview: 'photos' | 'all' | 'none';
   smtp: { host: string; port: number; user: string; pass: string; from: string; enabled: boolean };
 }
 
@@ -863,6 +867,8 @@ export function defaultSettings(): SystemSettings {
     referralRewardPoints: 50,
     referralMaxRewarded: 10,
     lockReminderMinutes: Math.max(5, Number(process.env.LOCK_REMINDER_MINUTES) || 30),
+    fanOfTheDayPoints: 100,
+    fanWallReview: 'photos',
     smtp: {
       host: process.env.SMTP_HOST || '',
       port: Number(process.env.SMTP_PORT) || 587,

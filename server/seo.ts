@@ -43,7 +43,7 @@ const fmtDate = (iso: string) => {
   }
 };
 
-export const INDEXABLE_STATIC = ['/', '/matches', '/teams', '/players', '/social', '/videos', '/news', '/play', '/fantasy', '/games', '/contests', '/prizes', '/leaderboard', '/fans', '/forum', '/fanspaces', '/rules', '/privacy', '/terms'];
+export const INDEXABLE_STATIC = ['/', '/matches', '/teams', '/players', '/social', '/videos', '/news', '/play', '/fantasy', '/games', '/fanwall', '/contests', '/prizes', '/leaderboard', '/fans', '/forum', '/fanspaces', '/rules', '/privacy', '/terms'];
 const PRIVATE = ['/admin', '/proposal', '/profile'];
 
 function teamName(store: AppStore, id: string) {
@@ -62,7 +62,7 @@ export const playerPath = (p: Player) => `/players/${encodeURIComponent(p.id)}`;
 function nav() {
   const links = [
     ['/', 'Home'], ['/matches', 'Matches'], ['/teams', 'Teams'], ['/players', 'Players'], ['/videos', 'Videos'], ['/social', 'Social'], ['/news', 'News'],
-    ['/fantasy', 'Pick XI'], ['/games', 'Daily games'], ['/contests', 'Predictions'], ['/prizes', 'Prizes'], ['/leaderboard', 'Leaderboard'], ['/fans', 'Fan base'], ['/forum', 'Forum'], ['/fanspaces', 'Fan Spaces'],
+    ['/fantasy', 'Pick XI'], ['/games', 'Daily games'], ['/fanwall', 'Fan wall'], ['/contests', 'Predictions'], ['/prizes', 'Prizes'], ['/leaderboard', 'Leaderboard'], ['/fans', 'Fan base'], ['/forum', 'Forum'], ['/fanspaces', 'Fan Spaces'],
   ];
   return `<nav aria-label="Site"><ul>${links.map(([h, l]) => `<li><a href="${h}">${esc(l)}</a></li>`).join('')}</ul></nav>`;
 }
@@ -479,6 +479,54 @@ export function renderPage(rawPath: string, store: AppStore, base: string): Rend
       }
       return page({ title, description, body: shell(h1, description, inner) });
     }
+    case 'fanwall': {
+      const abs = (u?: string | null) => (u ? (u.startsWith('http') ? u : `${base}${u}`) : undefined);
+      if (parts[1]) {
+        const fp = store.fanPosts.find(x => x.id === parts[1] && x.status === 'live');
+        if (!fp) return notFound();
+        const team = store.teams.find(t => t.id === fp.teamId);
+        const featured = (fp.featuredOn || []).length > 0;
+        const heading = featured ? `${fp.userName}: Fan of the Day` : `${fp.userName} on the fan wall`;
+        return page({
+          // Fan of the Day posts are worth finding; other posts are shareable but not indexed.
+          robots: featured ? 'index, follow, max-image-preview:large' : 'noindex, follow',
+          title: heading,
+          description: (fp.text || `A photo from ${fp.userName}${team ? `, a ${team.name} fan` : ''}.`).replace(/\s+/g, ' '),
+          type: 'article',
+          image: abs(fp.photoUrl) || ogUrl(base, 'site'),
+          imageAlt: fp.text ? clip(fp.text, 100) : `Photo by ${fp.userName}`,
+          jsonLd: [
+            breadcrumbs(base, [['Fan wall', '/fanwall'], [heading, `/fanwall/${encodeURIComponent(fp.id)}`]]),
+            {
+              '@context': 'https://schema.org',
+              '@type': 'SocialMediaPosting',
+              headline: heading,
+              ...(fp.text ? { articleBody: fp.text } : {}),
+              ...(fp.photoUrl ? { image: abs(fp.photoUrl) } : {}),
+              datePublished: fp.createdAt,
+              author: { '@type': 'Person', name: fp.userName },
+              url: `${base}/fanwall/${encodeURIComponent(fp.id)}`,
+            },
+          ],
+          body: shell(heading, team ? `${team.name} fan` : '', `${fp.photoUrl ? `<img src="${esc(abs(fp.photoUrl))}" alt="${esc(fp.text || `Photo by ${fp.userName}`)}" width="${fp.photoWidth || ''}" height="${fp.photoHeight || ''}" />` : ''}${fp.text ? `<p>${esc(fp.text)}</p>` : ''}<p><a href="/fanwall">More from the fan wall</a></p>`),
+        });
+      }
+      const live = store.fanPosts.filter(p => p.status === 'live').sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      const fotd = [...store.fansOfTheDay].sort((a, b) => b.day.localeCompare(a.day))[0];
+      const fotdPost = fotd && store.fanPosts.find(p => p.id === fotd.postId && p.status === 'live');
+      return page({
+        title: 'Fan wall: photos, matchday moments and the Fan of the Day',
+        description: `Abu Dhabi T10 fans share their matchday photos, shirts and stadium trips. Every day the organisers pick a Fan of the Day${store.settings.fanOfTheDayPoints ? ` who wins ${store.settings.fanOfTheDayPoints} points` : ''}.`,
+        image: abs(fotdPost?.photoUrl) || ogUrl(base, 'site'),
+        jsonLd: [{ '@context': 'https://schema.org', '@type': 'CollectionPage', name: 'Fan wall', url: `${base}/fanwall` }],
+        body: shell(
+          'Fan wall',
+          'Show how big a fan you are: post a photo or a matchday moment. The organisers pick a Fan of the Day.',
+          (fotdPost ? `<h2>Fan of the Day: ${esc(fotdPost.userName)}</h2><p><a href="/fanwall/${encodeURIComponent(fotdPost.id)}">${esc(fotdPost.text || 'See the post')}</a></p>` : '') +
+            `<ul>${live.slice(0, 30).map(p => `<li><strong>${esc(p.userName)}</strong>${p.text ? `: ${esc(clip(p.text, 140))}` : ' shared a photo'}</li>`).join('')}</ul>`,
+        ),
+      });
+    }
     case 'forum': {
       if (parts[1]) {
         const t = store.forumThreads.find(x => x.id === parts[1] && !x.hidden);
@@ -563,7 +611,8 @@ export function sitemapXml(store: AppStore, base: string) {
   const latestMatch = store.matches.map(m => m.updatedAt).filter(Boolean).sort().pop()?.slice(0, 10);
   const latestFeed = store.feedItems.map(f => f.publishedAt).filter(Boolean).sort().pop()?.slice(0, 10);
   const latestThread = store.forumThreads.filter(t => !t.hidden).map(t => t.lastActivityAt || t.createdAt).sort().pop()?.slice(0, 10);
-  const staticLastmod: Record<string, string | undefined> = { '/': latestMatch, '/matches': latestMatch, '/fantasy': latestMatch, '/videos': latestFeed, '/news': latestFeed, '/social': latestFeed, '/forum': latestThread };
+  const latestFanPost = store.fanPosts.filter(p => p.status === 'live').map(p => p.createdAt).sort().pop()?.slice(0, 10);
+  const staticLastmod: Record<string, string | undefined> = { '/fanwall': latestFanPost, '/': latestMatch, '/matches': latestMatch, '/fantasy': latestMatch, '/videos': latestFeed, '/news': latestFeed, '/social': latestFeed, '/forum': latestThread };
   for (const p of INDEXABLE_STATIC) urls.push({ loc: p, lastmod: staticLastmod[p] });
   if (store.youthSchools.length || store.creatorPartners.length || store.commentaryFeeds.length) urls.push({ loc: '/growth' });
   for (const t of store.teams) urls.push({ loc: teamPath(t), lastmod: t.updatedAt?.slice(0, 10), image: ogUrl(base, 'team', t.id), imageTitle: t.name });
@@ -573,6 +622,9 @@ export function sitemapXml(store: AppStore, base: string) {
     if (m.status === 'upcoming') urls.push({ loc: `/fantasy/${encodeURIComponent(m.id)}`, lastmod: m.updatedAt?.slice(0, 10) });
   }
   for (const t of store.forumThreads.filter(x => !x.hidden).slice(0, 2000)) urls.push({ loc: `/forum/${encodeURIComponent(t.id)}`, lastmod: (t.lastActivityAt || t.createdAt).slice(0, 10) });
+  for (const p of store.fanPosts.filter(x => x.status === 'live' && (x.featuredOn || []).length)) {
+    urls.push({ loc: `/fanwall/${encodeURIComponent(p.id)}`, lastmod: (p.featuredOn || []).slice(-1)[0], ...(p.photoUrl ? { image: p.photoUrl.startsWith('http') ? p.photoUrl : `${base}${p.photoUrl}`, imageTitle: `${p.userName}, Fan of the Day` } : {}) });
+  }
   for (const extra of SITEMAP_EXTRA) urls.push(...extra(store, base));
   return (
     `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n` +

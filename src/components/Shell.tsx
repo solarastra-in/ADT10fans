@@ -29,6 +29,7 @@ const SECTION_OF: Partial<Record<RouteName, string>> = {
   home: 'home', matches: 'matches', match: 'matches', teams: 'teams', team: 'teams', players: 'teams', player: 'teams',
   social: 'social', videos: 'social', news: 'social', play: 'play', fantasy: 'play', fantasyMatch: 'play', games: 'play', contests: 'play',
   prizes: 'prizes', leaderboard: 'fans', fans: 'fans', forum: 'forum', thread: 'forum', fanspaces: 'fanspaces', profile: 'profile', admin: 'admin',
+  duel: 'play', fanwall: 'fanwall', fanPost: 'fanwall',
 };
 
 export function LanguagePicker({ className }: { className?: string }) {
@@ -208,6 +209,7 @@ export function Header({ route }: { route: Route }) {
     ['/play', t('Play'), 'play'],
     ['/social', t('Social'), 'social'],
     ['/forum', t('Forum'), 'forum'],
+    ['/fanwall', t('Fan wall'), 'fanwall'],
     ['/prizes', t('Prizes'), 'prizes'],
     ['/fans', t('Fans'), 'fans'],
   ];
@@ -269,6 +271,7 @@ export function BottomNav({ route }: { route: Route }) {
     ['/news', t('News')],
     ['/fantasy', t('Pick XI')],
     ['/games', t('Daily games')],
+    ['/fanwall', t('Fan wall')],
     ['/contests', t('Predictions')],
     ['/prizes', t('Prizes & draws')],
     ['/leaderboard', t('Leaderboard')],
@@ -345,7 +348,7 @@ export function Footer() {
   const cols: [string, [string, string][]][] = [
     [t('Season'), [['/matches', t('Matches')], ['/teams', t('Teams')], ['/players', t('Players')], ['/videos', t('Videos')], ['/news', t('News')]]],
     [t('Play'), [['/fantasy', t('Pick XI')], ['/games', t('Daily games')], ['/contests', t('Predictions')], ['/prizes', t('Prizes & draws')], ['/leaderboard', t('Leaderboard')]]],
-    [t('Community'), [['/forum', t('Forum')], ['/fans', t('Fan base')], ['/fanspaces', t('Fan Spaces')], ['/social', t('Social')]]],
+    [t('Community'), [['/fanwall', t('Fan wall')], ['/forum', t('Forum')], ['/fans', t('Fan base')], ['/fanspaces', t('Fan Spaces')], ['/social', t('Social')]]],
     [t('About'), [['/rules', t('Rules')], ['/privacy', t('Privacy')], ['/terms', t('Terms')]]],
   ];
   return (

@@ -18,6 +18,7 @@ import { notificationsRouter } from './routes/notifications';
 import { fanSpacesRouter } from './routes/fanspaces';
 import { adminRouter } from './routes/admin';
 import { scraperRouter } from './routes/scraper';
+import { fanWallRouter, serveLocalPhoto } from './routes/fanwall';
 import { injectIntoTemplate, renderPage, robotsTxt, sitemapXml } from './seo';
 import { ogPng, type OgKind } from './ogImage';
 
@@ -76,7 +77,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use('/api', referralCheckMiddleware);
-for (const r of [coreRouter, teamsRouter, feedsRouter, matchesRouter, playRouter, prizesRouter, communityRouter, notificationsRouter, fanSpacesRouter, adminRouter, scraperRouter]) app.use('/api', r);
+for (const r of [coreRouter, teamsRouter, feedsRouter, matchesRouter, playRouter, prizesRouter, communityRouter, notificationsRouter, fanSpacesRouter, adminRouter, scraperRouter, fanWallRouter]) app.use('/api', r);
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
 
 function baseUrl(req: Request) {
@@ -84,6 +85,9 @@ function baseUrl(req: Request) {
 }
 app.get('/robots.txt', (req, res) => res.type('text/plain').send(robotsTxt(baseUrl(req))));
 app.get('/sitemap.xml', (req, res) => res.type('application/xml').send(sitemapXml(db.get(), baseUrl(req))));
+
+// Fan wall photos stored on this server's disk (single-server mode; production uses Firebase Storage).
+app.get('/uploads/:file', serveLocalPhoto);
 
 // Share images (1200x630) for players, matches, teams and the site.
 app.get('/og/:kind(player|match|team|site)/:id.png', (req, res) => {

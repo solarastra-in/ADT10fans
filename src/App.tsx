@@ -25,6 +25,8 @@ const FantasyPage = React.lazy(() => import('./pages/FantasyPage'));
 const FantasyMatchPage = React.lazy(() => import('./pages/FantasyMatchPage'));
 const GamesPage = React.lazy(() => import('./pages/GamesPage'));
 const DuelPage = React.lazy(() => import('./pages/DuelPage'));
+const FanWallPage = React.lazy(() => import('./pages/FanWallPage'));
+const FanPostPage = React.lazy(() => import('./pages/FanPostPage'));
 const ContestsPage = React.lazy(() => import('./pages/ContestsPage'));
 const PrizesPage = React.lazy(() => import('./pages/PrizesPage'));
 const LeaderboardPage = React.lazy(() => import('./pages/LeaderboardPage'));
@@ -57,6 +59,8 @@ function Page() {
     case 'fantasyMatch': return <FantasyMatchPage id={p.id} />;
     case 'games': return <GamesPage />;
     case 'duel': return <DuelPage code={p.code} />;
+    case 'fanwall': return <FanWallPage />;
+    case 'fanPost': return <FanPostPage id={p.id} />;
     case 'contests': return <ContestsPage />;
     case 'prizes': return <PrizesPage />;
     case 'leaderboard': return <LeaderboardPage />;

@@ -6,7 +6,7 @@ import type {
   ProfileResponse, FanSpace, FanSpaceBooking, Approval, AgentRun, ForumReportView, Reaction, ProposalSettings,
   YouthCupSchool, CreatorPartner, CommentaryAudioFeed, SuperfanPassportTier,
   AdminFanPoints, PointsHistory, PointsEntry, PlayerWithForm, LineupPreset, MatchSwingInsights, PlayerDetail,
-  ConnectionsState, GridState, StatQuestion, StatWarsResult, DuelView,
+  ConnectionsState, GridState, StatQuestion, StatWarsResult, DuelView, FanPostView, FanPostKind, FanWallResponse, FanOfTheDayView,
 } from './types';
 
 const TOKEN_KEY = 't10_auth_token';
@@ -187,6 +187,15 @@ export const api = {
 
   // ----- daily games -----
   getGamesToday: () => req<GamesToday>('/api/games/today'),
+  getFanWall: (params?: { teamId?: string; kind?: string; before?: string }) => req<FanWallResponse>(`/api/fanwall${qs(params)}`),
+  getFanPost: (id: string) => req<{ post: FanPostView }>(`/api/fanwall/${encodeURIComponent(id)}`),
+  createFanPost: (body: { text: string; kind: FanPostKind; matchId?: string; photo?: string }) => post<Ok & { post: FanPostView; pointsAdded: number; message: string; user: User }>('/api/fanwall/new', body),
+  reactFanPost: (id: string, emoji: string) => post<Ok & { reactions: Reaction[] }>(`/api/fanwall/${encodeURIComponent(id)}/react`, { emoji }),
+  reportFanPost: (id: string, reason: string) => post<Ok & { message: string }>(`/api/fanwall/${encodeURIComponent(id)}/report`, { reason }),
+  deleteFanPost: (id: string) => del<Ok>(`/api/fanwall/${encodeURIComponent(id)}`),
+  getAdminFanWall: (status: 'pending' | 'reported' | 'live' | 'hidden') => req<{ posts: FanPostView[]; counts: { pending: number; reported: number; live: number }; today: { day: string; postId: string; userName: string; points: number } | null; fanOfTheDayPoints: number }>(`/api/admin/fanwall?status=${status}`),
+  moderateFanPost: (id: string, action: 'approve' | 'hide' | 'restore' | 'delete') => post<Ok & { post: FanPostView | null }>(`/api/admin/fanwall/${encodeURIComponent(id)}/${action}`, {}),
+  featureFanPost: (id: string, body: { points?: number; note?: string }) => post<Ok & { fanOfTheDay: FanOfTheDayView | null }>(`/api/admin/fanwall/${encodeURIComponent(id)}/feature`, body),
   submitConnections: (playerIds: string[]) => post<Ok & { connections: ConnectionsState; user: User }>('/api/games/connections', { playerIds }),
   submitGrid: (cell: string, playerId: string) => post<Ok & { grid: GridState; user: User }>('/api/games/grid', { cell, playerId }),
   startStatWars: (duel?: string) => post<Ok & { startedAt: string; seconds: number; questions: StatQuestion[] }>('/api/games/statwars/start', duel ? { duel } : {}),

@@ -37,7 +37,7 @@ export function installStoreSync(app: Express) {
  * Paths whose handlers do their writes through db.mutate / db.transaction and wait on outside services
  * (email, feeds, scheduled jobs). They run without a request context, so each write is its own transaction.
  */
-const SELF_MANAGED = ['/api/cron/', '/api/auth/otp/request', '/api/feeds/pull', '/api/admin/feeds/sync', '/api/admin/feeds/harvest', '/api/admin/players/links/resolve'];
+const SELF_MANAGED = ['/api/cron/', '/api/auth/otp/request', '/api/feeds/pull', '/api/admin/feeds/sync', '/api/admin/feeds/harvest', '/api/admin/players/links/resolve', '/api/fanwall/new'];
 
 async function handleSelfManaged(req: Request, res: Response, next: NextFunction) {
   try {

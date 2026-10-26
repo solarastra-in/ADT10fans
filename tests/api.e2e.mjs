@@ -759,6 +759,69 @@ ok('robots.txt blocks admin and API', /Disallow: \/admin/.test((await html('/rob
   ok('a third fan cannot take a duel that is taken', (await post(`/api/duels/${code}/join`, {}, F1)).status === 400);
 }
 
+// ============ 14c. Fan wall and Fan of the Day ============
+{
+  const zlib = await import('node:zlib');
+  // A real 240x240 PNG with a text chunk (metadata that must be removed before storing).
+  const crc32 = buf => { let c, crc = 0xffffffff; for (const b of buf) { c = (crc ^ b) & 0xff; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; crc = (crc >>> 8) ^ c; } return (crc ^ 0xffffffff) >>> 0; };
+  const chunk = (type, data) => { const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type), data]); const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(td)); return Buffer.concat([len, td, crc]); };
+  const W = 240, H = 240;
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(W, 0); ihdr.writeUInt32BE(H, 4); ihdr[8] = 8; ihdr[9] = 2;
+  const raw = Buffer.alloc((W * 3 + 1) * H, 0x55); for (let y = 0; y < H; y++) raw[y * (W * 3 + 1)] = 0;
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('tEXt', Buffer.from('Location\0Secret home address')), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+  // A JPEG header with an EXIF segment (GPS) and a 300x300 frame.
+  const seg = (m, data) => { const l = Buffer.alloc(2); l.writeUInt16BE(data.length + 2); return Buffer.concat([Buffer.from([0xff, m]), l, data]); };
+  const sof = Buffer.from([8, 0x01, 0x2c, 0x01, 0x2c, 3, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1]);
+  const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8]), seg(0xe0, Buffer.from('JFIF\0\x01\x01\0\0\x01\0\x01\0\0', 'binary')), seg(0xe1, Buffer.from('Exif\0\0GPS 25.2048N 55.2708E')), seg(0xc0, sof), Buffer.from([0xff, 0xda, 0x00, 0x08, 1, 1, 0, 0, 0x3f, 0, 0x12, 0x34, 0xff, 0xd9])]);
+
+  const W1 = (await login('wall1@test.dev')).token;
+  const W2 = (await login('wall2@test.dev')).token;
+  const before = (await me(W1)).points;
+  const textPost = await post('/api/fanwall/new', { text: 'Front row for the opener, flag in hand!', kind: 'matchday' }, W1);
+  ok('a text post goes live at once and earns 5 points', textPost.status === 200 && textPost.json.post.status === 'live' && textPost.json.pointsAdded === 5 && (await me(W1)).points === before + 5, textPost.json);
+  const photoPost = await post('/api/fanwall/new', { text: 'My shirt collection', kind: 'memorabilia', photo: `data:image/png;base64,${png.toString('base64')}` }, W1);
+  ok('a photo post waits for review (default: photos are reviewed)', photoPost.status === 200 && photoPost.json.post.status === 'pending' && /^\/uploads\//.test(photoPost.json.post.photoUrl), photoPost.json);
+  const storedPng = Buffer.from(await (await fetch(BASE + photoPost.json.post.photoUrl)).arrayBuffer());
+  ok('the stored photo is the image without its metadata', storedPng.length > 100 && !storedPng.includes(Buffer.from('Secret home address')) && storedPng.includes(Buffer.from('IDAT')));
+  const jpegPost = await post('/api/fanwall/new', { text: 'At the stadium', photo: `data:image/jpeg;base64,${jpeg.toString('base64')}` }, W2);
+  const storedJpeg = Buffer.from(await (await fetch(BASE + jpegPost.json.post.photoUrl)).arrayBuffer());
+  ok('GPS/EXIF is removed from JPEG photos', jpegPost.status === 200 && !storedJpeg.includes(Buffer.from('GPS')) && !storedJpeg.includes(Buffer.from('Exif')) && storedJpeg.includes(Buffer.from('JFIF')), { status: jpegPost.status });
+  ok('a file that is not an image is refused', (await post('/api/fanwall/new', { text: 'x x x', photo: 'data:image/png;base64,' + Buffer.from('<script>alert(1)</script>').toString('base64') }, W2)).status === 400);
+  let wall = (await get('/api/fanwall')).json;
+  ok('other fans only see approved posts', wall.posts.some(p => p.id === textPost.json.post.id) && !wall.posts.some(p => p.id === photoPost.json.post.id));
+  ok('the author sees their own post waiting', (await get('/api/fanwall', W1)).json.posts.some(p => p.id === photoPost.json.post.id && p.status === 'pending'));
+  const queue = (await get('/api/admin/fanwall?status=pending', A)).json;
+  ok('admins see the review queue', queue.posts.some(p => p.id === photoPost.json.post.id) && queue.counts.pending >= 2);
+  ok('admin approves a photo', (await post(`/api/admin/fanwall/${photoPost.json.post.id}/approve`, {}, A)).json.post.status === 'live');
+  const react = await post(`/api/fanwall/${photoPost.json.post.id}/react`, { emoji: '🔥' }, W2);
+  ok('fans react to posts', react.json.reactions.some(r => r.emoji === '🔥' && r.count === 1 && r.mine));
+
+  // Fan of the Day: points to the fan, a notification, and the post at the top of the wall.
+  const w1Before = (await me(W1)).points;
+  const pick = await post(`/api/admin/fanwall/${photoPost.json.post.id}/feature`, { note: 'Best collection we have seen' }, A);
+  ok('admin picks the Fan of the Day', pick.status === 200 && pick.json.fanOfTheDay.post.id === photoPost.json.post.id, pick.json);
+  ok('the fan gets the Fan of the Day points (100)', (await me(W1)).points === w1Before + 100);
+  ok('the fan is told', (await get('/api/notifications', W1)).json.notifications.some(n => /Fan of the Day/.test(n.title)));
+  wall = (await get('/api/fanwall')).json;
+  ok('the wall shows the Fan of the Day', wall.fansOfTheDay[0]?.post?.id === photoPost.json.post.id && wall.fansOfTheDay[0].note === 'Best collection we have seen');
+  // Picking someone else the same day moves the title and the points.
+  await post(`/api/admin/fanwall/${jpegPost.json.post.id}/approve`, {}, A);
+  const w2Before = (await me(W2)).points;
+  await post(`/api/admin/fanwall/${jpegPost.json.post.id}/feature`, {}, A);
+  ok('changing the pick moves the points to the new fan', (await me(W1)).points === w1Before && (await me(W2)).points === w2Before + 100);
+  const fanPage = await call('GET', `/fanwall/${jpegPost.json.post.id}`, null, null, { headers: { Accept: 'text/html' } });
+  ok('a Fan of the Day post page is indexable and previews with the photo', /"index, follow/.test(fanPage.text) && /og:image" content="[^"]*\/uploads\//.test(fanPage.text));
+
+  // Reports: three reports hide a post until a moderator looks.
+  const R = [];
+  for (let i = 0; i < 3; i++) R.push((await login(`reporter${i}@test.dev`)).token);
+  for (const t of R) await post(`/api/fanwall/${textPost.json.post.id}/report`, { reason: 'spam' }, t);
+  ok('three reports take a post off the wall for review', !(await get('/api/fanwall')).json.posts.some(p => p.id === textPost.json.post.id) && (await get('/api/admin/fanwall?status=reported', A)).json.posts.some(p => p.id === textPost.json.post.id));
+  const pointsBeforeDelete = (await me(W1)).points;
+  ok('fans can delete their own post', (await del(`/api/fanwall/${textPost.json.post.id}`, W1)).status === 200);
+  ok('deleting a post takes back its points', (await me(W1)).points === pointsBeforeDelete - 5);
+}
+
 // ============ 15. Account deletion ============
 const t4 = (await post('/api/forum/threads', { title: 'Lions thread here', content: 'Lions fans assemble here please' }, F4)).json.thread;
 ok('delete needs confirmation', (await del('/api/me', F4, {})).status === 400);

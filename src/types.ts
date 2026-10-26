@@ -756,6 +756,8 @@ export interface SystemSettings {
   referralRewardPoints: number;
   referralMaxRewarded: number;
   lockReminderMinutes: number;
+  fanOfTheDayPoints?: number;
+  fanWallReview?: 'photos' | 'all' | 'none';
   smtp: { host: string; port: number; user: string; pass: string; from: string; enabled: boolean };
 }
 
@@ -1095,4 +1097,44 @@ export interface ProfileResponse {
   games: { played: number; points: number; guessSolved: number; bestSuperOver: number };
   redemptions: PrizeRedemption[];
   bookings: FanSpaceBooking[];
+}
+
+export type FanPostKind = 'moment' | 'matchday' | 'memorabilia' | 'travel' | 'other';
+
+export interface FanPostView {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  teamId: string | null;
+  text: string;
+  photoUrl: string | null;
+  photoWidth?: number;
+  photoHeight?: number;
+  kind: FanPostKind;
+  matchId: string | null;
+  status: 'live' | 'hidden' | 'pending';
+  reactions: Reaction[];
+  featuredOn: string[];
+  createdAt: string;
+  mine: boolean;
+  reports?: number;
+  reportReasons?: string[];
+}
+
+export interface FanOfTheDayView {
+  day: string;
+  points: number;
+  note: string;
+  post: FanPostView | null;
+  fan: { id: string; name: string; avatar?: string; teamId?: string | null };
+}
+
+export interface FanWallResponse {
+  posts: FanPostView[];
+  more: boolean;
+  fansOfTheDay: FanOfTheDayView[];
+  photosEnabled: boolean;
+  review: 'photos' | 'all' | 'none';
+  fanOfTheDayPoints: number;
 }
