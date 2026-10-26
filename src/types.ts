@@ -236,7 +236,7 @@ export interface Match {
   scorecard?: MatchScorecard;
   streamUrl?: string;
   externalId?: string;
-  scoreSource?: 'manual' | 'cricketdata';
+  scoreSource?: 'manual' | 'cricketdata' | 'scraper';
   liveSyncedAt?: string;
 }
 
@@ -401,7 +401,7 @@ export interface MatchSwingInsights {
   };
 }
 
-export interface DreamXIRules {
+export interface PickXIRules {
   size: number;
   maxFromOneTeam: number;
   roleMin: number;
@@ -412,6 +412,7 @@ export interface DreamXIRules {
   creditCap?: number;
   maxTopPlayers?: number;
 }
+export type DreamXIRules = PickXIRules;
 export interface FantasyMatchSummary {
   matchId: string;
   matchNo: number;

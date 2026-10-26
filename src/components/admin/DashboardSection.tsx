@@ -125,7 +125,7 @@ export const DashboardSection: React.FC<{
         <Stat label="Contests" value={n(data?.contestsCount)} onClick={() => goTo('contests')} />
         <Stat label="Draws" value={n(data?.drawsCount)} onClick={() => goTo('draws')} />
         <Stat label="Pending approvals" value={pending.length.toLocaleString()} onClick={() => goTo('approvals')} />
-        <Stat label="Dream XI lineups" value={n(data?.fantasyLineups)} onClick={() => goTo('fantasy')} />
+        <Stat label="Pick XI lineups" value={n(data?.fantasyLineups)} onClick={() => goTo('fantasy')} />
         <Stat label="Daily games played today" value={n(data?.gamePlaysToday)} />
         <Stat label="Prize claims to fulfil" value={n(data?.pendingRedemptions)} onClick={() => goTo('prizes')} />
         <Stat label="Open forum reports" value={n(data?.openReports)} onClick={() => goTo('forum')} />

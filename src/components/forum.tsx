@@ -11,7 +11,7 @@ export const FORUM_CATEGORIES: { id: string; label: string }[] = [
   { id: 'matchday', label: 'Matchday' },
   { id: 'tactics', label: 'Tactics' },
   { id: 'franchises', label: 'Teams' },
-  { id: 'fantasy', label: 'Dream XI' },
+  { id: 'fantasy', label: 'Pick XI' },
   { id: 'fanspaces', label: 'Fan Spaces' },
   { id: 'giveaways', label: 'Prizes' },
   { id: 'general', label: 'General' },

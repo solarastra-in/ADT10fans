@@ -33,7 +33,7 @@ export default function FantasyPage() {
   const { user, teamById, openAuth, toast, config } = useApp();
   const t = useT();
   const f = useFormat();
-  usePageMeta(t('Dream XI fantasy cricket'), t('Pick 11 players for every Abu Dhabi T10 match within 100 credits. Free to play.'), config?.brandName);
+  usePageMeta(t('Pick XI fantasy cricket'), t('Pick 11 players for every Abu Dhabi T10 match within 100 credits. Free to play.'), config?.brandName);
   const hub = useLoad(() => api.getFantasyHub(), [user?.id]);
   const board = useLoad(() => api.getFantasyLeaderboard(), []);
   const leagues = useLoad(() => (user ? api.getLeagues() : Promise.resolve({ leagues: [] })), [user?.id]);
@@ -119,13 +119,13 @@ export default function FantasyPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow={t('Fantasy')}
-        title={t('Dream XI')}
+        title={t('Pick XI')}
         subtitle={t('Pick exactly {size} players from the two teams within {cap} Credits (max {max} from one team). Points are balanced so your squad has a few marquee stars and remaining budget enablers. Captain scores {c}x, vice-captain {vc}x. Lineups lock at the first ball.', { size: rules.size, cap: rules.creditCap || 100, max: rules.maxFromOneTeam, c: rules.captainMultiplier, vc: rules.viceCaptainMultiplier })}
         actions={<Link to="/rules#dream-xi" className="text-sm font-bold text-amber-400">{t('Scoring rules')}</Link>}
       />
       {hub.data!.season && (
         <div className="grid grid-cols-3 gap-2">
-          <Card className="p-3"><p className="text-xl font-black text-amber-400">{hub.data!.season.points}</p><p className="text-[11px] text-slate-400">{t('Season Dream XI points')}</p></Card>
+          <Card className="p-3"><p className="text-xl font-black text-amber-400">{hub.data!.season.points}</p><p className="text-[11px] text-slate-400">{t('Season Pick XI points')}</p></Card>
           <Card className="p-3"><p className="text-xl font-black text-white">{hub.data!.season.matches}</p><p className="text-[11px] text-slate-400">{t('Matches played')}</p></Card>
           <Card className="p-3"><p className="text-xl font-black text-white">{hub.data!.season.best}</p><p className="text-[11px] text-slate-400">{t('Best score')}</p></Card>
         </div>
@@ -134,7 +134,7 @@ export default function FantasyPage() {
 
       {tab === 'matches' &&
         (matches.length === 0 ? (
-          <EmptyState icon={<Trophy className="w-6 h-6" />} title={t('Dream XI opens with the fixtures')} body={t('As soon as the league publishes fixtures you can pick a team for every match. The season starts on {date}.', { date: f.date(config?.seasonStart, { day: 'numeric', month: 'long' }) })} action={<Link to="/players" className="text-sm font-bold text-amber-400">{t('Study the players')} →</Link>} />
+          <EmptyState icon={<Trophy className="w-6 h-6" />} title={t('Pick XI opens with the fixtures')} body={t('As soon as the league publishes fixtures you can pick a team for every match. The season starts on {date}.', { date: f.date(config?.seasonStart, { day: 'numeric', month: 'long' }) })} action={<Link to="/players" className="text-sm font-bold text-amber-400">{t('Study the players')} →</Link>} />
         ) : (
           <div className="space-y-6">
             {open.length > 0 && (
@@ -156,7 +156,7 @@ export default function FantasyPage() {
 
       {tab === 'leagues' &&
         (!user ? (
-          <EmptyState icon={<UserPlus className="w-6 h-6" />} title={t('Play against your friends')} body={t('Create a private league and share its code. Everyone’s Dream XI points are added up across the season.')} action={<Button onClick={() => openAuth(t('Sign in to create or join a private league.'))}>{t('Sign in')}</Button>} />
+          <EmptyState icon={<UserPlus className="w-6 h-6" />} title={t('Play against your friends')} body={t('Create a private league and share its code. Everyone’s Pick XI points are added up across the season.')} action={<Button onClick={() => openAuth(t('Sign in to create or join a private league.'))}>{t('Sign in')}</Button>} />
         ) : (
           <div className="space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

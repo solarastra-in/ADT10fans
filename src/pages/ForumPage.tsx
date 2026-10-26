@@ -89,7 +89,7 @@ export default function ForumPage() {
   const t = useT();
   const f = useFormat();
   const route = useRoute();
-  usePageMeta(t('Fan forum'), t('Match talk, tactics, Dream XI tips and team chat.'), config?.brandName);
+  usePageMeta(t('Fan forum'), t('Match talk, tactics, Pick XI tips and team chat.'), config?.brandName);
   const [category, setCategory] = useState('all');
   const [team, setTeam] = useState('all');
   const [sort, setSort] = useState('active');

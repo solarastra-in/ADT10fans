@@ -17,6 +17,7 @@ import { communityRouter } from './routes/community';
 import { notificationsRouter } from './routes/notifications';
 import { fanSpacesRouter } from './routes/fanspaces';
 import { adminRouter } from './routes/admin';
+import { scraperRouter } from './routes/scraper';
 import { injectIntoTemplate, renderPage, robotsTxt, sitemapXml } from './seo';
 
 export const app = express();
@@ -53,7 +54,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use('/api', referralCheckMiddleware);
-for (const r of [coreRouter, teamsRouter, feedsRouter, matchesRouter, playRouter, prizesRouter, communityRouter, notificationsRouter, fanSpacesRouter, adminRouter]) app.use('/api', r);
+for (const r of [coreRouter, teamsRouter, feedsRouter, matchesRouter, playRouter, prizesRouter, communityRouter, notificationsRouter, fanSpacesRouter, adminRouter, scraperRouter]) app.use('/api', r);
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
 
 function baseUrl(req: Request) {

@@ -68,7 +68,7 @@ export function resultNotificationFor(match: Match) {
   };
 }
 
-/** What happens when a match is first saved as completed: result push, Dream XI scoring, personal results. */
+/** What happens when a match is first saved as completed: result push, Pick XI scoring, personal results. */
 export async function onMatchCompleted(matchId: string, notify = true) {
   const m = db.get().matches.find(x => x.id === matchId);
   if (!m) return { notification: undefined, fantasy: null };

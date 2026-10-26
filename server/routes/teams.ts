@@ -120,14 +120,14 @@ const saveSquad = (req: any, res: any) => {
   if (!Array.isArray(req.body?.squad)) return bad(res, 'Squad must be a list of players');
   const { squad, error } = formatPlayerSquad(req.body.squad, team.id);
   if (error) return bad(res, error);
-  // Players with Dream XI picks for unplayed matches cannot be removed without warning.
+  // Players with Pick XI picks for unplayed matches cannot be removed without warning.
   const removed = team.squad.filter(p => !squad.some(n => n.id === p.id));
   const pending = store.fantasyTeams.filter(f => {
     const m = store.matches.find(x => x.id === f.matchId);
     return m && m.status === 'upcoming' && f.playerIds.some(id => removed.some(r => r.id === id));
   });
   if (pending.length && !req.body?.force) {
-    return bad(res, `${removed.filter(r => pending.some(f => f.playerIds.includes(r.id))).map(r => r.name).join(', ')} ${pending.length === 1 ? 'is' : 'are'} in ${pending.length} Dream XI lineup(s) for upcoming matches. Save again with "remove anyway" to continue; those fans will need to pick a replacement.`, 409);
+    return bad(res, `${removed.filter(r => pending.some(f => f.playerIds.includes(r.id))).map(r => r.name).join(', ')} ${pending.length === 1 ? 'is' : 'are'} in ${pending.length} Pick XI lineup(s) for upcoming matches. Save again with "remove anyway" to continue; those fans will need to pick a replacement.`, 409);
   }
   team.squad = squad;
   team.updatedAt = new Date().toISOString();

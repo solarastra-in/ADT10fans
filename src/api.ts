@@ -159,7 +159,7 @@ export const api = {
   toggleContestStatus: (id: string, status?: 'open' | 'locked') => post<Ok & { contest: Contest }>(`/api/admin/contests/${id}/toggle-status`, status ? { status } : {}),
   settleContest: (id: string, answers: Record<string, string>) => post<Ok & { contest: Contest; settledEntriesCount: number; totalPointsDistributed: number }>(`/api/admin/contests/${id}/settle`, { answers }),
 
-  // ----- Dream XI -----
+  // ----- Pick XI -----
   getFantasyHub: () => req<{ rules: DreamXIRules; matches: FantasyMatchSummary[]; season: { points: number; matches: number; best: number } | null }>('/api/fantasy'),
   getFantasyRules: () => req<{ rules: DreamXIRules; scoring: { group: string; rules: [string, number | string][] }[] }>('/api/fantasy/rules'),
   getFantasy: (matchId: string) => req<{ match: Match; locked: boolean; rules: DreamXIRules; pool: PlayerWithForm[]; fantasyTeam: FantasyTeam | null; fantasyTeams?: FantasyTeam[]; lineups: number; presets?: LineupPreset[]; swingInsights?: MatchSwingInsights }>(`/api/fantasy/${encodeURIComponent(matchId)}`),
@@ -268,6 +268,11 @@ export const api = {
   getProposalSettings: () => req<{ proposalSettings: ProposalSettings }>('/api/admin/proposal'),
   saveProposalSettings: (p: Partial<ProposalSettings>) => post<Ok & { proposalSettings: ProposalSettings }>('/api/admin/proposal', p),
   resetProposalSettings: () => post<Ok & { proposalSettings: ProposalSettings }>('/api/admin/proposal/reset'),
+
+  // ----- unofficial scrapers -----
+  getScraperLiveMatches: () => req<{ success: boolean; count: number; sources: string[]; matches: any[] }>('/api/scraper/live'),
+  syncMatchFromScraper: (matchId: string, data: { provider: 'cricbuzz' | 'cricinfo'; externalId: string; slug?: string }) => post<{ success: boolean; message: string; match: any }>(`/api/scraper/sync/${matchId}`, data),
+  testScraper: (target: { url?: string; matchId?: string }) => post<{ success: boolean; provider: string; matchId: string; summary: any; scorecard: any; inningsCount: number }>('/api/scraper/test', target),
 
   // ----- AI assistant -----
   chatGemini: (messages: { role: 'user' | 'model'; parts: { text: string }[] }[]) => post<{ text: string; source: string }>('/api/gemini/chat', { messages }),

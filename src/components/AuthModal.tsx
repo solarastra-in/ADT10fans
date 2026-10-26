@@ -124,7 +124,7 @@ export function AuthModal() {
     <Modal open={authOpen} onClose={closeAuth} title={t('Sign in to the fan hub')}>
       <div className="space-y-4" data-testid="auth-modal">
         {authReason && <Notice>{authReason}</Notice>}
-        <p className="text-sm text-slate-300">{t('Free account. Pick your team, play Dream XI and the daily games, enter predictions and prize draws, and join the forum.')}</p>
+        <p className="text-sm text-slate-300">{t('Free account. Pick your team, play Pick XI and the daily games, enter predictions and prize draws, and join the forum.')}</p>
         {getPendingReferral() && <Notice tone="success">{t('You were invited by a friend. You both get bonus points once you play your first game.')}</Notice>}
         {error && <ErrorBox message={error} />}
         {googleEnabled && (

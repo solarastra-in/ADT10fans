@@ -57,7 +57,7 @@ export const playerPath = (p: Player) => `/players/${encodeURIComponent(p.id)}`;
 function nav() {
   const links = [
     ['/', 'Home'], ['/matches', 'Matches'], ['/teams', 'Teams'], ['/players', 'Players'], ['/videos', 'Videos'], ['/social', 'Social'], ['/news', 'News'],
-    ['/fantasy', 'Dream XI'], ['/games', 'Daily games'], ['/contests', 'Predictions'], ['/prizes', 'Prizes'], ['/leaderboard', 'Leaderboard'], ['/fans', 'Fan base'], ['/forum', 'Forum'], ['/fanspaces', 'Fan Spaces'],
+    ['/fantasy', 'Pick XI'], ['/games', 'Daily games'], ['/contests', 'Predictions'], ['/prizes', 'Prizes'], ['/leaderboard', 'Leaderboard'], ['/fans', 'Fan base'], ['/forum', 'Forum'], ['/fanspaces', 'Fan Spaces'],
   ];
   return `<nav aria-label="Site"><ul>${links.map(([h, l]) => `<li><a href="${h}">${esc(l)}</a></li>`).join('')}</ul></nav>`;
 }
@@ -124,8 +124,8 @@ export function renderPage(rawPath: string, store: AppStore, base: string): Rend
     case '': {
       const teams = store.teams.map(t => `<li><a href="${teamPath(t)}">${esc(t.name)}</a></li>`).join('');
       return page({
-        title: `${brand}: ${season} fixtures, squads, Dream XI and fan games`,
-        description: `${season} at ${store.settings.venue}: live scores, all six squads, official team videos and posts, Dream XI fantasy, daily games, predictions, prizes and the fan forum.`,
+        title: `${brand}: ${season} fixtures, squads, Pick XI and fan games`,
+        description: `${season} at ${store.settings.venue}: live scores, all six squads, official team videos and posts, Pick XI fantasy, daily games, predictions, prizes and the fan forum.`,
         jsonLd: [
           { '@context': 'https://schema.org', '@type': 'WebSite', name: brand, url: `${base}/`, description: store.settings.tagline || 'The Abu Dhabi T10 fan hub' },
           {
@@ -155,8 +155,8 @@ export function renderPage(rawPath: string, store: AppStore, base: string): Rend
         const title = `${matchTitle(store, m)}, Match ${m.matchNo}: ${m.status === 'completed' ? 'result and scorecard' : m.status === 'live' ? 'live score' : 'preview'}`;
         const desc =
           m.status === 'completed'
-            ? `${matchTitle(store, m)} (${season}, match ${m.matchNo}): ${m.result || 'result'}. ${[m.scoreA && `${teamName(store, m.teamA)} ${m.scoreA}`, m.scoreB && `${teamName(store, m.teamB)} ${m.scoreB}`].filter(Boolean).join(', ')}. Full scorecard and Dream XI points.`
-            : `${matchTitle(store, m)}, ${season} match ${m.matchNo}, ${fmtDate(m.startsAt)} at ${m.venue}. Squads, Dream XI and predictions.`;
+            ? `${matchTitle(store, m)} (${season}, match ${m.matchNo}): ${m.result || 'result'}. ${[m.scoreA && `${teamName(store, m.teamA)} ${m.scoreA}`, m.scoreB && `${teamName(store, m.teamB)} ${m.scoreB}`].filter(Boolean).join(', ')}. Full scorecard and Pick XI points.`
+            : `${matchTitle(store, m)}, ${season} match ${m.matchNo}, ${fmtDate(m.startsAt)} at ${m.venue}. Squads, Pick XI and predictions.`;
         const card = (inn: any) =>
           inn
             ? `<h2>${esc(inn.teamName || teamName(store, inn.teamId))} ${esc(inn.totalRuns)}/${esc(inn.wickets)} (${esc(inn.overs)} ov)</h2><table><thead><tr><th>Batter</th><th>R</th><th>B</th><th>4s</th><th>6s</th></tr></thead><tbody>${(inn.batting || []).map((b: any) => `<tr><td>${esc(b.batsman)} <small>${esc(b.dismissal)}</small></td><td>${esc(b.runs)}</td><td>${esc(b.balls)}</td><td>${esc(b.fours)}</td><td>${esc(b.sixes)}</td></tr>`).join('')}</tbody></table>`
@@ -169,7 +169,7 @@ export function renderPage(rawPath: string, store: AppStore, base: string): Rend
           body: shell(
             `${matchTitle(store, m)} – Match ${m.matchNo}`,
             `${fmtDate(m.startsAt)} · ${m.venue}${m.result ? ` · ${m.result}` : ''}`,
-            card(m.scorecard?.innings1) + card(m.scorecard?.innings2) + `<p><a href="/fantasy/${encodeURIComponent(m.id)}">Dream XI for this match</a></p>`,
+            card(m.scorecard?.innings1) + card(m.scorecard?.innings2) + `<p><a href="/fantasy/${encodeURIComponent(m.id)}">Pick XI for this match</a></p>`,
           ),
         });
       }
@@ -271,15 +271,15 @@ export function renderPage(rawPath: string, store: AppStore, base: string): Rend
         const m = store.matches.find(x => x.id === parts[1]);
         if (!m) return notFound();
         return page({
-          title: `Dream XI: ${matchTitle(store, m)} (match ${m.matchNo})`,
-          description: `Pick your Dream XI for ${matchTitle(store, m)}: 11 players, 100 credits, captain scores double. Free to play; points count towards the season leaderboard.`,
-          body: shell(`Dream XI: ${matchTitle(store, m)}`, `Lineups lock at ${fmtDate(m.startsAt)}.`, `<p><a href="${matchPath(m)}">Match page</a> · <a href="/rules#dream-xi">Scoring rules</a></p>`),
+          title: `Pick XI: ${matchTitle(store, m)} (match ${m.matchNo})`,
+          description: `Pick your Pick XI for ${matchTitle(store, m)}: 11 players, 100 credits, captain scores double. Free to play; points count towards the season leaderboard.`,
+          body: shell(`Pick XI: ${matchTitle(store, m)}`, `Lineups lock at ${fmtDate(m.startsAt)}.`, `<p><a href="${matchPath(m)}">Match page</a> · <a href="/rules#dream-xi">Scoring rules</a></p>`),
         });
       }
       return page({
-        title: 'Dream XI fantasy cricket for the Abu Dhabi T10',
+        title: 'Pick XI fantasy cricket for the Abu Dhabi T10',
         description: 'Free fantasy cricket for every match: pick 11 players within 100 credits, choose a captain (2x) and vice-captain (1.5x), and climb the season leaderboard or your private league.',
-        body: shell('Dream XI', 'Pick 11 players for each match, within 100 credits and no more than 7 from one team.', `<ul>${upcoming.map(m => `<li><a href="/fantasy/${encodeURIComponent(m.id)}">${esc(matchTitle(store, m))}</a> – locks ${esc(fmtDate(m.startsAt))}</li>`).join('')}</ul><p><a href="/rules#dream-xi">How points are scored</a></p>`),
+        body: shell('Pick XI', 'Pick 11 players for each match, within 100 credits and no more than 7 from one team.', `<ul>${upcoming.map(m => `<li><a href="/fantasy/${encodeURIComponent(m.id)}">${esc(matchTitle(store, m))}</a> – locks ${esc(fmtDate(m.startsAt))}</li>`).join('')}</ul><p><a href="/rules#dream-xi">How points are scored</a></p>`),
       });
     }
     case 'play':
@@ -295,7 +295,7 @@ export function renderPage(rawPath: string, store: AppStore, base: string): Rend
     case 'terms': {
       if (parts[1]) return notFound();
       const meta: Record<string, [string, string, string]> = {
-        play: ['Play: Dream XI, daily games and predictions', 'Free games for Abu Dhabi T10 fans: Dream XI fantasy, Guess the Player, Super Over and match predictions. Earn points for your team.', 'Play'],
+        play: ['Play: Pick XI, daily games and predictions', 'Free games for Abu Dhabi T10 fans: Pick XI fantasy, Guess the Player, Super Over and match predictions. Earn points for your team.', 'Play'],
         games: ['Daily cricket games: Guess the Player and Super Over', 'Two new games every day: guess the mystery Abu Dhabi T10 player in five tries, and bat a Super Over to beat the day\'s target.', 'Daily games'],
         contests: ['Match predictions and quizzes', 'Predict match winners, top scorers and sixes, and take instant T10 quizzes for points.', 'Predictions'],
         prizes: ['Prizes and prize draws', 'Spend your fan points on rewards, and enter free prize draws with a verifiable result.', 'Prizes'],
@@ -303,7 +303,7 @@ export function renderPage(rawPath: string, store: AppStore, base: string): Rend
         fans: ['Fan base: supporters of every team', 'How many fans back each Abu Dhabi T10 team, where they are, and the top supporters of each franchise.', 'Fan base'],
         fanspaces: ['Fan Spaces and watch parties', 'Official Abu Dhabi T10 screening venues and watch parties. Book a free pass and check in with your QR code.', 'Fan Spaces'],
         growth: ['Youth cup and creators', 'The schools youth cup, creator partners and commentary feeds.', 'Community programmes'],
-        rules: ['Rules and scoring', 'How Dream XI points, predictions, daily games, prize draws and referral rewards work.', 'Rules'],
+        rules: ['Rules and scoring', 'How Pick XI points, predictions, daily games, prize draws and referral rewards work.', 'Rules'],
         privacy: ['Privacy', 'What the site stores about you and why.', 'Privacy'],
         terms: ['Terms of use', 'Terms for using the fan hub, its games and prize draws.', 'Terms'],
       };
@@ -349,7 +349,7 @@ export function renderPage(rawPath: string, store: AppStore, base: string): Rend
       const threads = store.forumThreads.filter(t => !t.hidden).slice(0, 50);
       return page({
         title: 'Fan forum: match talk, tactics and team chat',
-        description: 'Talk about every Abu Dhabi T10 match with other fans: matchday threads, team selection, Dream XI tips and Fan Space meet-ups.',
+        description: 'Talk about every Abu Dhabi T10 match with other fans: matchday threads, team selection, Pick XI tips and Fan Space meet-ups.',
         body: shell('Fan forum', '', `<ul>${threads.map(t => `<li><a href="/forum/${encodeURIComponent(t.id)}">${esc(t.title)}</a> – ${t.commentsCount} replies</li>`).join('')}</ul>`),
       });
     }

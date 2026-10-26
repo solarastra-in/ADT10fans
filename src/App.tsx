@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { AppProvider, useApp } from './state';
 import { useRoute } from './router';
 import { useT } from './i18n';
@@ -7,31 +7,31 @@ import { AuthModal, completeRedirectSignIn } from './components/AuthModal';
 import { TeamPickerModal } from './components/TeamPickerModal';
 import { ErrorBox, Spinner } from './components/ui';
 
-const HomePage = lazy(() => import('./pages/HomePage'));
-const MatchesPage = lazy(() => import('./pages/MatchesPage'));
-const MatchPage = lazy(() => import('./pages/MatchPage'));
-const TeamsPage = lazy(() => import('./pages/TeamsPage'));
-const TeamPage = lazy(() => import('./pages/TeamPage'));
-const PlayersPage = lazy(() => import('./pages/PlayersPage'));
-const PlayerPage = lazy(() => import('./pages/PlayerPage'));
-const SocialPage = lazy(() => import('./pages/SocialPage'));
-const PlayPage = lazy(() => import('./pages/PlayPage'));
-const FantasyPage = lazy(() => import('./pages/FantasyPage'));
-const FantasyMatchPage = lazy(() => import('./pages/FantasyMatchPage'));
-const GamesPage = lazy(() => import('./pages/GamesPage'));
-const ContestsPage = lazy(() => import('./pages/ContestsPage'));
-const PrizesPage = lazy(() => import('./pages/PrizesPage'));
-const LeaderboardPage = lazy(() => import('./pages/LeaderboardPage'));
-const FansPage = lazy(() => import('./pages/FansPage'));
-const ForumPage = lazy(() => import('./pages/ForumPage'));
-const ThreadPage = lazy(() => import('./pages/ThreadPage'));
-const FanSpacesPage = lazy(() => import('./pages/FanSpacesPage'));
-const GrowthPage = lazy(() => import('./pages/GrowthPage'));
-const ProfilePage = lazy(() => import('./pages/ProfilePage'));
-const InfoPage = lazy(() => import('./pages/InfoPage'));
-const AdminPage = lazy(() => import('./pages/AdminPage'));
-const ProposalPage = lazy(() => import('./pages/ProposalPage'));
-const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
+import HomePage from './pages/HomePage';
+import MatchesPage from './pages/MatchesPage';
+import MatchPage from './pages/MatchPage';
+import TeamsPage from './pages/TeamsPage';
+import TeamPage from './pages/TeamPage';
+import PlayersPage from './pages/PlayersPage';
+import PlayerPage from './pages/PlayerPage';
+import SocialPage from './pages/SocialPage';
+import PlayPage from './pages/PlayPage';
+import FantasyPage from './pages/FantasyPage';
+import FantasyMatchPage from './pages/FantasyMatchPage';
+import GamesPage from './pages/GamesPage';
+import ContestsPage from './pages/ContestsPage';
+import PrizesPage from './pages/PrizesPage';
+import LeaderboardPage from './pages/LeaderboardPage';
+import FansPage from './pages/FansPage';
+import ForumPage from './pages/ForumPage';
+import ThreadPage from './pages/ThreadPage';
+import FanSpacesPage from './pages/FanSpacesPage';
+import GrowthPage from './pages/GrowthPage';
+import ProfilePage from './pages/ProfilePage';
+import InfoPage from './pages/InfoPage';
+import AdminPage from './pages/AdminPage';
+import ProposalPage from './pages/ProposalPage';
+import NotFoundPage from './pages/NotFoundPage';
 
 function Page() {
   const route = useRoute();
@@ -79,9 +79,9 @@ class PageBoundary extends React.Component<{ children: React.ReactNode; resetKey
   }
   componentDidCatch(error: Error) {
     const msg = error?.message || String(error);
-    const isVersionOrModuleIssue = /Failed to fetch dynamically imported module|Importing a module script failed|valid JavaScript MIME type|Cannot read properties of null|Invalid hook call|Hooks can only be called/i.test(msg);
-    if (isVersionOrModuleIssue && typeof window !== 'undefined') {
-      const nowBucket = Math.floor(Date.now() / 15000); // once per 15s window
+    const isChunkError = /Failed to fetch dynamically imported module|Importing a module script failed|valid JavaScript MIME type/i.test(msg);
+    if (isChunkError && typeof window !== 'undefined') {
+      const nowBucket = Math.floor(Date.now() / 15000);
       if (sessionStorage.getItem('auto_reload_chunk') !== String(nowBucket)) {
         sessionStorage.setItem('auto_reload_chunk', String(nowBucket));
         window.location.reload();
@@ -91,13 +91,14 @@ class PageBoundary extends React.Component<{ children: React.ReactNode; resetKey
   render() {
     if (this.state.error) {
       const msg = this.state.error.message || String(this.state.error);
-      const isVersionOrModuleIssue = /Failed to fetch dynamically imported module|Importing a module script failed|valid JavaScript MIME type|Cannot read properties of null|Invalid hook call|Hooks can only be called/i.test(msg);
+      const isChunkError = /Failed to fetch dynamically imported module|Importing a module script failed|valid JavaScript MIME type/i.test(msg);
       return (
         <ErrorBox
-          message={isVersionOrModuleIssue ? 'A fresh version of this page is ready. Reload to load the latest updates.' : 'This page hit a problem. Please reload.'}
+          message={isChunkError ? 'A fresh version of this page is ready. Reload to load the latest updates.' : `This page hit an issue: ${msg}`}
           onRetry={() => {
             sessionStorage.removeItem('auto_reload_chunk');
-            window.location.reload();
+            this.setState({ error: null });
+            if (isChunkError) window.location.reload();
           }}
         />
       );
@@ -137,9 +138,7 @@ function Shell() {
           <ErrorBox message={t('Could not load the site: {error}', { error: bootError })} onRetry={() => window.location.reload()} />
         ) : (
           <PageBoundary resetKey={route.path}>
-            <Suspense fallback={<Spinner />}>
-              <Page />
-            </Suspense>
+            <Page />
           </PageBoundary>
         )}
       </main>

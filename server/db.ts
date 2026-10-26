@@ -260,7 +260,7 @@ export interface Match {
   streamUrl?: string;
   /** CricketData.org match id, for automatic live scores. */
   externalId?: string;
-  scoreSource?: 'manual' | 'cricketdata';
+  scoreSource?: 'manual' | 'cricketdata' | 'scraper';
   liveSyncedAt?: string;
   /** Players named in each XI (player ids). Fantasy players not in the XI score 0. */
   playingXI?: Record<string, string[]>;
@@ -322,7 +322,7 @@ export interface FantasyTeam {
   updatedAt?: string;
 }
 
-/** Private Dream XI leagues: friends compare totals across the season. */
+/** Private Pick XI leagues: friends compare totals across the season. */
 export interface FantasyLeague {
   id: string;
   name: string;

@@ -100,7 +100,7 @@ export function NotificationCenter() {
             </Button>
           )}
           {pushState && <Notice>{pushState}</Notice>}
-          {!user && <Notice>{t('Sign in to get personal alerts: Dream XI results, prize wins and reminders before lineups lock.')}</Notice>}
+          {!user && <Notice>{t('Sign in to get personal alerts: Pick XI results, prize wins and reminders before lineups lock.')}</Notice>}
           {items.length > 0 && unread > 0 && (
             <div className="flex justify-end">
               <Button size="sm" variant="ghost" onClick={markAll}>

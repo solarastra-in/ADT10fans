@@ -422,7 +422,7 @@ export const SettingsSection: React.FC<{ settings: SystemSettings; onRefreshAll:
             <TextInput type="number" inputMode="numeric" min={0} max={1000} value={draft.referralMaxRewarded} onChange={e => set({ referralMaxRewarded: e.target.value })} error={!!errors.referralMaxRewarded} />
           </Field>
 
-          <Field label="Lock reminder (minutes before start)" error={errors.lockReminderMinutes} hint="Fans with an unsaved Dream XI or open contest get a reminder this long before lock.">
+          <Field label="Lock reminder (minutes before start)" error={errors.lockReminderMinutes} hint="Fans with an unsaved Pick XI or open contest get a reminder this long before lock.">
             <TextInput type="number" inputMode="numeric" min={5} max={240} value={draft.lockReminderMinutes} onChange={e => set({ lockReminderMinutes: e.target.value })} error={!!errors.lockReminderMinutes} />
           </Field>
 

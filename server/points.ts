@@ -20,7 +20,7 @@ export const SOURCE_LABEL: Record<PointsSource, string> = {
   checkin: 'Daily check-in',
   guess: 'Guess the Player',
   superover: 'Super Over',
-  'dream-xi': 'Dream XI',
+  'dream-xi': 'Pick XI',
   prediction: 'Match prediction',
   quiz: 'Quiz',
   'forum-thread': 'Forum thread',

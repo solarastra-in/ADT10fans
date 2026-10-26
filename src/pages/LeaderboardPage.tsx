@@ -70,9 +70,9 @@ export default function LeaderboardPage() {
             ))}
           </Card>
         ) : (
-          <EmptyState title={t('No points scored yet')} body={t('Play Dream XI, the daily games or predictions to get on the board.')} action={<Link to="/play" className="text-sm font-bold text-amber-400">{t('Play now')} →</Link>} />
+          <EmptyState title={t('No points scored yet')} body={t('Play Pick XI, the daily games or predictions to get on the board.')} action={<Link to="/play" className="text-sm font-bold text-amber-400">{t('Play now')} →</Link>} />
         )}
-        <p className="text-xs text-slate-500 mt-2"><Link to="/fantasy" className="text-amber-400">{t('Dream XI season standings')} →</Link></p>
+        <p className="text-xs text-slate-500 mt-2"><Link to="/fantasy" className="text-amber-400">{t('Pick XI season standings')} →</Link></p>
       </section>
     </div>
   );

@@ -4,7 +4,7 @@ import { awardPoints } from './points';
 
 /**
  * Invite a friend. Each fan has a short code; the invite link is /?ref=CODE. When the friend signs
- * up through it and then takes part (enters a contest, saves a Dream XI, plays a daily game or posts
+ * up through it and then takes part (enters a contest, saves a Pick XI, plays a daily game or posts
  * in the forum), both get the referral reward once. Signing up alone earns nothing, so fake
  * accounts are not worth creating.
  */

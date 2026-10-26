@@ -13,7 +13,7 @@ export default function HomePage() {
   const { config, user, teams, matches, teamById, openAuth, openTeamPicker, setUser, toast } = useApp();
   const t = useT();
   const f = useFormat();
-  usePageMeta(t('{season} fan hub', { season: config?.seasonLabel || 'Abu Dhabi T10' }), t('Live scores, squads, official videos, Dream XI, daily games, predictions and prizes for the Abu Dhabi T10.'), config?.brandName);
+  usePageMeta(t('{season} fan hub', { season: config?.seasonLabel || 'Abu Dhabi T10' }), t('Live scores, squads, official videos, Pick XI, daily games, predictions and prizes for the Abu Dhabi T10.'), config?.brandName);
   const { live, upcoming, done } = sortMatches(matches);
   const next = [...live, ...upcoming].slice(0, 3);
   const videos = useLoad(() => api.getFeeds({ kind: 'video', limit: 3 }), []);
@@ -61,7 +61,7 @@ export default function HomePage() {
           </p>
           <div className="mt-6 flex flex-wrap gap-2">
             <ButtonLink to="/fantasy" size="lg">
-              <Trophy className="w-5 h-5" /> {t('Play Dream XI')}
+              <Trophy className="w-5 h-5" /> {t('Play Pick XI')}
             </ButtonLink>
             <ButtonLink to="/games" size="lg" variant="secondary">
               <Gamepad2 className="w-5 h-5" /> {t('Daily games')}
@@ -164,7 +164,7 @@ export default function HomePage() {
         <SectionTitle title={t('Play for points')} />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {[
-            ['/fantasy', Trophy, t('Dream XI'), t('Pick 11 for every match')],
+            ['/fantasy', Trophy, t('Pick XI'), t('Pick 11 for every match')],
             ['/games', Gamepad2, t('Daily games'), t('Guess the Player · Super Over')],
             ['/contests', Target, t('Predictions'), config?.stats.openContests ? t('{n} open now', { n: config.stats.openContests }) : t('Call the result')],
             ['/prizes', Gift, t('Prizes'), config?.stats.prizes || config?.stats.openDraws ? t('Spend your points') : t('Rewards and draws')],
@@ -245,7 +245,7 @@ export default function HomePage() {
               ))}
             </Card>
           ) : (
-            <EmptyState icon={<MessageSquare className="w-6 h-6" />} title={t('Start the first conversation')} body={t('Squad debates, matchday chat, Dream XI tips: the forum is yours.')} action={<ButtonLink to="/forum">{t('Go to the forum')}</ButtonLink>} />
+            <EmptyState icon={<MessageSquare className="w-6 h-6" />} title={t('Start the first conversation')} body={t('Squad debates, matchday chat, Pick XI tips: the forum is yours.')} action={<ButtonLink to="/forum">{t('Go to the forum')}</ButtonLink>} />
           )}
         </section>
       </div>

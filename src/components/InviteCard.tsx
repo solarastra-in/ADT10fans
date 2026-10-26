@@ -12,7 +12,7 @@ export function InviteCard({ compact }: { compact?: boolean }) {
   const [copied, setCopied] = useState(false);
   if (!user || !data) return null;
   const link = `${window.location.origin}/?ref=${data.code}`;
-  const text = t('Join me on {brand}: free Dream XI, daily cricket games and prizes for the Abu Dhabi T10.', { brand: config?.brandName || 'ADT10 Fans' });
+  const text = t('Join me on {brand}: free Pick XI, daily cricket games and prizes for the Abu Dhabi T10.', { brand: config?.brandName || 'ADT10 Fans' });
 
   const share = async () => {
     if (navigator.share) {

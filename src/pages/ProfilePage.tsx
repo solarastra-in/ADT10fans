@@ -27,7 +27,7 @@ export default function ProfilePage() {
       <EmptyState
         icon={<Trophy className="w-6 h-6" />}
         title={t('Your fan profile')}
-        body={t('Sign in to track your points, badges, Dream XI history, prize claims and Fan Space passes.')}
+        body={t('Sign in to track your points, badges, Pick XI history, prize claims and Fan Space passes.')}
         action={<Button onClick={() => openAuth()}>{t('Sign in')}</Button>}
       />
     );
@@ -240,8 +240,8 @@ export default function ProfilePage() {
       <section id="season" className="scroll-mt-24">
         <SectionTitle title={t('My season')} />
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <StatTile label={t('Dream XI points')} value={data.fantasy.points} />
-          <StatTile label={t('Best Dream XI')} value={data.fantasy.best} />
+          <StatTile label={t('Pick XI points')} value={data.fantasy.points} />
+          <StatTile label={t('Best Pick XI')} value={data.fantasy.best} />
           <StatTile label={t('Predictions entered')} value={data.stats.contestsEntered} />
           <StatTile label={t('Daily games played')} value={data.games.played} />
           <StatTile label={t('Players guessed')} value={data.games.guessSolved} />

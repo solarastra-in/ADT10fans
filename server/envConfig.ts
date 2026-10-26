@@ -60,10 +60,10 @@ export const ENV_SPECS: Spec[] = [
 
   // ---- Notifications ----
   { key: 'FCM_VAPID_KEY', label: 'Web push key (VAPID)', category: 'notifications', description: 'Firebase console → Project settings → Cloud Messaging → Web Push certificates → Key pair. Lets fans turn on push notifications.' },
-  { key: 'LOCK_REMINDER_MINUTES', label: 'Dream XI lock reminder (minutes)', category: 'notifications', defaultValue: '30', type: 'number', description: 'Default only; change it in Admin → Settings.' },
+  { key: 'LOCK_REMINDER_MINUTES', label: 'Pick XI lock reminder (minutes)', category: 'notifications', defaultValue: '30', type: 'number', description: 'Default only; change it in Admin → Settings.' },
 
   // ---- Live scores ----
-  { key: 'CRICKET_API_KEY', label: 'CricketData.org API key', category: 'cricket', isSecret: true, type: 'secret', description: 'From cricketdata.org (free tier available). Turns on automatic live scores, results, scorecards and Dream XI scoring for fixtures linked in Admin → Matches → Find.' },
+  { key: 'CRICKET_API_KEY', label: 'CricketData.org API key', category: 'cricket', isSecret: true, type: 'secret', description: 'From cricketdata.org (free tier available). Turns on automatic live scores, results, scorecards and Pick XI scoring for fixtures linked in Admin → Matches → Find.' },
   { key: 'CRICKETDATA_SERIES_ID', label: 'CricketData series id', category: 'cricket', description: 'The season\'s series id on CricketData, used by Squad tools to read squads.' },
   { key: 'CRICBUZZ_SERIES_ID', label: 'Cricbuzz series number', category: 'cricket', defaultValue: '13307', description: 'Used by Squad tools\' Cricbuzz option.' },
 

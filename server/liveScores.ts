@@ -6,7 +6,7 @@ import { normName } from './fantasy';
  * Optional automatic live scores from CricketData.org (https://cricketdata.org).
  * Set CRICKET_API_KEY, then link a fixture to its CricketData match id in Admin → Matches
  * (the "Find" button lists candidates). Linked matches update by themselves while live, and
- * the result, scorecard and Dream XI points follow when they finish.
+ * the result, scorecard and Pick XI points follow when they finish.
  * Every match still shows where its score came from (manual or CricketData).
  */
 const API = () => (process.env.CRICKETDATA_API_BASE || 'https://api.cricapi.com/v1').replace(/\/$/, '');

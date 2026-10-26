@@ -9,7 +9,7 @@ import { Card, Countdown, PageHeader, StatTile, TeamBadge } from '../components/
 export default function PlayPage() {
   const { user, config, teamById } = useApp();
   const t = useT();
-  usePageMeta(t('Play: Dream XI, daily games and predictions'), t('Free games for Abu Dhabi T10 fans. Earn points for your team.'), config?.brandName);
+  usePageMeta(t('Play: Pick XI, daily games and predictions'), t('Free games for Abu Dhabi T10 fans. Earn points for your team.'), config?.brandName);
   const hub = useLoad(() => api.getFantasyHub(), [user?.id]);
   const games = useLoad(() => api.getGamesToday(), [user?.id]);
   const contests = useLoad(() => api.getContests(), [user?.id]);
@@ -36,7 +36,7 @@ export default function PlayPage() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <StatTile label={t('Season points')} value={user.points} accent />
           <StatTile label={t('To spend on prizes')} value={user.balance ?? user.points} />
-          <StatTile label={t('Dream XI points')} value={hub.data?.season?.points ?? 0} />
+          <StatTile label={t('Pick XI points')} value={hub.data?.season?.points ?? 0} />
           <StatTile label={t('Check-in streak')} value={t('{n} days', { n: user.streak || 0 })} />
         </div>
       )}
@@ -44,7 +44,7 @@ export default function PlayPage() {
         {card(
           nextMatch ? `/fantasy/${nextMatch.matchId}` : '/fantasy',
           Trophy,
-          t('Dream XI'),
+          t('Pick XI'),
           nextMatch ? (
             <div className="space-y-1.5">
               <div className="flex items-center gap-1.5 flex-wrap">
@@ -75,7 +75,7 @@ export default function PlayPage() {
           <h2 className="font-black text-white">{t('How you earn points')}</h2>
         </div>
         <ul className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-sm text-slate-300">
-          <li>{t('Dream XI: your fantasy points ÷ 5, every match')}</li>
+          <li>{t('Pick XI: your fantasy points ÷ 5, every match')}</li>
           <li>{t('Guess the Player: 10–50 a day')}</li>
           <li>{t('Super Over: your runs, +15 if you beat the target')}</li>
           <li>{t('Predictions: the points shown on each question')}</li>

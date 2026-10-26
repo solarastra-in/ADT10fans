@@ -224,7 +224,7 @@ export const NotificationsSection: React.FC<{
           </Button>
         </Card>
       </div>}
-      {!isTeamOfficial && <p className="text-xs text-slate-500">Sent automatically: match results when a match is saved as completed, Dream XI lock reminders before each match, personal Dream XI results, prediction results, prize-draw wins and prize claim updates.</p>}
+      {!isTeamOfficial && <p className="text-xs text-slate-500">Sent automatically: match results when a match is saved as completed, Pick XI lock reminders before each match, personal Pick XI results, prediction results, prize-draw wins and prize claim updates.</p>}
 
       <Card>
         <h3 className="font-extrabold text-white mb-3">Sent ({list.length})</h3>

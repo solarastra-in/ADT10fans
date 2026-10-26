@@ -36,7 +36,7 @@ export const ADMIN_SECTIONS: { id: AdminSectionId; label: string }[] = [
   { id: 'feeds', label: 'Feeds' },
   { id: 'matches', label: 'Matches' },
   { id: 'contests', label: 'Predictions' },
-  { id: 'fantasy', label: 'Dream XI' },
+  { id: 'fantasy', label: 'Pick XI' },
   { id: 'prizes', label: 'Prizes & claims' },
   { id: 'draws', label: 'Prize draws' },
   { id: 'forum', label: 'Forum & reports' },

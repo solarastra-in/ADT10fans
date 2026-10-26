@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { Plus, Trash2, Edit3, Activity, RadioTower, Search, FileUp, RefreshCw, Calendar, Upload } from 'lucide-react';
+import { Plus, Trash2, Edit3, Activity, RadioTower, Search, FileUp, RefreshCw, Calendar, Upload, Bot } from 'lucide-react';
 import { ScorecardEditor } from './ScorecardEditor';
+import { FreeScraperSheet } from './FreeScraperSheet';
 import type { CricketDataCandidate, MatchScorecard } from '../../types';
 import { Match, SystemSettings, Team } from '../../types';
 import { api } from '../../api';
@@ -64,6 +65,7 @@ export const MatchesSection: React.FC<{ matches: Match[]; teams: Team[]; setting
   const [importText, setImportText] = useState('');
   const [importOverwrite, setImportOverwrite] = useState(matches.length === 0);
   const [importError, setImportError] = useState<string | null>(null);
+  const [scraperSheetOpen, setScraperSheetOpen] = useState(false);
 
   const sorted = useMemo(() => [...matches].sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()), [matches]);
 
@@ -218,7 +220,7 @@ export const MatchesSection: React.FC<{ matches: Match[]; teams: Team[]; setting
     if (
       score.status === 'completed' &&
       match?.status !== 'completed' &&
-      !window.confirm('Marking this match completed sends a result notification to fans and scores every Dream XI lineup from the scorecard. Continue?')
+      !window.confirm('Marking this match completed sends a result notification to fans and scores every Pick XI lineup from the scorecard. Continue?')
     )
       return;
     const res = await run(
@@ -275,6 +277,14 @@ export const MatchesSection: React.FC<{ matches: Match[]; teams: Team[]; setting
         description="Fixtures, live scores and scorecards. Link a fixture to its CricketData.org match id for automatic live scores, or enter them by hand."
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Bot className="w-4 h-4 text-emerald-400" />}
+              onClick={() => setScraperSheetOpen(true)}
+            >
+              Free Live Scraper
+            </Button>
             <Button
               variant="secondary"
               size="sm"
@@ -536,7 +546,7 @@ export const MatchesSection: React.FC<{ matches: Match[]; teams: Team[]; setting
                 <p className="text-sm font-bold text-white">Scorecard {score.scorecard?.innings1 ? '' : '(not entered)'}</p>
                 <Button size="sm" onClick={() => setScore({ ...score, editCard: !score.editCard })}>{score.editCard ? 'Hide scorecard' : 'Edit scorecard'}</Button>
               </div>
-              <p className="text-xs text-slate-400">Dream XI points come from the scorecard. Use squad names; write dismissals as "c Fielder b Bowler", "b Bowler", "lbw b Bowler", "st Keeper b Bowler" or "run out (Fielder)".</p>
+              <p className="text-xs text-slate-400">Pick XI points come from the scorecard. Use squad names; write dismissals as "c Fielder b Bowler", "b Bowler", "lbw b Bowler", "st Keeper b Bowler" or "run out (Fielder)".</p>
               {score.editCard && (() => {
                 const a = teams.find(t => t.id === scoreMatch.teamA);
                 const b = teams.find(t => t.id === scoreMatch.teamB);
@@ -624,6 +634,14 @@ export const MatchesSection: React.FC<{ matches: Match[]; teams: Team[]; setting
           </label>
         </div>
       </Sheet>
+
+      <FreeScraperSheet
+        open={scraperSheetOpen}
+        onClose={() => setScraperSheetOpen(false)}
+        matches={matches}
+        teams={teams}
+        onRefreshAll={onRefreshAll}
+      />
     </div>
   );
 };

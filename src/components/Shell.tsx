@@ -267,7 +267,7 @@ export function BottomNav({ route }: { route: Route }) {
     ['/players', t('Players')],
     ['/videos', t('Videos')],
     ['/news', t('News')],
-    ['/fantasy', t('Dream XI')],
+    ['/fantasy', t('Pick XI')],
     ['/games', t('Daily games')],
     ['/contests', t('Predictions')],
     ['/prizes', t('Prizes & draws')],
@@ -344,7 +344,7 @@ export function Footer() {
   const year = new Date().getFullYear();
   const cols: [string, [string, string][]][] = [
     [t('Season'), [['/matches', t('Matches')], ['/teams', t('Teams')], ['/players', t('Players')], ['/videos', t('Videos')], ['/news', t('News')]]],
-    [t('Play'), [['/fantasy', t('Dream XI')], ['/games', t('Daily games')], ['/contests', t('Predictions')], ['/prizes', t('Prizes & draws')], ['/leaderboard', t('Leaderboard')]]],
+    [t('Play'), [['/fantasy', t('Pick XI')], ['/games', t('Daily games')], ['/contests', t('Predictions')], ['/prizes', t('Prizes & draws')], ['/leaderboard', t('Leaderboard')]]],
     [t('Community'), [['/forum', t('Forum')], ['/fans', t('Fan base')], ['/fanspaces', t('Fan Spaces')], ['/social', t('Social')]]],
     [t('About'), [['/rules', t('Rules')], ['/privacy', t('Privacy')], ['/terms', t('Terms')]]],
   ];

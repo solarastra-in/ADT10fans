@@ -122,7 +122,7 @@ export default function ContestsPage() {
       {list.length ? (
         <div className="space-y-4">{list.map(c => <ContestCard key={c.id} c={c} entry={entries.get(c.id)} entries={data.entryCounts[c.id] || 0} onEntered={reload} />)}</div>
       ) : (
-        <EmptyState icon={<Target className="w-6 h-6" />} title={tab === 'open' ? t('No open predictions right now') : t('Nothing here yet')} body={t('Predictions open before each match. Meanwhile, try Dream XI or the daily games.')} action={<Link to="/games" className="text-sm font-bold text-amber-400">{t('Daily games')} →</Link>} />
+        <EmptyState icon={<Target className="w-6 h-6" />} title={tab === 'open' ? t('No open predictions right now') : t('Nothing here yet')} body={t('Predictions open before each match. Meanwhile, try Pick XI or the daily games.')} action={<Link to="/games" className="text-sm font-bold text-amber-400">{t('Daily games')} →</Link>} />
       )}
     </div>
   );

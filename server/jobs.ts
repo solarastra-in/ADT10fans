@@ -7,7 +7,7 @@ import { runScoresAgent, runSocialHarvesterAgent } from './agents';
 
 /**
  * Scheduled work:
- *   reminders  Dream XI lock reminders, contest auto-lock             (every run)
+ *   reminders  Pick XI lock reminders, contest auto-lock             (every run)
  *   scores     CricketData live scores for linked matches              (every run, when configured)
  *   feeds      YouTube / X / Curator / news pulls                      (at most every FEED_SYNC_MINUTES)
  *   checks     flag fixtures past their start time that are not live    (every run)

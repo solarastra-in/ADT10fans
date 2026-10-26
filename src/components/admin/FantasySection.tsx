@@ -4,7 +4,7 @@ import { api } from '../../api';
 import type { FantasyMatchSummary, LeaderRow, Match, Team } from '../../types';
 import { Button, Card, Chip, EmptyState, Notice, SectionHeader, useRunner } from './ui';
 
-/** Dream XI overview: lineups per match, re-scoring after a scorecard correction, top scores. */
+/** Pick XI overview: lineups per match, re-scoring after a scorecard correction, top scores. */
 export const FantasySection: React.FC<{ matches: Match[]; teams: Team[] }> = ({ teams }) => {
   const [rows, setRows] = useState<FantasyMatchSummary[]>([]);
   const [board, setBoard] = useState<Record<string, LeaderRow[]>>({});
@@ -35,13 +35,13 @@ export const FantasySection: React.FC<{ matches: Match[]; teams: Team[] }> = ({ 
   return (
     <div className="space-y-5">
       <SectionHeader
-        title="Dream XI"
+        title="Pick XI"
         description="Lineups lock at each match's start time. When a match is saved as completed with a scorecard, every lineup is scored automatically and fans get a personal result notification. Re-score here after correcting a scorecard; points are adjusted, not added twice."
         actions={<Button size="sm" onClick={load} icon={<RefreshCw className="w-4 h-4" />}>Refresh</Button>}
       />
       <Notice notice={notice} onClose={() => setNotice(null)} />
       {rows.length === 0 ? (
-        <EmptyState title="No fixtures yet" description="Dream XI opens for each match as soon as it is added in Matches." />
+        <EmptyState title="No fixtures yet" description="Pick XI opens for each match as soon as it is added in Matches." />
       ) : (
         <div className="space-y-2">
           {rows.map(m => (

@@ -132,7 +132,7 @@ export default function FantasyMatchPage({ id }: { id: string }) {
   const a = teamById(m?.teamA);
   const b = teamById(m?.teamB);
   usePageMeta(
-    m ? t('Dream XI: {a} vs {b}', { a: a?.name || '', b: b?.name || '' }) : null,
+    m ? t('Pick XI: {a} vs {b}', { a: a?.name || '', b: b?.name || '' }) : null,
     t('Draft a balanced 11-player squad across Wicketkeeper, Batter, All-Rounder, and Bowler under a 100 Credits budget. Captain scores 2x, Vice-Captain 1.5x.'),
     config?.brandName
   );
@@ -290,7 +290,7 @@ export default function FantasyMatchPage({ id }: { id: string }) {
   };
 
   const save = async () => {
-    if (!user) return openAuth(t('Sign in to save your Dream XI.'));
+    if (!user) return openAuth(t('Sign in to save your Pick XI.'));
     setSaving(true);
     setErr(null);
     try {
@@ -310,7 +310,7 @@ export default function FantasyMatchPage({ id }: { id: string }) {
   };
 
   const remove = async () => {
-    if (!confirm(t('Delete this Dream XI variation?'))) return;
+    if (!confirm(t('Delete this Pick XI variation?'))) return;
     await api.deleteFantasy(m.id, variationId);
     setPicked([]);
     setCaptain('');
@@ -340,7 +340,7 @@ export default function FantasyMatchPage({ id }: { id: string }) {
     return (
       <div className="space-y-5">
         <Link to="/fantasy" className="text-xs text-slate-500 hover:text-white inline-flex items-center gap-1">
-          <ChevronLeft className="w-4 h-4 rtl-flip" /> {t('Dream XI')}
+          <ChevronLeft className="w-4 h-4 rtl-flip" /> {t('Pick XI')}
         </Link>
         {header}
         {!ft ? (
@@ -349,7 +349,7 @@ export default function FantasyMatchPage({ id }: { id: string }) {
           <Card>
             <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
               <span className="font-black text-white">
-                {ft.variationName || t('Your Dream XI')}
+                {ft.variationName || t('Your Pick XI')}
               </span>
               {ft.points !== undefined && ft.scoredAt ? (
                 <span className="font-black text-amber-400">{t('{n} pts', { n: ft.points })} · #{ft.rank}</span>
@@ -385,7 +385,7 @@ export default function FantasyMatchPage({ id }: { id: string }) {
   return (
     <div className="space-y-4 pb-24">
       <Link to="/fantasy" className="text-xs text-slate-500 hover:text-white inline-flex items-center gap-1">
-        <ChevronLeft className="w-4 h-4 rtl-flip" /> {t('Dream XI')}
+        <ChevronLeft className="w-4 h-4 rtl-flip" /> {t('Pick XI')}
       </Link>
       {header}
 

@@ -141,7 +141,7 @@ export default function MatchPage({ id }: { id: string }) {
         <div className="flex flex-wrap gap-2 justify-center">
           {m.status === 'upcoming' && (
             <ButtonLink to={`/fantasy/${m.id}`}>
-              <Trophy className="w-4 h-4" /> {t('Pick your Dream XI')}
+              <Trophy className="w-4 h-4" /> {t('Pick your Pick XI')}
             </ButtonLink>
           )}
           {data.contests.some(c => c.status === 'open') && (
@@ -176,7 +176,7 @@ export default function MatchPage({ id }: { id: string }) {
 
       {data.fantasy.playerPoints.length > 0 && (
         <section>
-          <SectionTitle title={t('Dream XI points')} action={<Link to="/rules#dream-xi" className="text-xs font-bold text-amber-400">{t('How points work')}</Link>} />
+          <SectionTitle title={t('Pick XI points')} action={<Link to="/rules#dream-xi" className="text-xs font-bold text-amber-400">{t('How points work')}</Link>} />
           <Card className="divide-y divide-slate-800">
             {data.fantasy.playerPoints.slice(0, 15).map(p => (
               <Link key={p.playerId} to={`/players/${p.playerId}`} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-800/40">
@@ -194,7 +194,7 @@ export default function MatchPage({ id }: { id: string }) {
 
       {data.fantasy.lineups > 0 && data.fantasy.mostPicked.length > 0 && (
         <section>
-          <SectionTitle title={t('Most picked in Dream XI')} />
+          <SectionTitle title={t('Most picked in Pick XI')} />
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
             {data.fantasy.mostPicked.map(p => (
               <Card key={p.playerId} className="p-3">
@@ -203,7 +203,7 @@ export default function MatchPage({ id }: { id: string }) {
               </Card>
             ))}
           </div>
-          <p className="text-[11px] text-slate-500 mt-2">{t('{n} Dream XI teams for this match', { n: data.fantasy.lineups })}</p>
+          <p className="text-[11px] text-slate-500 mt-2">{t('{n} Pick XI teams for this match', { n: data.fantasy.lineups })}</p>
         </section>
       )}
 

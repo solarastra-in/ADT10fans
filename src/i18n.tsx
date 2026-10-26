@@ -4,7 +4,7 @@ import { hi } from './i18n/hi';
 import { ur } from './i18n/ur';
 
 /**
- * Translations without a library. The English text is the key: t('Pick your Dream XI').
+ * Translations without a library. The English text is the key: t('Pick your Pick XI').
  * Other languages map English -> translation; anything missing falls back to English.
  * Placeholders use {name}: t('{n} fans', { n: 12 }).
  */

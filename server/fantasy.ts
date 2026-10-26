@@ -2,7 +2,7 @@ import { AppStore, FantasyBreakdownLine, FantasyTeam, Match, Player, Team } from
 import { awardPoints } from './points';
 
 /**
- * Dream XI: the fantasy game.
+ * Pick XI: the fantasy game.
  *
  * Pick 11 players from the two teams in a match, within 100 credits, at most 7 from one team,
  * and 1-6 of each role (wicketkeeper, batter, all-rounder, bowler). The captain scores double and
@@ -900,7 +900,7 @@ export interface ScoreMatchResult {
 }
 
 /**
- * Scores every Dream XI lineup for a completed match and adds season points to each fan.
+ * Scores every Pick XI lineup for a completed match and adds season points to each fan.
  * Safe to run again after a scorecard correction: the previous award is reversed first.
  */
 export function scoreMatchFantasy(store: AppStore, matchId: string): ScoreMatchResult {
@@ -916,7 +916,7 @@ export function scoreMatchFantasy(store: AppStore, matchId: string): ScoreMatchR
     const previous = ft.scoredAt ? Math.round((ft.points || 0) / DREAM_XI.fanPointsDivisor) : 0;
     const now = Math.round(total / DREAM_XI.fanPointsDivisor);
     if (user && now !== previous) {
-      const label = `Match ${match.matchNo || ''} · ${total} Dream XI points`.replace('Match  · ', '');
+      const label = `Match ${match.matchNo || ''} · ${total} Pick XI points`.replace('Match  · ', '');
       awardPoints(store, user, now - previous, 'dream-xi', previous ? `${label} (scorecard corrected, was ${previous})` : label, matchId);
     }
     pointsAwarded += now;
@@ -942,7 +942,7 @@ export function scoreMatchFantasy(store: AppStore, matchId: string): ScoreMatchR
   return { matchId, scored: lineups.length, topScore: ranked[0]?.points || 0, pointsAwarded, unmatchedNames: [...unmatched] };
 }
 
-/** Season totals for a set of users (for private leagues and the Dream XI leaderboard). */
+/** Season totals for a set of users (for private leagues and the Pick XI leaderboard). */
 export function fantasySeasonTotals(store: AppStore, userIds?: Set<string>) {
   const totals = new Map<string, { userId: string; points: number; matches: number; best: number }>();
   for (const ft of store.fantasyTeams) {

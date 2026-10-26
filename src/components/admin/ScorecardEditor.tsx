@@ -4,7 +4,7 @@ import type { BattingScorecardEntry, BowlingScorecardEntry, InningsScorecard, Ma
 import { Button, Field, Select, TextInput } from './ui';
 
 /**
- * Enter the scorecard by hand (when no live-score feed is linked). Dream XI points are worked
+ * Enter the scorecard by hand (when no live-score feed is linked). Pick XI points are worked
  * out from it, so player names come from the squads and dismissals follow the usual format:
  * "c Fielder b Bowler", "b Bowler", "lbw b Bowler", "st Keeper b Bowler", "run out (Fielder)", "not out".
  */

@@ -647,7 +647,7 @@ export const SquadEditorSection: React.FC<{
                     </div>
 
                     <div className="pt-1.5 border-t border-slate-800/80 flex items-center justify-between text-[11px]">
-                      <span className="text-slate-400 font-semibold">Dream XI credits:</span>
+                      <span className="text-slate-400 font-semibold">Pick XI credits:</span>
                       <strong className="text-amber-300 font-mono">{player.credits ?? 'auto'}</strong>
                     </div>
                   </div>
@@ -905,7 +905,7 @@ export const SquadEditorSection: React.FC<{
                 />
               </Field>
 
-              <Field label="Dream XI credits" hint="4 to 15 in steps of 0.5. Leave blank to use the default for the category (Icon 10.5, Platinum 10, others 8.5)." error={playerErrors.credits}>
+              <Field label="Pick XI credits" hint="4 to 15 in steps of 0.5. Leave blank to use the default for the category (Icon 10.5, Platinum 10, others 8.5)." error={playerErrors.credits}>
                 <TextInput
                   type="number"
                   min="4"

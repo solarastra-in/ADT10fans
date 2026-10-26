@@ -195,7 +195,7 @@ playRouter.post('/admin/notifications/trigger-contest-deadline', requireAdmin('n
   res.json({ success: true, notification: notif });
 }));
 
-// ---------- Dream XI ----------
+// ---------- Pick XI ----------
 playRouter.get('/fantasy/rules', (_req, res) => res.json({ rules: DREAM_XI, scoring: scoringRules() }));
 
 playRouter.get('/fantasy', (req, res) => {
@@ -318,7 +318,7 @@ playRouter.delete('/fantasy/:matchId', requireUser, (req, res) => {
   res.json({ success: true, fantasyTeams: myTeams });
 });
 
-/** Admin: re-score Dream XI for a match after correcting its scorecard. */
+/** Admin: re-score Pick XI for a match after correcting its scorecard. */
 playRouter.post('/admin/fantasy/:matchId/score', requireAdmin('fantasy'), wrap(async (req, res) => {
   const store = db.get();
   const m = store.matches.find(x => x.id === req.params.matchId);

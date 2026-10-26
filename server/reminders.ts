@@ -8,7 +8,7 @@ const teamLabel = (store: AppStore, m: Match) => {
   return `${a?.name || m.teamA} vs ${b?.name || m.teamB}`;
 };
 
-/** "Dream XI locks soon" for one match. Sent once per match. */
+/** "Pick XI locks soon" for one match. Sent once per match. */
 export async function sendLockReminder(matchId: string, minutes: number) {
   const store = db.get();
   const m = store.matches.find(x => x.id === matchId);
@@ -19,20 +19,20 @@ export async function sendLockReminder(matchId: string, minutes: number) {
   db.save();
   const withLineup = new Set(store.fantasyTeams.filter(f => f.matchId === m.id).map(f => f.userId));
   const perUser: Record<string, { title?: string; body: string }> = {};
-  for (const uid of withLineup) perUser[uid] = { body: `Your Dream XI is in. You have ${minutes} minutes to change players, captain or vice-captain.` };
+  for (const uid of withLineup) perUser[uid] = { body: `Your Pick XI is in. You have ${minutes} minutes to change players, captain or vice-captain.` };
   return dispatchNotification({
-    title: `⏳ ${teamLabel(store, m)}: Dream XI locks in ${minutes} min`,
+    title: `⏳ ${teamLabel(store, m)}: Pick XI locks in ${minutes} min`,
     body: `Pick 11 players and a captain before the first ball.`,
     category: 'contest_deadline',
     targetAudience: 'logged_in',
     perUser,
     data: { matchId: m.id, url: `/fantasy/${m.id}` },
     priority: 'high',
-    createdBy: 'Dream XI',
+    createdBy: 'Pick XI',
   });
 }
 
-/** Personal "your Dream XI scored N points, rank R" messages. Sent once per match (re-scoring does not resend). */
+/** Personal "your Pick XI scored N points, rank R" messages. Sent once per match (re-scoring does not resend). */
 export async function notifyFantasyResults(matchId: string) {
   const store = db.get();
   const m = store.matches.find(x => x.id === matchId);
@@ -45,19 +45,19 @@ export async function notifyFantasyResults(matchId: string) {
   const perUser: Record<string, { title?: string; body: string }> = {};
   for (const ft of lineups) {
     perUser[ft.userId] = {
-      title: `🏏 Your Dream XI: ${ft.points} pts`,
+      title: `🏏 Your Pick XI: ${ft.points} pts`,
       body: `${teamLabel(store, m)}: you finished #${ft.rank} of ${lineups.length} and earned ${Math.round((ft.points || 0) / DREAM_XI.fanPointsDivisor)} fan points.`,
     };
   }
   return dispatchNotification({
-    title: `🏏 Dream XI results: ${teamLabel(store, m)}`,
+    title: `🏏 Pick XI results: ${teamLabel(store, m)}`,
     body: 'Your points are in.',
     category: 'fantasy',
     targetAudience: 'users',
     userIds: lineups.map(f => f.userId),
     perUser,
     data: { matchId: m.id, url: `/fantasy/${m.id}` },
-    createdBy: 'Dream XI',
+    createdBy: 'Pick XI',
   });
 }
 
@@ -67,11 +67,11 @@ export async function afterMatchCompleted(matchId: string) {
   const m = store.matches.find(x => x.id === matchId);
   if (!m || m.status !== 'completed') return null;
   const hasScorecard = Boolean(m.scorecard?.innings1?.batting?.length || m.scorecard?.innings2?.batting?.length);
-  if (!hasScorecard) return { scored: 0, note: 'No scorecard yet, so Dream XI lineups were not scored. Add the scorecard and save again.' };
+  if (!hasScorecard) return { scored: 0, note: 'No scorecard yet, so Pick XI lineups were not scored. Add the scorecard and save again.' };
   const r = scoreMatchFantasy(store, matchId);
   db.save();
   await notifyFantasyResults(matchId);
-  return { ...r, note: `${r.scored} Dream XI lineup(s) scored.${r.unmatchedNames.length ? ` Names not matched to a squad player: ${r.unmatchedNames.join(', ')}.` : ''}` };
+  return { ...r, note: `${r.scored} Pick XI lineup(s) scored.${r.unmatchedNames.length ? ` Names not matched to a squad player: ${r.unmatchedNames.join(', ')}.` : ''}` };
 }
 
 /** Lineup-lock reminders and contest auto-locking. Safe to run as often as you like. */

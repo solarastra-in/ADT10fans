@@ -22,11 +22,11 @@ function Rules() {
   return (
     <div className="space-y-8">
       <Section title={t('Points and Fan Wars')}>
-        <p>{t('Everything on the site is free to play. You earn season points from Dream XI, the daily games, predictions, daily check-ins, the forum and badges. The points also count for the team you back in Fan Wars. You can pick a team and switch once per season.')}</p>
+        <p>{t('Everything on the site is free to play. You earn season points from Pick XI, the daily games, predictions, daily check-ins, the forum and badges. The points also count for the team you back in Fan Wars. You can pick a team and switch once per season.')}</p>
         <p>{t('Spending points on prizes never lowers your leaderboard score: you have season points (for rankings) and a balance to spend.')}</p>
         <p>{t('Your profile shows every point you earned and spent, and why. If a post is removed, or a scorecard is corrected, the points it earned are adjusted and the change is listed there.')}</p>
       </Section>
-      <Section id="dream-xi" title={t('Dream XI')}>
+      <Section id="dream-xi" title={t('Pick XI')}>
         {r && (
           <ul className="list-disc ps-5 space-y-1">
             <li>{t('Pick exactly {size} players for your fantasy squad from the two teams in a match within a {cap} Credits budget.', { size: r.size, cap: r.creditCap || 100 })}</li>
@@ -34,7 +34,7 @@ function Rules() {
             <li>{t('Points and credits are balanced so squads can anchor a few marquee stars (max {maxTop} top players) alongside solid mediocre and budget enablers.', { maxTop: r.maxTopPlayers || 4 })}</li>
             <li>{t('Your captain scores {c}x and your vice-captain {vc}x.', { c: r.captainMultiplier, vc: r.viceCaptainMultiplier })}</li>
             <li>{t('You can change your team until the first ball. Points come from the official scorecard once the match ends.')}</li>
-            <li>{t('Season points earned = your Dream XI points divided by {d}, rounded.', { d: r.fanPointsDivisor })}</li>
+            <li>{t('Season points earned = your Pick XI points divided by {d}, rounded.', { d: r.fanPointsDivisor })}</li>
           </ul>
         )}
         {data && (
@@ -69,7 +69,7 @@ function Rules() {
         <p>{t('Prizes can be claimed with your points while stock lasts. Each claim has a code and says how you will receive it. If a claim is cancelled, the points are returned.')}</p>
       </Section>
       <Section id="invites" title={t('Invite friends')}>
-        <p>{t('Share your invite link from your profile. When a friend signs up with it and plays their first game (Dream XI, a daily game, a prediction or a forum post), you both get {n} points.', { n: config?.referralRewardPoints ?? 50 })}</p>
+        <p>{t('Share your invite link from your profile. When a friend signs up with it and plays their first game (Pick XI, a daily game, a prediction or a forum post), you both get {n} points.', { n: config?.referralRewardPoints ?? 50 })}</p>
         {(config?.referralMaxRewarded ?? 10) > 0 && <p>{t('You are rewarded for up to {max} friends this season; friends who join after that still get their own points.', { max: config?.referralMaxRewarded ?? 10 })}</p>}
       </Section>
       <Section id="forum" title={t('Forum')}>

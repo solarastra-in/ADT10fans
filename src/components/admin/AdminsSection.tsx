@@ -14,7 +14,7 @@ const ALL_PERMISSIONS: { id: AdminPermission; label: string; desc: string; color
   { id: 'teams', label: 'Teams & squads', desc: 'Team pages, squads, fantasy credits', color: 'bg-blue-500/10 text-blue-400 border-blue-500/30' },
   { id: 'matches', label: 'Matches', desc: 'Fixtures, live scores, scorecards, results', color: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' },
   { id: 'contests', label: 'Predictions', desc: 'Prediction contests and quizzes, settling', color: 'bg-purple-500/10 text-purple-400 border-purple-500/30' },
-  { id: 'fantasy', label: 'Dream XI', desc: 'Re-score Dream XI after scorecard fixes', color: 'bg-violet-500/10 text-violet-300 border-violet-500/30' },
+  { id: 'fantasy', label: 'Pick XI', desc: 'Re-score Pick XI after scorecard fixes', color: 'bg-violet-500/10 text-violet-300 border-violet-500/30' },
   { id: 'prizes', label: 'Prizes & claims', desc: 'Reward catalogue, fulfil or cancel claims', color: 'bg-lime-500/10 text-lime-300 border-lime-500/30' },
   { id: 'draws', label: 'Prize draws', desc: 'Create draws, pick winners', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' },
   { id: 'social', label: 'Handles & feeds', desc: 'Official accounts, posts, approvals', color: 'bg-orange-500/10 text-orange-400 border-orange-500/30' },
@@ -30,7 +30,7 @@ const TEAM_OFFICIAL_PERMS: AdminPermission[] = ['team', 'social', 'community', '
 const ROLE_PRESETS: { id: AdminRole; label: string; desc: string; defaultPerms: AdminPermission[] }[] = [
   { id: 'superadmin', label: 'Super Admin', desc: 'Everything, including managing admins and server settings.', defaultPerms: ['all'] },
   { id: 'league_admin', label: 'League Admin', desc: 'Teams, matches, games, community, Fan Spaces and programmes.', defaultPerms: ['leagues', 'matches', 'teams', 'contests', 'fantasy', 'games', 'notifications', 'fanspaces', 'growth', 'community'] },
-  { id: 'contest_admin', label: 'Games Admin', desc: 'Predictions, quizzes and Dream XI scoring.', defaultPerms: ['contests', 'fantasy', 'games'] },
+  { id: 'contest_admin', label: 'Games Admin', desc: 'Predictions, quizzes and Pick XI scoring.', defaultPerms: ['contests', 'fantasy', 'games'] },
   { id: 'winner_admin', label: 'Prizes Admin', desc: 'Prize catalogue, claims and prize draws.', defaultPerms: ['winners', 'draws', 'prizes'] },
   { id: 'social_admin', label: 'Social & Community', desc: 'Official handles, feeds, approvals, forum moderation and polls.', defaultPerms: ['feeds', 'social', 'community'] },
   { id: 'team_official', label: 'Team Official', desc: 'One franchise only: its page, squad, channels, posts, polls, forum and fan messages.', defaultPerms: TEAM_OFFICIAL_PERMS },

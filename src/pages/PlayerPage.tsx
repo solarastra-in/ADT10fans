@@ -46,9 +46,9 @@ export default function PlayerPage({ id }: { id: string }) {
       </Card>
 
       <div className="grid grid-cols-3 gap-2">
-        <StatTile label={t('Dream XI credits')} value={p.credits ?? '—'} accent />
+        <StatTile label={t('Pick XI credits')} value={p.credits ?? '—'} accent />
         <StatTile label={t('Matches scored')} value={scored.length} />
-        <StatTile label={t('Avg Dream XI points')} value={avg ?? '—'} />
+        <StatTile label={t('Avg Pick XI points')} value={avg ?? '—'} />
       </div>
 
       <section>
