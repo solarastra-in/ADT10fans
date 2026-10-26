@@ -298,10 +298,21 @@ export function reconcileOfficialHandles(store: AppStore, now = new Date().toISO
     }
     existing.meta = meta;
   }
+  // "Official" is reserved for accounts on the checked list above. Anything else marked official
+  // without being approved by an admin (an older commit did this) goes back to the approval queue.
+  const checked = new Set(OFFICIAL_HANDLES.map(h => handleKey(h.url)));
+  // (An admin's approval changes the source to 'admin', so approved accounts are not affected.)
+  for (const h of store.handles) {
+    if (h.source !== 'official' || h.status !== 'verified' || checked.has(handleKey(h.url))) continue;
+    h.status = 'pending';
+    h.source = 'legacy';
+    h.verifiedAt = undefined;
+    changed = true;
+  }
   // Unconfirmed handles carried over from older versions go to the approval queue once.
   for (const h of store.handles) {
     if (h.source !== 'legacy' || h.status !== 'pending') continue;
-    if (store.approvals.some(a => a.payload?.handleId === h.id)) continue;
+    if (store.approvals.some(a => a.status === 'pending' && a.payload?.handleId === h.id)) continue;
     const team = store.teams.find(t => t.id === h.teamId);
     store.approvals.unshift({
       id: 'ap-' + crypto.randomUUID().replace(/-/g, '').slice(0, 10),

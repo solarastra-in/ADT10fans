@@ -51,7 +51,7 @@ const teams = (await get('/api/teams')).json.teams;
 ok('six franchises are seeded', teams.length === 6);
 const NAMES = ['UAE Bulls', 'United Tigers', 'Yas Lions', 'Arabian Aces', 'Emirates Eagles', 'Royal Desert Champions'];
 for (const n of NAMES) ok(`seeded ${n} with 18 players`, teams.find(t => t.name === n)?.squad.length === 18);
-ok('every player has a role and credits', teams.every(t => t.squad.every(p => ['batter', 'bowler', 'allrounder', 'wicketkeeper'].includes(p.role) && p.credits >= 8 && p.credits <= 10.5)));
+ok('every player has a role and credits', teams.every(t => t.squad.every(p => ['batter', 'bowler', 'allrounder', 'wicketkeeper'].includes(p.role) && p.credits >= 7 && p.credits <= 10.5)));
 ok('no invented player stats are shipped', teams.every(t => t.squad.every(p => p.stats === undefined)));
 ok('icon players cost 10.5 credits', teams.every(t => t.squad.filter(p => p.isIcon).every(p => p.credits === 10.5)));
 const bulls = teams.find(t => t.id === 'bulls');
@@ -259,7 +259,8 @@ const tooRich = [...pricey, ...pool.filter(p => !pricey.includes(p.id)).slice(0,
 const richRes = await save(F1, tooRich, tooRich[0], tooRich[1]);
 ok('lineups over budget or breaking role limits are refused', richRes.status === 400);
 const s1 = await save(F1, XI, maxB, matiullah);
-ok('valid Dream XI saved with credits used', s1.status === 200 && s1.json.credits === 95.5, s1.json);
+const xiCredits = Math.round(XI.reduce((sum, id) => sum + pool.find(p => p.id === id).credits, 0) * 10) / 10;
+ok('valid Dream XI saved with credits used', s1.status === 200 && s1.json.credits === xiCredits && xiCredits <= 100, { credits: s1.json.credits, xiCredits });
 ok('fan2 saves a lineup', (await save(F2, XI, byName('Ibrahim Masood').id, byName('Amshi de Silva').id)).status === 200);
 ok('anonymous cannot save a lineup', (await save(null, XI, maxB, matiullah)).status === 401);
 ok('selected-by percentage shows', (await get(`/api/fantasy/${m1.id}`)).json.pool.find(p => p.id === maxB).selectedBy === 100);
@@ -280,29 +281,36 @@ const done = await post('/api/matches', { id: m1.id, status: 'completed', winner
 ok('completing a match sends the result and scores Dream XI', done.json.notification?.category === 'match_result' && done.json.fantasy?.scored === 2, done.json);
 const myFt = (await get(`/api/fantasy/${m1.id}`, F1)).json.fantasyTeam;
 const line = id => myFt.breakdown.find(b => b.playerId === id);
-// Max Bryant: 40 runs + 4 fours + 2 sixes x2 + 30 bonus 8 + strike rate 222 (+6) + playing 4 = 66, captain x2
-ok('batting points: 66 doubled for the captain', line(maxB).base === 66 && line(maxB).total === 132, line(maxB));
-// Matiullah Khan: 3 wickets 75 + 3-wicket bonus 16 + maiden 16 + economy 4.5 (+6) + bowled bonus 8 + playing 4 = 125, x1.5
-ok('bowling points: 125 x1.5 for the vice-captain', line(matiullah).base === 125 && line(matiullah).total === 187.5, line(matiullah));
-ok('catch earns fielding and playing points (12)', line(byName('Moeen Ali').id).base === 12);
-ok('wicket and economy points (31)', line(byName('Amshi de Silva').id).base === 31);
-ok('duck costs a batter 2 (4 - 2 = 2)', line(byName('Ibrahim Masood').id).base === 2);
+// Points follow the published rules (GET /api/fantasy/rules): playing 20, run 2, four +2, six +5,
+// 30-run bonus 16, wicket 35, 3-wicket bonus 32, maiden 32, bowled/LBW 12, catch 12, duck -4,
+// strike rate above 200 +12, below 60 -8, economy under 7 +12, 8.51-10 +4.
+const rulesTable = (await get('/api/fantasy/rules')).json.scoring;
+const ruleValue = label => rulesTable.flatMap(g => g.rules).find(r => r[0] === label)?.[1];
+ok('published rules list the strike-rate and economy bands used for scoring', ruleValue('Above 200.0') === 12 && ruleValue('Under 7.0 runs per over') === 12 && ruleValue('Below 60.0') === -8);
+// Max Bryant: 40 runs 80 + 4 fours 8 + 2 sixes 10 + 30 bonus 16 + strike rate 222 (+12) + playing 20 = 146, captain x2
+ok('batting points: 146 doubled for the captain', line(maxB).base === 146 && line(maxB).total === 292, line(maxB));
+// Matiullah Khan: 3 wickets 105 + 3-wicket bonus 32 + maiden 32 + economy 4.5 (+12) + bowled bonus 12 + playing 20 = 213, x1.5
+ok('bowling points: 213 x1.5 for the vice-captain', line(matiullah).base === 213 && line(matiullah).total === 319.5, line(matiullah));
+ok('catch earns fielding and playing points (12 + 20)', line(byName('Moeen Ali').id).base === 32);
+ok('wicket, economy 9.0 and playing points (35 + 4 + 20)', line(byName('Amshi de Silva').id).base === 59);
+ok('duck costs a batter 4 (20 - 4 = 16)', line(byName('Ibrahim Masood').id).base === 16);
 ok('players who did not play score 0', line(byName('Paul Walter').id).base === 0);
-ok('lineup total 364.5, ranked 1st', myFt.points === 364.5 && myFt.rank === 1);
-ok('fan gets total/5 = 73 season points', (await me(F1)).points === p1Before + 73);
+ok('lineup total 718.5, ranked 1st', myFt.points === 718.5 && myFt.rank === 1, myFt.points);
+ok('fan gets total/5 = 144 season points', (await me(F1)).points === p1Before + 144);
 const lb = (await get(`/api/fantasy/leaderboard?matchId=${m1.id}`)).json.rows;
-ok('match leaderboard ranks both lineups', lb.length === 2 && lb[0].userId === fan1.user.id && lb[1].points === 253.5);
+// Fan 2: Ibrahim Masood 16 x2 + Amshi de Silva 59 x1.5 + 146 + 213 + 32 = 511.5
+ok('match leaderboard ranks both lineups', lb.length === 2 && lb[0].userId === fan1.user.id && lb[1].points === 511.5, lb.map(r => r.points));
 ok('locked lineups cannot change', (await save(F1, XI, matiullah, maxB)).status === 400);
 const md = (await get(`/api/matches/${m1.id}`)).json;
 ok('match page shows fantasy points and most-picked players', md.fantasy.playerPoints[0].name === 'Matiullah Khan' && md.fantasy.mostPicked.length === 5);
 const p1Mid = (await me(F1)).points;
 await post('/api/matches', { id: m1.id, scorecard: card(10, 18, 0, 0) }, A);
-// Corrected: Max Bryant 10 runs, strike rate 55 (-6), playing 4 = 8 -> lineup 248.5 -> 50 season points
+// Corrected: Max Bryant 10 runs 20, strike rate 55 (-8), playing 20 = 32 -> x2 64 -> lineup 490.5 -> 98 season points
 const fixed = (await get(`/api/fantasy/${m1.id}`, F1)).json.fantasyTeam;
-ok('scorecard correction re-scores the lineup', fixed.points === 248.5);
-ok('re-scoring reverses the old award first (73 -> 50)', (await me(F1)).points === p1Mid - 23);
+ok('scorecard correction re-scores the lineup', fixed.points === 490.5, fixed.points);
+ok('re-scoring reverses the old award first (144 -> 98)', (await me(F1)).points === p1Mid - 46);
 const res2 = await post(`/api/admin/fantasy/${m1.id}/score`, {}, A);
-ok('admin re-score is idempotent', res2.json.scored === 2 && (await me(F1)).points === p1Mid - 23);
+ok('admin re-score is idempotent', res2.json.scored === 2 && (await me(F1)).points === p1Mid - 46);
 const n1 = (await get('/api/notifications', F1)).json.notifications;
 ok('fan gets a personal Dream XI result', n1.some(n => n.category === 'fantasy' && /you finished #1 of 2/.test(n.body)));
 ok('result notification is sent once', n1.filter(n => n.category === 'match_result').length === 1);
@@ -311,7 +319,7 @@ ok('anonymous visitors only see public notifications', (await get('/api/notifica
 const lgs = (await get('/api/fantasy/leaderboard')).json.rows;
 ok('season Dream XI leaderboard', lgs[0].userId === fan1.user.id && lgs[0].matches === 1);
 const playerPage = (await get(`/api/players/${maxB}`)).json;
-ok('player page shows fantasy points per match', playerPage.fixtures[0].fantasyPoints === 8 && playerPage.player.credits === 8.5);
+ok('player page shows fantasy points per match', playerPage.fixtures[0].fantasyPoints === 32 && playerPage.player.credits === 8, { pts: playerPage.fixtures[0].fantasyPoints, credits: playerPage.player.credits });
 
 // Settle the contest
 const settle = await post(`/api/admin/contests/${contest.id}/settle`, { answers: { [q1.id]: 'UAE Bulls', [q2.id]: 'No' } }, A);
@@ -364,7 +372,7 @@ const cron2 = await call('POST', '/api/cron/run?only=reminders', null, null, { h
 ok('lock reminder is not repeated', cron2.json.jobs.reminders.lockReminders === 0);
 const remF4 = (await get('/api/notifications', F4)).json.notifications.find(n => n.data?.matchId === m3.id);
 const remF2 = (await get('/api/notifications', F2)).json.notifications.find(n => n.data?.matchId === m3.id);
-ok('fans with a lineup get "your Dream XI is in"', /Your Dream XI is in/.test(remF4?.body));
+ok('fans with a lineup get "your Dream XI is in"', /Your Pick XI is in/.test(remF4?.body));
 ok('fans without one get "pick 11 players"', /Pick 11 players/.test(remF2?.body));
 const cron3 = await call('POST', '/api/cron/run', null, null, { headers: { Authorization: `Bearer ${CRON}` } });
 ok('full cron run pulls feeds and checks fixtures', cron3.json.jobs.feeds && cron3.json.jobs.scores && cron3.json.jobs.checks !== undefined, cron3.json);

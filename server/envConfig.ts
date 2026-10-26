@@ -113,6 +113,10 @@ export function applyEnvOverrides(store: AppStore) {
   return false; // never changes the store itself
 }
 db.onLoad(applyEnvOverrides);
+// Values saved in the console on another server apply here as soon as this server catches up.
+db.onExternalChange((keys, store) => {
+  if (keys.has('settings')) applyEnvOverrides(store);
+});
 
 function maskSecret(val: string): string {
   if (!val) return '';

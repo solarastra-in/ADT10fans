@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { db } from '../db';
 import {
   firebaseProjectId, getAuthUser, requireUser, upsertUser, createSession, revokeSession, verifyFirebaseIdToken, rateLimit,
-  emailOtpAvailable, sendOtpEmail, hashOtp, timingSafeEqualHex, selfUser, isSuperAdmin,
+  emailOtpAvailable, sendOtpEmail, hashOtp, timingSafeEqualHex, selfUser, isSuperAdmin, IS_PROD,
 } from '../auth';
 import { bad, newId, optionalUrl, str, userOf, wrap } from '../http';
 import { computeUserBadges } from '../badges';
@@ -92,14 +92,16 @@ coreRouter.post('/auth/otp/request', rateLimit('otp-req', 5, 10 * 60_000), wrap(
   const email = str(req.body?.email, 200).toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return bad(res, 'Please enter a valid email address');
   if (!emailOtpAvailable()) return bad(res, 'Email sign-in is not available right now. Please use Google sign-in.', 503);
-  const store = db.get();
-  if (store.otpCodes.some(o => o.email === email && Date.now() - +new Date(o.createdAt) < 60_000)) {
-    return bad(res, 'A code was just sent. Please wait a minute before requesting another.', 429);
-  }
   const code = crypto.randomInt(100000, 1000000).toString();
-  store.otpCodes = store.otpCodes.filter(o => +new Date(o.expiresAt) > Date.now() && !o.used && o.email !== email).slice(0, 1000);
-  store.otpCodes.unshift({ id: newId('otp'), email, codeHash: hashOtp(email, code), expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(), attempts: 0, used: false, createdAt: new Date().toISOString() });
-  db.save();
+  // A short write of its own (this route is self-managed in storeSync), then the email is sent
+  // without holding the write lock.
+  const tooSoon = await db.mutate(store => {
+    if (store.otpCodes.some(o => o.email === email && Date.now() - +new Date(o.createdAt) < 60_000)) return true;
+    store.otpCodes = store.otpCodes.filter(o => +new Date(o.expiresAt) > Date.now() && !o.used && o.email !== email).slice(0, 1000);
+    store.otpCodes.unshift({ id: newId('otp'), email, codeHash: hashOtp(email, code), expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(), attempts: 0, used: false, createdAt: new Date().toISOString() });
+    return false;
+  });
+  if (tooSoon) return bad(res, 'A code was just sent. Please wait a minute before requesting another.', 429);
   let mode: 'sent' | 'dev';
   try {
     mode = await sendOtpEmail(email, code, brand());
@@ -107,7 +109,8 @@ coreRouter.post('/auth/otp/request', rateLimit('otp-req', 5, 10 * 60_000), wrap(
     console.error('[OTP] email send failed:', e?.message);
     return bad(res, 'We could not send the email. Please try again or use Google sign-in.', 502);
   }
-  res.json({ success: true, message: `We sent a 6-digit code to ${email}.` });
+  // Development only (no SMTP, not production): the code is returned so it can be shown on screen.
+  res.json({ success: true, message: mode === 'dev' ? 'Development mode: your code is shown below.' : `We sent a 6-digit code to ${email}.`, ...(mode === 'dev' && !IS_PROD ? { devCode: code } : {}) });
 }));
 
 coreRouter.post('/auth/otp/verify', rateLimit('otp-verify', 20, 10 * 60_000), (req, res) => {

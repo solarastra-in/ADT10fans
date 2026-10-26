@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import { Router } from 'express';
-import { ALL_PERMISSIONS, AdminPermission, AdminRole, db, defaultSettings, SUPER_ADMIN_EMAIL, TEAM_OFFICIAL_PERMISSIONS } from '../db';
+import { ALL_PERMISSIONS, AdminPermission, AdminRole, db, defaultSettings, requestContext, SUPER_ADMIN_EMAIL, TEAM_OFFICIAL_PERMISSIONS } from '../db';
 import { adminEmails, IS_PROD, isSuperAdmin, rateLimit, requireAdmin, requireSuperAdmin, requireUser, smtpConfigured, firebaseProjectId, resetSmtpErrorState, smtpConfig, formatFromAddress } from '../auth';
 import { bad, newId, num, str, userOf, wrap } from '../http';
 import { runDiscoveryAgent, runSocialAgent, runNewsAgent, runScoresAgent, runContentAgent, runOpsAgent } from '../agents';
@@ -9,7 +9,7 @@ import { geminiConfigured, chatWithGemini, searchGroundingCricket, generateMarke
 import { getAllEnvVariables, saveEnvOverrides } from '../envConfig';
 import { pushServerConfigured } from '../push';
 import { liveScoresConfigured } from '../liveScores';
-import { ephemeralDiskWarning, FirestoreBackend } from '../storage';
+import { ephemeralDiskWarning, firestorePubliclyReadable } from '../storage';
 import { firebaseAppConfig } from '../firebaseConfig';
 import { getCuratorConfig } from '../feeds';
 import { runScheduledJobs, runJobsOnce, lastJobRun } from '../jobs';
@@ -22,10 +22,16 @@ function maskedSettings() {
 }
 
 let rulesCheck: { at: number; open: boolean } | null = null;
+/**
+ * Whether anyone with the public web API key can read the store (open Firestore rules). Checked for
+ * every Firestore layout, including the browser-SDK fallback, which only works while the rules are open.
+ */
 async function firestoreOpenToPublic(): Promise<boolean> {
-  if (!(db.backend instanceof FirestoreBackend)) return false;
+  if (db.backend.kind !== 'firestore') return false;
   if (rulesCheck && Date.now() - rulesCheck.at < 10 * 60_000) return rulesCheck.open;
-  const open = await db.backend.publiclyReadable(firebaseAppConfig().apiKey || '');
+  const cfg = firebaseAppConfig();
+  const col = (process.env.STORE_COLLECTION || 'adt10_store').trim();
+  const open = await firestorePubliclyReadable(cfg.projectId || '', cfg.firestoreDatabaseId || '', [`${col}_shards`, col], cfg.apiKey || '');
   rulesCheck = { at: Date.now(), open };
   return open;
 }
@@ -54,7 +60,12 @@ adminRouter.get('/admin/dashboard', requireAdmin, wrap(async (_req, res) => {
     settings: maskedSettings(),
     warnings: [
       ...(warning ? [warning] : []),
-      ...(rulesOpen ? ['Your Firestore security rules let anyone read the site\'s data. In Firebase console → Firestore → Rules, publish the rules in firestore.rules from the repository (they close the database to browsers; the site itself is not affected).'] : []),
+      ...(!db.sharded && db.backend.kind === 'firestore'
+        ? ['The server has no FIREBASE_SERVICE_ACCOUNT, so it reaches Firestore the way a browser would. That only works while the database is open to everyone. Set FIREBASE_SERVICE_ACCOUNT in Vercel and redeploy; the site then moves its data to the new layout by itself.']
+        : []),
+      ...(rulesOpen
+        ? ['Your Firestore security rules let anyone read and change the site\'s data, including fans\' emails and the keys saved in Admin → Environment. Once FIREBASE_SERVICE_ACCOUNT is set, publish firestore.rules from the repository (Firebase console → Firestore → Rules), then change the SMTP password and the API keys saved here.']
+        : []),
     ],
     integrations: {
       gemini: geminiConfigured(),
@@ -357,7 +368,8 @@ const cronHandler = wrap(async (req, res) => {
   const user = (await import('../auth')).getAuthUser(req);
   const trusted = cronAuth(req) || isSuperAdmin(user);
   const only = typeof req.query.only === 'string' ? req.query.only.split(',') : undefined;
-  if (trusted && only) return res.json({ success: true, ...(await runScheduledJobs({ only })) });
+  // Outside the request context, so each job's writes are committed as their own short transactions.
+  if (trusted && only) return res.json({ success: true, ...(await requestContext.exit(() => runScheduledJobs({ only }))) });
   const r = await runJobsOnce({ force: trusted });
   if (!trusted) return res.json({ success: true, ran: r.ran, reason: r.reason, lastRun: lastJobRun() });
   res.json({ success: true, ran: r.ran, reason: r.reason, ...(r.result || {}) });

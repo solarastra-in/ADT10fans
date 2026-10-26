@@ -1,7 +1,8 @@
 import path from 'path';
 import { AsyncLocalStorage } from 'async_hooks';
 import { generateInitialProposalSettings } from './proposalDefaults';
-import { ConflictError, createBackend, FileBackend, StorageBackend } from './storage';
+import { AnyBackend, ConflictError, createBackend, FileBackend, isSharded, QuotaError, ShardBackend, ShardMeta, StorageBackend } from './storage';
+import { ChangeSet, hashText, joinShards, keyOfShard, replaceShards, shardsOfKey, shardText, splitStore, SPLIT, track, unwrap } from './shards';
 
 export const SUPER_ADMIN_EMAIL = 'solarastra.in@gmail.com';
 
@@ -1002,6 +1003,7 @@ export function migrate(raw: any): AppStore {
 }
 
 const DATA_DIR = path.resolve(process.env.DATA_DIR || (process.env.VERCEL ? '/tmp/adt10-data' : path.join(process.cwd(), 'data')));
+/** Where older versions kept the whole store as one file; read once to move it into shards. */
 export const STORE_PATH = path.join(DATA_DIR, 't10_store.json');
 
 /** Per-request context (set by storeSync) so code can tell which request is writing. */
@@ -1009,29 +1011,424 @@ export const requestContext = new AsyncLocalStorage<{ id: string }>();
 
 type InitHook = (store: AppStore) => boolean | void;
 
-class DatabaseManager {
-  readonly backend: StorageBackend;
-  private store: AppStore = emptyStore();
-  private version: string | null = null;
-  private dirty = false;
-  private saveTimer: NodeJS.Timeout | null = null;
-  private readyPromise: Promise<void> | null = null;
-  private lastFreshCheck = 0;
-  private initHooks: InitHook[] = [];
-  /** Increments on every save(); storeSync compares it to tell whether a request changed anything. */
-  epoch = 0;
+/** Upgrades a raw store and runs the init hooks (seeding official data). */
+function prepare(raw: any, hooks: InitHook[]): { store: AppStore; changed: boolean } {
+  const needsMigration = !raw || (Number(raw.schemaVersion) || 1) < SCHEMA_VERSION;
+  const store = migrate(raw);
+  let changed = needsMigration;
+  for (const hook of hooks) if (hook(store)) changed = true;
+  return { store, changed };
+}
 
-  constructor() {
-    this.backend = createBackend(STORE_PATH);
+/** Puts back any top-level key a partial reload left missing, so code can rely on every collection existing. */
+function fillDefaults(store: any) {
+  const fresh: any = emptyStore();
+  for (const k of Object.keys(fresh)) if (store[k] === undefined || store[k] === null) store[k] = fresh[k];
+}
+
+/** Turns on the check that every change to the store went through change tracking (tests). */
+const VERIFY = () => process.env.STORE_VERIFY === '1';
+
+interface Engine {
+  readonly shared: boolean;
+  load(hooks: InitHook[]): Promise<void>;
+  refresh(maxAgeMs: number): Promise<void>;
+  get(): AppStore;
+  /** db.save(): something changed (the sharded engine already knows what). */
+  saved(): void;
+  /** True when there are changes not yet written. */
+  readonly dirty: boolean;
+  commit(): Promise<void>;
+  /** Throws away unwritten changes and catches up with storage. */
+  discard(hooks: InitHook[]): Promise<void>;
+  /** Writes everything that differs from storage, including changes made outside change tracking. Returns the number of shards fixed. */
+  reconcile(): Promise<number>;
+}
+
+/**
+ * The store split into shards (see shards.ts). Changes are recorded by proxies as code makes them,
+ * and a commit writes only the shards that changed.
+ */
+class ShardEngine implements Engine {
+  private raw: AppStore = emptyStore();
+  private proxy: AppStore;
+  /** What storage holds for each shard, as far as this server knows (including deleted markers). */
+  private metas = new Map<string, ShardMeta>();
+  /** Hash of each live shard's text as last read or written. */
+  private hashes = new Map<string, string>();
+  private token: string | null = null;
+  private lastFreshCheck = 0;
+  private untrackedSave = false;
+  readonly changes: ChangeSet;
+
+  /** Called with the keys another server changed, after they are applied here. */
+  onExternal: (keys: Set<string>, store: AppStore) => void = () => undefined;
+
+  constructor(
+    private readonly backend: ShardBackend,
+    onChange: () => void,
+  ) {
+    this.changes = new ChangeSet(onChange);
+    this.proxy = track(this.raw, this.changes);
   }
 
   get shared() {
     return this.backend.shared;
   }
+  get dirty() {
+    return !this.changes.empty || this.untrackedSave;
+  }
+  get() {
+    return this.proxy;
+  }
+  saved() {
+    if (this.changes.empty) this.untrackedSave = true;
+  }
 
-  /** Functions run on every load (seeding official data, reconciling handles). Return true if they changed the store. */
+  private setRaw(raw: AppStore) {
+    this.raw = raw;
+    this.proxy = track(raw, this.changes);
+  }
+
+  async load(hooks: InitHook[]): Promise<void> {
+    const { metas, token } = await this.backend.changes(null);
+    const live = metas.filter(m => !m.deleted);
+    let raw: any = null;
+    let texts = new Map<string, string>();
+    if (live.length) {
+      texts = await this.backend.read(live, token);
+      raw = joinShards(texts.values());
+    } else {
+      const legacy = await this.backend.legacy();
+      if (legacy) {
+        try {
+          raw = JSON.parse(legacy);
+          console.log('[STORE] Moving the store from the single-document layout to shards (the old copy is left in place).');
+        } catch {
+          console.error('[STORE] The old store is not valid JSON; starting from an empty store. The old copy is left untouched.');
+        }
+      }
+    }
+    this.metas = new Map(metas.map(m => [m.name, m]));
+    this.hashes = new Map([...texts].map(([n, t]) => [n, hashText(t)]));
+    this.token = token;
+    const { store } = prepare(raw, hooks);
+    this.changes.clear();
+    this.untrackedSave = false;
+    this.setRaw(store);
+    this.lastFreshCheck = Date.now();
+    // Migrations, the init hooks and a move from the old layout are written now.
+    if ((await this.reconcile()) > 0) {
+      try {
+        await this.commit();
+      } catch (e) {
+        if (e instanceof ConflictError) return this.load(hooks); // another server wrote first: start again from its copy
+        console.warn('[DB] initial write failed, continuing with the loaded store:', (e as Error)?.message || e);
+      }
+    }
+  }
+
+  async refresh(maxAgeMs: number) {
+    if (!this.backend.shared) return;
+    if (maxAgeMs && Date.now() - this.lastFreshCheck < maxAgeMs) return;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const { metas, token } = await this.backend.changes(this.token);
+        this.lastFreshCheck = Date.now();
+        const changed = metas.filter(m => this.metas.get(m.name)?.version !== m.version);
+        if (changed.length) await this.apply(changed, token);
+        this.token = token;
+        return;
+      } catch (e) {
+        if (!(e instanceof ConflictError) || attempt >= 3) throw e;
+      }
+    }
+  }
+
+  /** Replaces the given shards with storage's copy as of `token`. */
+  private async apply(metas: ShardMeta[], token: string) {
+    const texts = await this.backend.read(metas.filter(m => !m.deleted && m.chunks > 0), token);
+    const byKey = new Map<string, Map<string, string | null>>();
+    for (const m of metas) {
+      const key = keyOfShard(m.name);
+      if (!byKey.has(key)) byKey.set(key, new Map());
+      byKey.get(key)!.set(m.name, m.deleted ? null : (texts.get(m.name) ?? null));
+    }
+    for (const [key, t] of byKey) replaceShards(this.raw, key, t);
+    fillDefaults(this.raw);
+    try {
+      this.onExternal(new Set(byKey.keys()), this.raw);
+    } catch (e) {
+      console.warn('[DB] change listener failed:', (e as Error)?.message);
+    }
+    for (const m of metas) {
+      if (m.version) this.metas.set(m.name, m);
+      else this.metas.delete(m.name);
+      const text = texts.get(m.name);
+      if (text !== undefined) this.hashes.set(m.name, hashText(text));
+      else this.hashes.delete(m.name);
+    }
+  }
+
+  /** Shards that may have changed: recorded shards plus every shard (old and new) of a replaced key. */
+  private candidates(): Set<string> {
+    const out = new Set(this.changes.shards);
+    for (const key of this.changes.keys) {
+      for (const s of shardsOfKey(this.raw, key)) out.add(s);
+      for (const [name, m] of this.metas) if (!m.deleted && keyOfShard(name) === key) out.add(name);
+      if (!SPLIT[key]) out.add(`k.${key}`);
+    }
+    return out;
+  }
+
+  /** Current text of each candidate shard (null = the shard is now empty). Groups each split collection once. */
+  private textsOf(names: Set<string>): Map<string, string | null> {
+    const byKey = new Map<string, string[]>();
+    for (const n of names) {
+      const k = keyOfShard(n);
+      if (!byKey.has(k)) byKey.set(k, []);
+      byKey.get(k)!.push(n);
+    }
+    const out = new Map<string, string | null>();
+    for (const [key, list] of byKey) {
+      if (SPLIT[key] && list.length > 2) {
+        const all = splitStore({ [key]: (this.raw as any)[key] || [] });
+        for (const n of list) out.set(n, all.get(n) ?? null);
+      } else {
+        for (const n of list) out.set(n, shardText(this.raw as any, n));
+      }
+    }
+    return out;
+  }
+
+  async commit() {
+    if (this.changes.empty && this.untrackedSave) {
+      // db.save() was called but no change was recorded: compare everything, in case something
+      // changed the store without going through tracking.
+      this.untrackedSave = false;
+      await this.reconcile();
+    }
+    if (this.changes.empty) return;
+    const pending = this.changes.snapshot();
+    const texts = this.textsOf(this.candidates());
+    const writes: { name: string; text: string | null; expected: string | null; prevChunks: number; hash: string }[] = [];
+    for (const [name, text] of texts) {
+      const meta = this.metas.get(name);
+      const live = Boolean(meta && !meta.deleted);
+      if (text === null) {
+        if (live) writes.push({ name, text: null, expected: meta!.version, prevChunks: meta!.chunks, hash: '' });
+        continue;
+      }
+      const hash = hashText(text);
+      if (live && this.hashes.get(name) === hash) continue;
+      writes.push({ name, text, expected: meta?.version || null, prevChunks: meta?.chunks || 0, hash });
+    }
+    if (writes.length) {
+      const result = await this.backend.write(writes);
+      for (const w of writes) {
+        const m = result.get(w.name);
+        if (m) this.metas.set(w.name, m);
+        if (w.text === null) this.hashes.delete(w.name);
+        else this.hashes.set(w.name, w.hash);
+      }
+    }
+    // Only forget what was written; changes made while the write was in flight stay recorded.
+    for (const s of pending.shards) this.changes.shards.delete(s);
+    for (const k of pending.keys) this.changes.keys.delete(k);
+    if (VERIFY()) {
+      const missed = await this.reconcile();
+      if (missed) console.error(`[STORE] untracked change: ${missed} shard(s) changed without being recorded`);
+    }
+  }
+
+  async discard(hooks: InitHook[]) {
+    const local = this.candidates();
+    this.changes.clear();
+    this.untrackedSave = false;
+    if (!this.backend.shared) {
+      // One server: nothing else writes, so reloading is the simplest way back.
+      return this.load(hooks);
+    }
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const { metas, token } = await this.backend.changes(this.token);
+        const changed = metas.filter(m => this.metas.get(m.name)?.version !== m.version);
+        const seen = new Set(changed.map(m => m.name));
+        const reset = [...local].filter(n => !seen.has(n)).map(n => this.metas.get(n) ?? { name: n, version: '', chunks: 0, deleted: true });
+        await this.apply([...changed, ...reset], token);
+        this.token = token;
+        this.lastFreshCheck = Date.now();
+        return;
+      } catch (e) {
+        if (!(e instanceof ConflictError) || attempt >= 3) throw e;
+      }
+    }
+  }
+
+  async reconcile(): Promise<number> {
+    const texts = splitStore(this.raw as any);
+    let n = 0;
+    for (const [name, text] of texts) {
+      const meta = this.metas.get(name);
+      if (!meta || meta.deleted || this.hashes.get(name) !== hashText(text)) {
+        this.changes.shard(name);
+        n++;
+      }
+    }
+    for (const [name, meta] of this.metas) {
+      if (!meta.deleted && !texts.has(name)) {
+        this.changes.shard(name);
+        n++;
+      }
+    }
+    return n;
+  }
+
+  /** Size of each shard as last written, for the admin dashboard. */
+  stats() {
+    let shards = 0;
+    for (const m of this.metas.values()) if (!m.deleted) shards++;
+    return { shards };
+  }
+}
+
+/**
+ * The whole store as one document (Cloud Storage, or Firestore through the browser SDK).
+ * A commit compares the store with what was last read or written and writes only if it differs, so
+ * changes made without db.save() (inside db.mutate outside a request) are not lost.
+ */
+class BlobEngine implements Engine {
+  private store: AppStore = emptyStore();
+  private version: string | null = null;
+  private isDirty = false;
+  private lastFreshCheck = 0;
+  private lastHash = '';
+
+  constructor(
+    private readonly backend: StorageBackend,
+    private readonly onChange: () => void,
+  ) {}
+
+  get shared() {
+    return this.backend.shared;
+  }
+  get dirty() {
+    return this.isDirty;
+  }
+  get() {
+    return this.store;
+  }
+  saved() {
+    this.isDirty = true;
+  }
+
+  async load(hooks: InitHook[]): Promise<void> {
+    const { data, version } = await this.backend.load();
+    let raw: any = null;
+    if (data) {
+      try {
+        raw = JSON.parse(data);
+      } catch {
+        console.error('[DB] Store is not valid JSON; starting from an empty store.');
+      }
+    }
+    const { store, changed } = prepare(raw, hooks);
+    this.store = store;
+    this.version = version;
+    this.lastFreshCheck = Date.now();
+    this.isDirty = false;
+    this.lastHash = data ? hashText(data) : '';
+    if (changed) {
+      this.isDirty = true;
+      this.onChange();
+      try {
+        await this.commit();
+      } catch (e) {
+        if (e instanceof ConflictError) return this.load(hooks);
+        console.warn('[DB] initial commit failed, continuing with store:', (e as any)?.message || e);
+      }
+    }
+  }
+
+  async refresh(maxAgeMs: number) {
+    if (!this.shared) return;
+    if (maxAgeMs && Date.now() - this.lastFreshCheck < maxAgeMs) return;
+    const current = await this.backend.currentVersion();
+    this.lastFreshCheck = Date.now();
+    if (current !== this.version) await this.load(this.hooks);
+  }
+
+  hooks: InitHook[] = [];
+
+  async commit() {
+    const payload = JSON.stringify(this.store);
+    const hash = hashText(payload);
+    this.isDirty = false;
+    if (hash === this.lastHash) return;
+    try {
+      this.version = await this.backend.save(payload, this.version);
+      this.lastHash = hash;
+    } catch (e) {
+      this.isDirty = true;
+      throw e;
+    }
+  }
+
+  async discard(hooks: InitHook[]) {
+    this.isDirty = false;
+    await this.load(hooks);
+  }
+
+  async reconcile() {
+    return 0;
+  }
+}
+
+class DatabaseManager {
+  readonly backend: AnyBackend;
+  private readonly engine: Engine;
+  private saveTimer: NodeJS.Timeout | null = null;
+  private readyPromise: Promise<void> | null = null;
+  private initHooks: InitHook[] = [];
+  /** Increments on every change; storeSync compares it to tell whether a request changed anything. */
+  epoch = 0;
+
+  constructor() {
+    this.backend = createBackend(DATA_DIR, STORE_PATH);
+    const onChange = () => {
+      this.epoch++;
+      if (!this.engine.shared) this.scheduleWrite();
+    };
+    this.engine = isSharded(this.backend) ? new ShardEngine(this.backend, onChange) : new BlobEngine(this.backend, onChange);
+    if (this.engine instanceof ShardEngine) this.engine.onExternal = (keys, store) => this.externalHooks.forEach(h => h(keys, store));
+    if (this.engine instanceof BlobEngine) this.engine.hooks = this.initHooks;
+  }
+
+  get shared() {
+    return this.engine.shared;
+  }
+
+  /** True when the store is split into shards (the current layout). */
+  get sharded() {
+    return this.engine instanceof ShardEngine;
+  }
+
+  shardStats() {
+    return this.engine instanceof ShardEngine ? this.engine.stats() : null;
+  }
+
+  /** Functions run on every full load (seeding official data, reconciling handles). Return true if they changed the store. */
   onLoad(hook: InitHook) {
     this.initHooks.push(hook);
+  }
+
+  private externalHooks: ((keys: Set<string>, store: AppStore) => void)[] = [];
+  /**
+   * Functions run when another server's changes are picked up without a full reload (sharded storage).
+   * They must only read the store. `keys` are the top-level keys that changed.
+   */
+  onExternalChange(hook: (keys: Set<string>, store: AppStore) => void) {
+    this.externalHooks.push(hook);
   }
 
   ready(): Promise<void> {
@@ -1045,59 +1442,21 @@ class DatabaseManager {
   }
 
   async reload(): Promise<void> {
-    const { data, version } = await this.backend.load();
-    let raw: any = null;
-    if (data) {
-      try {
-        raw = JSON.parse(data);
-      } catch (e) {
-        console.error('[DB] Store is not valid JSON; starting from an empty store and keeping a copy of the old one.');
-        if (this.backend instanceof FileBackend) {
-          try {
-            new FileBackend(`${STORE_PATH}.corrupt-${Date.now()}`).saveSync(data);
-          } catch {
-            /* ignore */
-          }
-        }
-      }
-    }
-    const needsMigration = !raw || (Number(raw.schemaVersion) || 1) < SCHEMA_VERSION;
-    this.store = migrate(raw);
-    this.version = version;
-    this.lastFreshCheck = Date.now();
-    let changed = needsMigration;
-    for (const hook of this.initHooks) if (hook(this.store)) changed = true;
-    if (changed) {
-      this.dirty = true;
-      this.epoch++;
-      if (!this.shared) this.scheduleWrite();
-      else {
-        try {
-          await this.commit();
-        } catch (e) {
-          if (e instanceof ConflictError) return this.reload();
-          console.warn('[DB] initial commit failed, continuing with store:', (e as any)?.message || e);
-        }
-      }
-    }
+    await this.engine.load(this.initHooks);
   }
 
-  /** For the shared backend: reload when another instance has written since we last looked. */
+  /** For shared storage: catch up with writes from other servers (checked at most every maxAgeMs). */
   async refreshIfStale(maxAgeMs = 0): Promise<void> {
-    if (!this.shared) return;
-    if (maxAgeMs && Date.now() - this.lastFreshCheck < maxAgeMs) return;
-    const current = await this.backend.currentVersion();
-    this.lastFreshCheck = Date.now();
-    if (current !== this.version) await this.reload();
+    await this.engine.refresh(maxAgeMs);
   }
 
   get(): AppStore {
-    return this.store;
+    return this.engine.get();
   }
 
-  /** Marks the store as changed. File backend: written shortly after. Shared backend: written at the end of the request. */
+  /** Marks the store as changed. One server: written shortly after. Shared storage: written at the end of the request. */
   save() {
-    this.dirty = true;
+    this.engine.saved();
     this.epoch++;
     if (!this.shared) this.scheduleWrite();
   }
@@ -1106,28 +1465,24 @@ class DatabaseManager {
     if (this.saveTimer) return;
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
-      this.commit().catch(e => console.error('[DB] write failed:', e?.message || e));
+      this.exclusive(() => this.engine.commit()).catch(e => console.error('[DB] write failed:', e?.message || e));
     }, 150);
     this.saveTimer.unref?.();
   }
 
-  /** Writes now if anything changed. Shared backend throws ConflictError when another instance wrote first. */
+  /** Writes now if anything changed. Shared storage throws ConflictError when another server wrote the same shard first. */
   async commit(): Promise<void> {
-    if (!this.dirty) return;
-    const payload = JSON.stringify(this.store);
-    this.dirty = false;
-    try {
-      this.version = await this.backend.save(payload, this.version);
-    } catch (e) {
-      this.dirty = true;
-      throw e;
-    }
+    await this.engine.commit();
   }
 
-  /** Discard unsaved changes (after a conflict) by reloading from storage. */
+  /** Discards unsaved changes (after a conflict) and catches up with storage. */
   async discardAndReload() {
-    this.dirty = false;
-    await this.reload();
+    await this.engine.discard(this.initHooks);
+  }
+
+  /** Writes anything that differs from storage. Cheap safety net, run with the scheduled jobs. */
+  async reconcile(): Promise<number> {
+    return this.engine.reconcile();
   }
 
   async flush(): Promise<void> {
@@ -1135,17 +1490,13 @@ class DatabaseManager {
       clearTimeout(this.saveTimer);
       this.saveTimer = null;
     }
-    await this.commit();
+    await this.engine.commit();
   }
 
+  /** On exit (one server): file writes complete synchronously inside commit(). */
   flushSync() {
-    if (!this.dirty || !(this.backend instanceof FileBackend)) return;
-    try {
-      this.backend.saveSync(JSON.stringify(this.store));
-      this.dirty = false;
-    } catch (e) {
-      console.error('[DB] final write failed:', e);
-    }
+    if (this.shared || !this.engine.dirty) return;
+    this.engine.commit().catch(e => console.error('[DB] final write failed:', e));
   }
 
   private chain: Promise<unknown> = Promise.resolve();
@@ -1168,19 +1519,23 @@ class DatabaseManager {
   }
 
   /**
-   * Runs `fn` against the latest store and writes the result, retrying when another instance wrote
-   * at the same time. Used by scheduled jobs that run outside an HTTP request.
+   * Runs `fn` against the latest store and writes the result, retrying when another server wrote the
+   * same data at the same time. Keep `fn` short and free of network calls: it holds this server's
+   * write lock while it runs.
    */
   transaction<T>(fn: (store: AppStore) => Promise<T> | T, attempts = 8): Promise<T> {
     return this.exclusive(async () => {
       for (let i = 0; ; i++) {
         await this.refreshIfStale();
-        const result = await fn(this.store);
+        const result = await fn(this.get());
         try {
           await this.commit();
           return result;
         } catch (e) {
-          if (!(e instanceof ConflictError) || i >= attempts - 1) throw e;
+          if (!(e instanceof ConflictError) || i >= attempts - 1) {
+            await this.discardAndReload().catch(() => undefined);
+            throw e;
+          }
           await this.discardAndReload();
           await new Promise(r => setTimeout(r, 40 * (i + 1) + Math.random() * 60));
         }
@@ -1190,11 +1545,11 @@ class DatabaseManager {
 
   /**
    * Apply a change. Inside a request it runs directly (storeSync writes at the end of the request);
-   * outside one (timers) it runs as a transaction.
+   * outside one (timers, jobs) it runs as a transaction.
    */
   async mutate<T>(fn: (store: AppStore) => Promise<T> | T): Promise<T> {
     if (requestContext.getStore() || !this.shared) {
-      const r = await fn(this.store);
+      const r = await fn(this.get());
       this.save();
       return r;
     }
@@ -1202,12 +1557,13 @@ class DatabaseManager {
   }
 
   resetProposal(): ProposalSettings {
-    this.store.proposalSettings = generateInitialProposalSettings();
+    this.get().proposalSettings = generateInitialProposalSettings();
     this.save();
-    return this.store.proposalSettings;
+    return this.get().proposalSettings;
   }
 }
 
+export { ConflictError, QuotaError, unwrap };
 export const db = new DatabaseManager();
 db.onLoad(store => seedSmtpFromEnv(store.settings.smtp));
 
@@ -1216,7 +1572,7 @@ if (!process.env.VERCEL) {
     process.on(sig, () => {
       db.flushSync();
       if (db.shared) db.flush().finally(() => process.exit(0));
-      else process.exit(0);
+      else setTimeout(() => process.exit(0), 50);
     });
   }
 }

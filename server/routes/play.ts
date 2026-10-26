@@ -249,7 +249,7 @@ playRouter.get('/fantasy/:matchId', (req, res) => {
   const myTeams = user ? store.fantasyTeams.filter(f => f.userId === user.id && f.matchId === match.id) : [];
   const activeTeam = myTeams[0] || null;
   const presets = generateLineupVariations(pool, match);
-  const swingInsights = getMatchSwingInsights(match, pool);
+  const swingInsights = getMatchSwingInsights(match, pool, store);
 
   res.json({
     match,
