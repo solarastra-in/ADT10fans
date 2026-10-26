@@ -161,18 +161,6 @@ export function AuthModal() {
                   <CheckCircle2 className="w-4 h-4" /> {t('We sent a 6-digit code to {email}. It expires in 10 minutes.', { email })}
                 </span>
               </Notice>
-              {devCode && (
-                <Notice tone="warn">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <span>
-                      {t('Dev code auto-filled')}: <strong className="font-mono tracking-widest text-base text-amber-300" data-testid="dev-code">{devCode}</strong>
-                    </span>
-                    <button type="button" onClick={() => setCode(devCode)} className="text-xs font-bold text-amber-400 hover:underline">
-                      {t('Re-fill')}
-                    </button>
-                  </div>
-                </Notice>
-              )}
               <label className="block">
                 <span className="block text-xs font-bold text-slate-300 mb-1">{t('6-digit code')}</span>
                 <input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))} className={`${inputCls} font-mono tracking-[0.4em] text-center text-lg`} name="code" />

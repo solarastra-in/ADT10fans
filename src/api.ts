@@ -259,6 +259,7 @@ export const api = {
   decideApproval: (id: string, decision: 'approve' | 'reject') => post<Ok & { approval: Approval }>(`/api/admin/approvals/${id}/decide`, { decision }),
   getSettings: () => req<{ settings: SystemSettings }>('/api/admin/settings'),
   saveSettings: (s: Partial<SystemSettings>) => post<Ok & { settings: SystemSettings }>('/api/admin/settings', s),
+  testSmtp: (data?: { host?: string; port?: number; user?: string; pass?: string; from?: string; to?: string }) => post<{ success: boolean; message: string }>('/api/admin/smtp/test', data || {}),
   getAdmins: () => req<{ admins: AdminUserRecord[]; superAdminEmail: string; rolePresets: Record<AdminRole, AdminPermission[]>; permissions: AdminPermission[] }>('/api/admin/admins'),
   saveAdmin: (a: { email: string; name?: string; role: AdminRole; permissions?: AdminPermission[]; teamId?: string | null }) => post<Ok & { admins: AdminUserRecord[] }>('/api/admin/admins', a),
   deleteAdmin: (email: string) => del<Ok & { admins: AdminUserRecord[]; note?: string }>(`/api/admin/admins/${encodeURIComponent(email)}`),

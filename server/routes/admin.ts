@@ -1,7 +1,8 @@
 import crypto from 'crypto';
+import nodemailer from 'nodemailer';
 import { Router } from 'express';
 import { ALL_PERMISSIONS, AdminPermission, AdminRole, db, defaultSettings, SUPER_ADMIN_EMAIL, TEAM_OFFICIAL_PERMISSIONS } from '../db';
-import { adminEmails, IS_PROD, isSuperAdmin, rateLimit, requireAdmin, requireSuperAdmin, requireUser, smtpConfigured, firebaseProjectId, resetSmtpErrorState } from '../auth';
+import { adminEmails, IS_PROD, isSuperAdmin, rateLimit, requireAdmin, requireSuperAdmin, requireUser, smtpConfigured, firebaseProjectId, resetSmtpErrorState, smtpConfig, formatFromAddress } from '../auth';
 import { bad, newId, num, str, userOf, wrap } from '../http';
 import { runDiscoveryAgent, runSocialAgent, runNewsAgent, runScoresAgent, runContentAgent, runOpsAgent } from '../agents';
 import { geminiConfigured, chatWithGemini, searchGroundingCricket, generateMarketingContent, transcribeAudioVoice } from '../gemini';
@@ -160,6 +161,61 @@ adminRouter.post('/admin/settings', requireAdmin('settings'), (req, res) => {
   db.save();
   res.json({ success: true, settings: maskedSettings() });
 });
+
+adminRouter.post('/admin/smtp/test', requireAdmin, wrap(async (req, res) => {
+  const b = req.body || {};
+  const c = smtpConfig();
+  const host = b.host ? str(b.host, 120) : c.host;
+  const port = b.port ? Math.round(num(b.port, 587)) : c.port;
+  const user = b.user ? str(b.user, 120) : c.user;
+  const pass = b.pass && b.pass !== '••••••••' && b.pass !== '********' ? String(b.pass).trim().replace(/\s+/g, '') : c.pass;
+  const from = b.from ? str(b.from, 160) : c.from;
+  const to = b.to ? str(b.to, 160) : (userOf(req)?.email || user);
+
+  if (!host) return bad(res, 'SMTP Host is required');
+  if (!user && pass) return bad(res, 'SMTP Username is required');
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465,
+      auth: user ? { user, pass } : undefined,
+      tls: { rejectUnauthorized: false },
+    });
+
+    await transporter.verify();
+
+    if (to && to.includes('@')) {
+      const formattedFrom = formatFromAddress(from, user);
+      await transporter.sendMail({
+        from: formattedFrom,
+        to,
+        subject: 'Test email from Abu Dhabi T10 Fan Hub',
+        text: 'Congratulations! Your SMTP settings are working properly and ready to deliver sign-in codes.',
+        html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px;border:1px solid #e2e8f0;border-radius:12px;background:#ffffff">
+          <h3 style="color:#0f172a;margin-top:0">Abu Dhabi T10 Fan Hub</h3>
+          <p style="color:#334155;font-size:15px">Congratulations! Your email server (SMTP) is verified and working properly.</p>
+          <div style="font-size:13px;color:#64748b;background:#f8fafc;padding:12px;border-radius:6px;margin:16px 0">
+            <div><strong>Host:</strong> ${host}:${port}</div>
+            <div><strong>Account:</strong> ${user || '(none)'}</div>
+            <div><strong>From:</strong> ${formattedFrom}</div>
+          </div>
+          <p style="color:#10b981;font-weight:600;font-size:14px;margin-bottom:0">✓ Ready to send fan sign-in OTP codes</p>
+        </div>`,
+      });
+      return res.json({ success: true, message: `SMTP connection verified! A test email was sent to ${to}.` });
+    }
+
+    return res.json({ success: true, message: `SMTP connection to ${host}:${port} verified successfully!` });
+  } catch (err: any) {
+    let msg = err.message || 'SMTP connection failed';
+    if (msg.includes('534-5.7.9') || msg.includes('Application-specific password')) {
+      msg = 'Gmail requires a 16-character App Password (not your regular Google account password). Go to Google Account > Security > 2-Step Verification > App Passwords, generate an App Password, and paste it here.';
+    }
+    return res.status(400).json({ success: false, error: msg });
+  }
+}));
 
 // ---------- admins (super admin only) ----------
 const ROLES: AdminRole[] = ['superadmin', 'league_admin', 'contest_admin', 'winner_admin', 'social_admin', 'team_official', 'custom'];

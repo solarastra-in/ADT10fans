@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Save, Info, Sparkles, CheckCircle2, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Save, Info, Sparkles, CheckCircle2, AlertTriangle, ShieldCheck, Mail, Send } from 'lucide-react';
 import { SystemSettings } from '../../types';
 import { api } from '../../api';
 import { Button, Card, Checkbox, Errors, Field, Notice, SectionHeader, TextArea, TextInput, splitList, toDateInput, toNumber, useRunner } from './ui';
@@ -67,6 +67,27 @@ export const SettingsSection: React.FC<{ settings: SystemSettings; onRefreshAll:
   const [newPass, setNewPass] = useState('');
   const [errors, setErrors] = useState<Errors>({});
   const [dirty, setDirty] = useState(false);
+  const [testingSmtp, setTestingSmtp] = useState(false);
+  const [smtpTestResult, setSmtpTestResult] = useState<import('./ui').NoticeState | null>(null);
+
+  const handleTestSmtp = async () => {
+    setTestingSmtp(true);
+    setSmtpTestResult(null);
+    try {
+      const res = await api.testSmtp({
+        host: draft.smtpHost.trim(),
+        port: toNumber(draft.smtpPort, 587),
+        user: draft.smtpUser.trim(),
+        pass: newPass || undefined,
+        from: draft.smtpFrom.trim(),
+      });
+      setSmtpTestResult({ kind: 'ok', text: res.message });
+    } catch (err: any) {
+      setSmtpTestResult({ kind: 'err', text: err.message || 'SMTP connection failed' });
+    } finally {
+      setTestingSmtp(false);
+    }
+  };
 
   useEffect(() => {
     let alive = true;
@@ -496,6 +517,42 @@ export const SettingsSection: React.FC<{ settings: SystemSettings; onRefreshAll:
           >
             <TextInput value={draft.smtpFrom} onChange={e => set({ smtpFrom: e.target.value })} error={!!errors.smtpFrom} autoCapitalize="none" />
           </Field>
+        </div>
+
+        {/* Gmail App Password Tip */}
+        {(draft.smtpHost.includes('gmail.com') || draft.smtpUser.includes('@gmail.com')) && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200 space-y-1">
+            <div className="flex items-center gap-1.5 font-bold text-amber-300">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>Gmail App Password Required</span>
+            </div>
+            <p className="text-amber-200/90 leading-relaxed">
+              Google blocks standard passwords on SMTP. Generate a dedicated 16-character <strong>App Password</strong> at:
+              <br />
+              <strong className="text-white">Google Account → Security → 2-Step Verification → App Passwords</strong>.
+              Then paste it into the Password field above.
+            </p>
+          </div>
+        )}
+
+        {/* Test Result */}
+        {smtpTestResult && (
+          <Notice notice={smtpTestResult} onClose={() => setSmtpTestResult(null)} />
+        )}
+
+        {/* Action button to test SMTP */}
+        <div className="pt-2 flex items-center justify-between gap-3 border-t border-slate-800 flex-wrap">
+          <p className="text-xs text-slate-400">Verify connection and send a test sign-in code to your admin email.</p>
+          <Button
+            type="button"
+            variant="secondary"
+            loading={testingSmtp}
+            onClick={handleTestSmtp}
+            icon={<Send className="w-3.5 h-3.5" />}
+            className="text-xs shrink-0"
+          >
+            {testingSmtp ? 'Testing connection...' : 'Test SMTP connection'}
+          </Button>
         </div>
       </Card>
 
