@@ -184,6 +184,15 @@ export function PlayerCardBody({ data, onClose, onPage }: { data: PlayerDetail; 
           <TeamBadge team={team} size="sm" /> {team.name}
         </Link>
         {(p.battingStyle || p.bowlingStyle) && <p className="mt-2 text-xs text-white/75">{[p.battingStyle, p.bowlingStyle].filter(Boolean).join(' · ')}</p>}
+        {p.skills && p.skills.length > 0 && (
+          <div className="mt-2.5 flex flex-wrap gap-1.5">
+            {p.skills.map(s => (
+              <span key={s} className="px-2 py-0.5 rounded-md bg-black/30 backdrop-blur-xs text-[11px] font-semibold text-white/95 border border-white/20">
+                ⚡ {s}
+              </span>
+            ))}
+          </div>
+        )}
       </header>
 
       <div className="p-5 space-y-5">

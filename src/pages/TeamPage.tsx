@@ -169,7 +169,34 @@ export default function TeamPage({ id }: { id: string }) {
         ))}
 
       {tab === 'squad' && (
-        <div className="space-y-5">
+        <div className="space-y-6">
+          {/* Team Skills & Tactical Profile */}
+          <div className="p-5 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900/90 to-slate-950 border border-slate-800 shadow-md space-y-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-400" />
+              <h3 className="text-xs font-black uppercase tracking-wider text-amber-400">{t('Team Tactical Profile & Core Skills')}</h3>
+            </div>
+            {team.tacticalIdentity && (
+              <p className="text-sm text-slate-200 font-medium">{team.tacticalIdentity}</p>
+            )}
+            {team.skills && team.skills.length > 0 && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                {team.skills.map(s => (
+                  <span key={s} className="px-3 py-1 rounded-xl bg-amber-400/10 border border-amber-400/25 text-amber-300 text-xs font-bold">
+                    ⚡ {s}
+                  </span>
+                ))}
+              </div>
+            )}
+            {team.strengths && team.strengths.length > 0 && (
+              <ul className="text-xs text-slate-400 space-y-1 list-disc list-inside pt-1">
+                {team.strengths.map((st, idx) => (
+                  <li key={idx}><span className="text-slate-300">{st}</span></li>
+                ))}
+              </ul>
+            )}
+          </div>
+
           {ROLE_ORDER.map(role => {
             const players = team.squad.filter(p => p.role === role);
             if (!players.length) return null;
@@ -178,11 +205,20 @@ export default function TeamPage({ id }: { id: string }) {
                 <SectionTitle title={`${t(ROLE_LABEL[role] + 's')} (${players.length})`} />
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                   {players.map(p => (
-                    <a key={p.id} {...playerLinkProps(p.id)} className="flex items-center gap-3 p-3 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-slate-600" data-testid="player-row">
+                    <a key={p.id} {...playerLinkProps(p.id)} className="flex items-center gap-3 p-3 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-slate-600 transition-colors" data-testid="player-row">
                       <Avatar name={p.name} src={p.photoUrl} size={44} />
                       <span className="flex-1 min-w-0">
                         <span className="block text-sm font-bold text-white truncate">{p.name}</span>
-                        <span className="block text-[11px] text-slate-400 truncate">{[p.battingStyle, p.bowlingStyle].filter(Boolean).join(' · ') || t(ROLE_LABEL[p.role])}</span>
+                        <span className="block text-[11px] text-slate-400 truncate">{[p.nationality, p.battingStyle, p.bowlingStyle].filter(Boolean).join(' · ') || t(ROLE_LABEL[p.role])}</span>
+                        {p.skills && p.skills.length > 0 && (
+                          <span className="flex flex-wrap gap-1 mt-1">
+                            {p.skills.slice(0, 2).map(s => (
+                              <span key={s} className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800/90 text-amber-300 font-medium border border-slate-700/50 truncate max-w-[140px]">
+                                {s}
+                              </span>
+                            ))}
+                          </span>
+                        )}
                       </span>
                       {p.category && <Pill tone={p.category === 'Icon' ? 'amber' : 'blue'}>{t(p.category)}</Pill>}
                     </a>

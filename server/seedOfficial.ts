@@ -113,12 +113,35 @@ export function initializeStore(store: AppStore): boolean {
     changed = true;
   }
 
-  // Ensure all teams have their official franchise logo populated
+  // Ensure all teams have their official franchise logo, skills, and updated squads
   for (const team of store.teams) {
     const official = OFFICIAL_2026_TEAMS.find(t => t.id === team.id);
-    const targetLogo = official?.logo || (team.id ? `/logos/${team.id}.svg` : '');
+    if (!official) continue;
+
+    const targetLogo = official.logo || (team.id ? `/logos/${team.id}.svg` : '');
     if (targetLogo && (!team.logo || team.logo !== targetLogo)) {
       team.logo = targetLogo;
+      changed = true;
+    }
+
+    if (official.skills && (!team.skills || team.skills.length !== official.skills.length)) {
+      team.skills = official.skills;
+      changed = true;
+    }
+    if (official.strengths && (!team.strengths || team.strengths.length !== official.strengths.length)) {
+      team.strengths = official.strengths;
+      changed = true;
+    }
+    if (official.tacticalIdentity && team.tacticalIdentity !== official.tacticalIdentity) {
+      team.tacticalIdentity = official.tacticalIdentity;
+      changed = true;
+    }
+
+    // Ensure squad matches updated official list with player skills and photos
+    const officialSquadIds = official.squad.map(p => p.id).join(',');
+    const currentSquadIds = (team.squad || []).map(p => p.id).join(',');
+    if (officialSquadIds !== currentSquadIds || !team.squad.some(p => p.skills && p.skills.length > 0)) {
+      team.squad = official.squad.map(p => ({ ...p }));
       changed = true;
     }
   }

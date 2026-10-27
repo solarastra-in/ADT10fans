@@ -105,6 +105,7 @@ export interface Player {
   cricbuzzProfileUrl?: string;
   nationality?: string;
   note?: string;
+  skills?: string[];
   selectedBy?: number;
   cricinfoId?: string;
   wikidataId?: string;
@@ -172,6 +173,9 @@ export interface Team {
   logo?: string;
   sort: number;
   squad: Player[];
+  skills?: string[];
+  strengths?: string[];
+  tacticalIdentity?: string;
   fans?: number;
   createdAt?: string;
   updatedAt?: string;

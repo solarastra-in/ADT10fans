@@ -123,6 +123,7 @@ export interface Player {
   nationality?: string;
   /** Free-form note an admin can add (e.g. "replacement for X"). */
   note?: string;
+  skills?: string[];
   selectedBy?: number;
   /** ESPNcricinfo player id (from the Cricsheet register, matched by Cricbuzz id). */
   cricinfoId?: string;
@@ -149,6 +150,10 @@ export interface Team {
   logo?: string;
   sort: number;
   squad: Player[];
+  skills?: string[];
+  strengths?: string[];
+  tacticalIdentity?: string;
+  fans?: number;
   createdAt?: string;
   updatedAt?: string;
 }
