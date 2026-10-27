@@ -110,11 +110,12 @@ export interface Player {
   cricinfoId?: string;
   wikidataId?: string;
   links?: Partial<Record<PlayerLinkKey, string>>;
+  cricketdataId?: string;
   linkSources?: Partial<Record<PlayerLinkKey, 'admin' | 'cricsheet' | 'wikidata' | 'squad'>>;
   linksCheckedAt?: string;
 }
 
-export type PlayerLinkKey = 'espncricinfo' | 'cricbuzz' | 'wikipedia' | 'instagram' | 'x' | 'facebook' | 'youtube';
+export type PlayerLinkKey = 'espncricinfo' | 'cricbuzz' | 'wikipedia' | 'instagram' | 'x' | 'facebook' | 'youtube' | 'tiktok' | 'threads';
 
 /** This season's figures from real scorecards (null fields: not batted / not bowled yet). */
 export interface SeasonStats {
@@ -157,6 +158,23 @@ export interface PlayerDetail {
   fixtures: PlayerFixture[];
   season: SeasonStats | null;
   links: { key: PlayerLinkKey; label: string; url: string; handle: string | null }[];
+  /** Career records from CricketData.org (T20I, IPL…), when the player was matched. */
+  career: PlayerCareer | null;
+}
+
+export interface CareerFormat {
+  key: string;
+  label: string;
+  batting?: Record<string, string>;
+  bowling?: Record<string, string>;
+}
+
+export interface PlayerCareer {
+  playerId: string;
+  cricketdataId?: string;
+  status: 'found' | 'no-match' | 'ambiguous' | 'error';
+  checkedAt: string;
+  formats: CareerFormat[];
 }
 
 export interface Team {
@@ -380,6 +398,7 @@ export interface Contest {
   prize: string;
   questions: ContestQuestion[];
   instant?: boolean;
+  auto?: boolean;
   createdAt: string;
 }
 export interface ContestEntry {
@@ -530,6 +549,9 @@ export interface FantasyMatchSummary {
   startsAt: string;
   status: Match['status'];
   locked: boolean;
+  /** When picks open: midnight in Abu Dhabi on the day before match day. */
+  opensAt?: string;
+  open?: boolean;
   lineups: number;
   mine: { points: number | null; rank: number | null; saved: boolean; variationsCount?: number } | null;
 }
@@ -816,6 +838,7 @@ export interface SystemSettings {
   referralMaxRewarded: number;
   lockReminderMinutes: number;
   fanOfTheDayPoints?: number;
+  careerStatsDailyCalls?: number;
   fanWallReview?: 'photos' | 'all' | 'none';
   smtp: { host: string; port: number; user: string; pass: string; from: string; enabled: boolean };
   cricbuzzSeriesId?: string;
@@ -1198,4 +1221,5 @@ export interface FanWallResponse {
   photosEnabled: boolean;
   review: 'photos' | 'all' | 'none';
   fanOfTheDayPoints: number;
+  careerStatsDailyCalls?: number;
 }

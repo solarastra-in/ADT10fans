@@ -150,6 +150,7 @@ adminRouter.post('/admin/settings', requireAdmin('settings'), (req, res) => {
   if (b.referralMaxRewarded !== undefined) s.referralMaxRewarded = Math.min(1000, Math.max(0, Math.round(num(b.referralMaxRewarded, 10))));
   if (b.lockReminderMinutes !== undefined) s.lockReminderMinutes = Math.min(240, Math.max(5, Math.round(num(b.lockReminderMinutes, 30))));
   if (b.fanOfTheDayPoints !== undefined) s.fanOfTheDayPoints = Math.min(1000, Math.max(0, Math.round(num(b.fanOfTheDayPoints, 100))));
+  if (b.careerStatsDailyCalls !== undefined) s.careerStatsDailyCalls = Math.min(100, Math.max(0, Math.round(num(b.careerStatsDailyCalls, 30))));
   if (b.fanWallReview !== undefined && ['photos', 'all', 'none'].includes(b.fanWallReview)) s.fanWallReview = b.fanWallReview;
   if (b.curatorApiKey !== undefined && b.curatorApiKey !== '********') s.curatorApiKey = str(b.curatorApiKey, 200);
   if (b.adminEmails !== undefined) {

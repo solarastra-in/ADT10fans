@@ -25,6 +25,7 @@ type Draft = {
   referralMaxRewarded: string;
   lockReminderMinutes: string;
   fanOfTheDayPoints: string;
+  careerStatsDailyCalls: string;
   fanWallReview: 'photos' | 'all' | 'none';
   smtpHost: string;
   smtpPort: string;
@@ -56,6 +57,7 @@ const toDraft = (s: Partial<SystemSettings> | null | undefined): Draft => ({
   referralMaxRewarded: String(s?.referralMaxRewarded ?? 10),
   lockReminderMinutes: String(s?.lockReminderMinutes ?? 30),
   fanOfTheDayPoints: String(s?.fanOfTheDayPoints ?? 100),
+  careerStatsDailyCalls: String(s?.careerStatsDailyCalls ?? 30),
   fanWallReview: s?.fanWallReview || 'photos',
   smtpHost: s?.smtp?.host || '',
   smtpPort: s?.smtp?.port ? String(s.smtp.port) : '',
@@ -133,6 +135,8 @@ export const SettingsSection: React.FC<{ settings: SystemSettings; onRefreshAll:
     if (!(Number.isInteger(lockMin) && lockMin >= 5 && lockMin <= 240)) er.lockReminderMinutes = 'Use a whole number from 5 to 240.';
     const fotdPts = toNumber(draft.fanOfTheDayPoints, -1);
     if (!(Number.isInteger(fotdPts) && fotdPts >= 0 && fotdPts <= 1000)) er.fanOfTheDayPoints = 'Use a whole number from 0 to 1000.';
+    const careerCalls = toNumber(draft.careerStatsDailyCalls, -1);
+    if (!(Number.isInteger(careerCalls) && careerCalls >= 0 && careerCalls <= 100)) er.careerStatsDailyCalls = 'Use a whole number from 0 to 100.';
     if (!(Number.isInteger(max) && max >= 1 && max <= 50)) er.maxSocialPerPlatform = 'Use a whole number from 1 to 50.';
     const port = toNumber(draft.smtpPort, -1);
     if (draft.smtpPort && !(Number.isInteger(port) && port > 0 && port < 65536)) er.smtpPort = 'Port must be 1–65535.';
@@ -176,6 +180,7 @@ export const SettingsSection: React.FC<{ settings: SystemSettings; onRefreshAll:
       referralMaxRewarded: refMax,
       lockReminderMinutes: lockMin,
       fanOfTheDayPoints: fotdPts,
+      careerStatsDailyCalls: toNumber(draft.careerStatsDailyCalls, 30),
       fanWallReview: draft.fanWallReview,
       newsQueries: draft.newsQueries
         .split('\n')
@@ -435,6 +440,9 @@ export const SettingsSection: React.FC<{ settings: SystemSettings; onRefreshAll:
           </Field>
           <Field label="Fan of the Day points" error={errors.fanOfTheDayPoints} hint="Given to the fan whose fan wall post you pick each day (Admin → Fan wall).">
             <TextInput type="number" inputMode="numeric" min={0} max={1000} value={draft.fanOfTheDayPoints} onChange={e => set({ fanOfTheDayPoints: e.target.value })} error={!!errors.fanOfTheDayPoints} />
+          </Field>
+          <Field label="CricketData requests a day for career stats" error={errors.careerStatsDailyCalls} hint="Players' T20I, IPL and other career records come from CricketData.org, a few players an hour. Its free plan allows 100 requests a day for everything, live scores included. 0 turns career stats off.">
+            <TextInput type="number" inputMode="numeric" min={0} max={100} value={draft.careerStatsDailyCalls} onChange={e => set({ careerStatsDailyCalls: e.target.value })} error={!!errors.careerStatsDailyCalls} />
           </Field>
           <Field label="Fan wall review" hint="Which posts wait for a moderator before fans see them. Reported posts always wait.">
             <Select value={draft.fanWallReview} onChange={e => set({ fanWallReview: e.target.value as Draft['fanWallReview'] })}>

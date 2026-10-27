@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { CheckCircle2, Lock, Target, XCircle } from 'lucide-react';
 import { api } from '../api';
 import { useApp, useLoad } from '../state';
@@ -35,7 +35,7 @@ function ContestCard({ c, entry, entries, onEntered }: { c: Contest; entry?: Con
   };
 
   return (
-    <Card className="p-5 space-y-4" data-testid="contest-card">
+    <Card className="p-5 space-y-4 scroll-mt-24" data-testid="contest-card" id={c.id}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap gap-1.5 mb-1">
@@ -111,10 +111,18 @@ export default function ContestsPage() {
   usePageMeta(t('Match predictions and quizzes'), t('Predict results and take instant T10 quizzes for points.'), config?.brandName);
   const { data, error, loading, reload } = useLoad(() => api.getContests(), [user?.id]);
   const [tab, setTab] = useState<'open' | 'mine' | 'results'>('open');
+  // A link from the Play hub (/contests#auto-<match>) scrolls to that match's predictions.
+  useEffect(() => {
+    if (!data || typeof window === 'undefined' || !window.location.hash) return;
+    document.getElementById(decodeURIComponent(window.location.hash.slice(1)))?.scrollIntoView({ block: 'start' });
+  }, [data]);
   if (loading && !data) return <Spinner />;
   if (error || !data) return <ErrorBox message={error || ''} onRetry={reload} />;
   const entries = new Map(data.myEntries.map(e => [e.contestId, e]));
-  const list = data.contests.filter(c => (tab === 'open' ? c.status === 'open' : tab === 'mine' ? entries.has(c.id) : c.status !== 'open'));
+  const list = data.contests
+    .filter(c => (tab === 'open' ? c.status === 'open' : tab === 'mine' ? entries.has(c.id) : c.status !== 'open'))
+    // Open predictions in the order they lock (the next match first).
+    .sort((x, y) => (tab === 'open' ? +new Date(x.locksAt || '2100-01-01') - +new Date(y.locksAt || '2100-01-01') : 0));
   return (
     <div className="space-y-5">
       <PageHeader eyebrow={t('Play')} title={t('Predictions')} subtitle={t('Make your calls before the first ball. Points are added when the answers are confirmed; instant quizzes score straight away.')} />

@@ -11,12 +11,14 @@ import { normName } from './fantasy';
  *      Cricsheet register, a public table that maps each cricketer's ids across cricket sites.
  *   2. The ESPNcricinfo id → their Wikidata entry (property P2697), which lists the English
  *      Wikipedia article and the player's verified Instagram (P2003), X (P2002), Facebook (P2013)
- *      and YouTube (P2397) accounts.
+ *      YouTube (P2397), TikTok (P7085) and Threads (P11892) accounts.
  * A player with no match gets no link. Admins can add or correct any link in Admin → Squad editor;
  * an admin's link is never overwritten by the lookup.
  */
 
-export const LINK_KEYS = ['espncricinfo', 'cricbuzz', 'wikipedia', 'instagram', 'x', 'facebook', 'youtube'] as const;
+export const LINK_KEYS = ['espncricinfo', 'cricbuzz', 'wikipedia', 'instagram', 'x', 'facebook', 'youtube', 'tiktok', 'threads'] as const;
+/** The player's own social accounts (the rest are statistics and reference sites). */
+export const SOCIAL_KEYS: LinkKey[] = ['instagram', 'x', 'facebook', 'youtube', 'tiktok', 'threads'];
 export type LinkKey = (typeof LINK_KEYS)[number];
 export type PlayerLinks = Partial<Record<LinkKey, string>>;
 export type LinkSource = 'admin' | 'cricsheet' | 'wikidata' | 'squad';
@@ -29,6 +31,8 @@ export const LINK_LABELS: Record<LinkKey, string> = {
   x: 'X',
   facebook: 'Facebook',
   youtube: 'YouTube',
+  tiktok: 'TikTok',
+  threads: 'Threads',
 };
 
 /** Each link must point at its own site (an admin cannot put an arbitrary site under "Instagram"). */
@@ -40,6 +44,8 @@ export const LINK_PATTERNS: Record<LinkKey, RegExp> = {
   x: /^https:\/\/(www\.)?(x|twitter)\.com\/[A-Za-z0-9_]{1,15}\/?$/i,
   facebook: /^https:\/\/(www\.)?facebook\.com\/[\w.\-/]+\/?$/i,
   youtube: /^https:\/\/(www\.)?youtube\.com\/(channel\/UC[\w-]{22}|@[\w.\-]{3,30})\/?$/i,
+  tiktok: /^https:\/\/(www\.)?tiktok\.com\/@[\w.]{2,24}\/?$/i,
+  threads: /^https:\/\/(www\.)?threads\.(net|com)\/@[\w.]{1,30}\/?$/i,
 };
 
 /** Validates links from the admin console. Returns the clean links, or an error message. */
@@ -80,10 +86,11 @@ export function linksFor(p: Player): PlayerLinks {
 
 /** Handle shown next to a social link (e.g. "@kieron.pollard55"). */
 export function handleOf(key: LinkKey, url: string): string | null {
-  if (key === 'instagram' || key === 'x') {
-    const m = url.match(/\.com\/([^/?#]+)/);
-    return m ? `@${m[1]}` : null;
-  }
+  const path = url.match(/^https:\/\/[^/]+\/([^?#]+?)\/?$/)?.[1] || '';
+  if (key === 'instagram' || key === 'x') return path ? `@${path}` : null;
+  if (key === 'tiktok' || key === 'threads') return path.startsWith('@') ? path : null;
+  if (key === 'youtube') return path.startsWith('@') ? path : null;
+  if (key === 'facebook') return path && !path.includes('/') && !/^profile\.php/.test(path) ? path : null;
   return null;
 }
 
@@ -156,13 +163,15 @@ export function sameSurname(a: string, b: string): boolean {
 
 export function wikidataQuery(cricinfoIds: string[]): string {
   const values = cricinfoIds.map(id => `"${id.replace(/\D/g, '')}"`).join(' ');
-  return `SELECT ?id ?item ?itemLabel ?article ?ig ?x ?fb ?yt WHERE {
+  return `SELECT ?id ?item ?itemLabel ?article ?ig ?x ?fb ?yt ?tt ?th WHERE {
   VALUES ?id { ${values} }
   ?item wdt:P2697 ?id .
   OPTIONAL { ?item wdt:P2003 ?ig . }
   OPTIONAL { ?item wdt:P2002 ?x . }
   OPTIONAL { ?item wdt:P2013 ?fb . }
   OPTIONAL { ?item wdt:P2397 ?yt . }
+  OPTIONAL { ?item wdt:P7085 ?tt . }
+  OPTIONAL { ?item wdt:P11892 ?th . }
   OPTIONAL { ?article schema:about ?item ; schema:isPartOf <https://en.wikipedia.org/> . }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
 }`;
@@ -191,6 +200,8 @@ export function parseWikidata(json: any): Map<string, WikidataRow> {
     set('x', b.x?.value ? `https://x.com/${b.x.value}` : null);
     set('facebook', b.fb?.value ? `https://www.facebook.com/${b.fb.value}` : null);
     set('youtube', b.yt?.value ? `https://www.youtube.com/channel/${b.yt.value}` : null);
+    set('tiktok', b.tt?.value ? `https://www.tiktok.com/@${String(b.tt.value).replace(/^@/, '')}` : null);
+    set('threads', b.th?.value ? `https://www.threads.com/@${String(b.th.value).replace(/^@/, '')}` : null);
     out.set(id, row);
   }
   return out;
@@ -257,7 +268,7 @@ export async function lookUpPlayerLinks(players: Pick<Player, 'id' | 'name' | 'c
     const links: PlayerLinks = { espncricinfo: cricinfoUrl(p.name, cricinfoId), ...(trusted ? row!.links : {}) };
     const sources: ResolvedLinks['sources'] = { espncricinfo: 'cricsheet' };
     if (trusted) for (const k of Object.keys(row!.links) as LinkKey[]) sources[k] = 'wikidata';
-    if (trusted && (row!.links.instagram || row!.links.x || row!.links.facebook || row!.links.youtube)) social++;
+    if (trusted && SOCIAL_KEYS.some(k => row!.links[k])) social++;
     found.set(p.id, { cricinfoId, wikidataId: trusted ? row!.wikidataId : undefined, links, sources });
   }
   report.push(`Wikidata: entries for ${[...found.values()].filter(f => f.wikidataId).length} players; official social accounts for ${social}.`);

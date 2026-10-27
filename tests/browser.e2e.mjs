@@ -33,7 +33,9 @@ const dubaiDay = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/
 // ---------- data the journeys need (made through the admin API) ----------
 const A = await apiLogin('admin@test.dev');
 await api('POST', '/api/admin/feeds/sync', {}, A);
-const match = (await api('POST', '/api/matches', { teamA: 'bulls', teamB: 'aces', startsAt: new Date(Date.now() + 2 * 86400_000).toISOString() }, A)).targetMatch;
+// Games open at midnight in Abu Dhabi the day before match day: a match 20 hours away is open, one four days away is not yet.
+const match = (await api('POST', '/api/matches', { teamA: 'bulls', teamB: 'aces', startsAt: new Date(Date.now() + 20 * 3600_000).toISOString() }, A)).targetMatch;
+const laterMatch = (await api('POST', '/api/matches', { teamA: 'lions', teamB: 'tigers', startsAt: new Date(Date.now() + 4 * 86400_000).toISOString() }, A)).targetMatch;
 await api('POST', '/api/admin/contests', { title: 'Who wins match 1?', matchId: match.id, questions: [{ prompt: 'Winner?', options: ['UAE Bulls', 'Arabian Aces'], points: 50 }] }, A);
 await api('POST', '/api/admin/polls', { question: 'Best T10 finisher?', options: ['Pollard', 'Russell'] }, A);
 await api('POST', '/api/admin/prizes', { title: 'Signed cap', pointsCost: 10, stock: 5, fulfilment: 'Collect at the Fan Zone' }, A);
@@ -151,9 +153,19 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
   const token = await fan.page.evaluate(() => localStorage.getItem('t10_auth_token'));
   ok(`${w}px signed in with a Bulls team`, (await api('GET', '/api/me', null, token)).user.teamId === 'bulls');
 
+  // Play hub lists every open match with Pick XI and predictions; a later match says when it opens.
+  await go(fan.page, '/play');
+  await fan.page.waitForSelector('[data-testid="open-match"]');
+  ok(`${w}px Play hub lists open matches with Pick XI and predictions`, (await fan.page.locator('[data-testid="open-match"]').count()) === 1 && (await fan.page.locator('[data-testid="open-match"] a', { hasText: 'Predict' }).count()) === 1);
+  await go(fan.page, `/fantasy/${laterMatch.id}`);
+  ok(`${w}px a match that has not opened says when it opens`, (await fan.page.locator('[data-testid="fantasy-not-open"]').count()) === 1);
+  await go(fan.page, '/players/bulls-kieron-pollard');
+  await fan.page.waitForSelector('h2');
+  ok(`${w}px player profile has no fixtures list`, !(await fan.page.locator('main').innerText()).includes('Fixtures'));
+
   // 5. Build and save a Dream XI.
   await go(fan.page, `/fantasy/${match.id}`);
-  const names = ['Max Bryant', 'Matiullah Khan', 'Aneurin Donald', 'Khushdil Shah', 'Mohammad Amir', 'Moeen Ali', 'Amshi de Silva', 'Ibrahim Masood', 'Muhammad Arfan', 'Sam Billings', 'Paul Walter'];
+  const names = ['Max Bryant', 'Muhammad Rohid', 'Aneurin Donald', 'Khushdil Shah', 'Muhammad Amir', 'Moeen Ali', 'Amshi de Silva', 'Ibrahim Masood', 'Muhammad Arfan', 'Sam Billings', 'Paul Walter'];
   for (const n of names) await fan.page.locator('[data-testid="player-pool"] > div', { hasText: n }).first().locator('button[data-player]').click();
   ok(`${w}px Dream XI counters show 11 picked`, /11\s*\/\s*11/.test(await fan.page.locator('[data-testid="xi-counters"]').innerText()));
   await fan.page.locator('[data-testid="xi-next"]').click();
@@ -165,13 +177,14 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
   ok(`${w}px Dream XI saved with a captain and vice-captain`, ft?.playerIds.length === 11 && ft.captainId && ft.viceCaptainId && ft.captainId !== ft.viceCaptainId);
   ok(`${w}px Dream XI builder fits the screen`, await noOverflow(fan.page));
 
-  // 6. Prediction contest.
-  await go(fan.page, '/contests');
-  const card = fan.page.locator('[data-testid="contest-card"]').first();
-  await card.locator('label', { hasText: 'UAE Bulls' }).first().click();
-  await card.locator('button:not([disabled])').last().click();
+  // 6. Match predictions (created for every open match): answer each question, then lock them in.
+  await go(fan.page, `/contests#auto-${match.id}`);
+  const card = fan.page.locator(`[id="auto-${match.id}"]`);
+  await card.waitFor();
+  for (const fs of await card.locator('fieldset').all()) await fs.locator('label').first().click();
+  await card.locator('button', { hasText: 'Lock in predictions' }).click();
   await fan.page.waitForTimeout(500);
-  ok(`${w}px contest entry saved`, (await api('GET', '/api/contests', null, token)).myEntries.length === 1);
+  ok(`${w}px match predictions saved`, (await api('GET', '/api/contests', null, token)).myEntries.some(e => e.contestId === `auto-${match.id}`));
 
   // 7. Daily games.
   await go(fan.page, '/games');

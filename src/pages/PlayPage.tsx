@@ -4,7 +4,7 @@ import { api } from '../api';
 import { useApp, useLoad } from '../state';
 import { useT } from '../i18n';
 import { Link, usePageMeta } from '../router';
-import { Card, Countdown, PageHeader, StatTile, TeamBadge } from '../components/ui';
+import { Card, Countdown, PageHeader, Pill, StatTile, TeamBadge, useFormat } from '../components/ui';
 
 export default function PlayPage() {
   const { user, config, teamById } = useApp();
@@ -13,7 +13,11 @@ export default function PlayPage() {
   const hub = useLoad(() => api.getFantasyHub(), [user?.id]);
   const games = useLoad(() => api.getGamesToday(), [user?.id]);
   const contests = useLoad(() => api.getContests(), [user?.id]);
-  const nextMatch = hub.data?.matches.find(m => !m.locked);
+  const f = useFormat();
+  // Every match that is open now (today's and tomorrow's: each opens at midnight UAE time the day before).
+  const openMatches = (hub.data?.matches || []).filter(m => !m.locked && m.open !== false);
+  const nextMatch = openMatches[0];
+  const nextToOpen = (hub.data?.matches || []).find(m => !m.locked && m.open === false);
   const openContests = (contests.data?.contests || []).filter(c => c.status === 'open');
   const myEntries = new Set((contests.data?.myEntries || []).map(e => e.contestId));
   const gamesLeft = games.data ? Number(!games.data.guess.finished) + Number(!games.data.superOver.finished) : 2;
@@ -39,6 +43,50 @@ export default function PlayPage() {
           <StatTile label={t('Pick XI points')} value={hub.data?.season?.points ?? 0} />
           <StatTile label={t('Check-in streak')} value={t('{n} days', { n: user.streak || 0 })} />
         </div>
+      )}
+      {(openMatches.length > 0 || nextToOpen) && (
+        <section data-testid="open-matches">
+          <h2 className="text-sm font-black uppercase tracking-wider text-slate-400 mb-2">{t('Open matches')}</h2>
+          {openMatches.length ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {openMatches.map(m => {
+                const a = teamById(m.teamA);
+                const b = teamById(m.teamB);
+                const contestId = `auto-${m.matchId}`;
+                const hasPredictions = (contests.data?.contests || []).some(c => c.id === contestId && c.status === 'open');
+                return (
+                  <Card key={m.matchId} className="p-4 space-y-3" data-testid="open-match">
+                    <div className="flex items-center gap-2">
+                      <TeamBadge team={a} size="sm" />
+                      <span className="font-black text-white text-sm truncate">{a?.short} vs {b?.short}</span>
+                      <TeamBadge team={b} size="sm" />
+                      <span className="ms-auto text-[11px] text-slate-400">{t('Match {n}', { n: m.matchNo })}</span>
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      {f.dateTime(m.startsAt)} · <Countdown to={m.startsAt} prefix="locks in {time}" />
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Link to={`/fantasy/${m.matchId}`} className="inline-flex items-center gap-1.5 rounded-xl bg-amber-400 text-slate-950 px-3 py-2 text-xs font-black hover:bg-amber-300">
+                        <Trophy className="w-3.5 h-3.5" /> {m.mine?.saved ? t('Edit Pick XI') : t('Pick your XI')}
+                      </Link>
+                      {hasPredictions && (
+                        <Link to={`/contests#${contestId}`} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-white hover:bg-slate-800">
+                          <Target className="w-3.5 h-3.5" /> {myEntries.has(contestId) ? t('Edit predictions') : t('Predict')}
+                        </Link>
+                      )}
+                      {m.mine?.saved && <Pill tone="green">{t('Team saved')}</Pill>}
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          ) : null}
+          {nextToOpen && (
+            <p className="mt-2 text-xs text-slate-400">
+              {t('Next to open: {a} vs {b} on {date}. Each match opens at midnight UAE time on the day before match day.', { a: teamById(nextToOpen.teamA)?.short || '', b: teamById(nextToOpen.teamB)?.short || '', date: f.dateTime(nextToOpen.opensAt) })}
+            </p>
+          )}
+        </section>
       )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {card(

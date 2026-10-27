@@ -1,3 +1,4 @@
+import { ensureMatchPredictions, settleMatchPredictions } from '../predictions';
 import { Router } from 'express';
 import { db, Match, NotificationItem } from '../db';
 import { requireAdmin } from '../auth';
@@ -102,7 +103,8 @@ export async function onMatchCompleted(matchId: string, notify = true) {
   let notification: NotificationItem | undefined;
   if (claim.input) notification = await dispatchNotification(claim.input);
   const fantasy = await afterMatchCompleted(matchId);
-  return { notification, fantasy };
+  const predictions = await settleMatchPredictions(matchId).catch(e => ({ settled: false, error: String(e?.message || e) }));
+  return { notification, fantasy, predictions };
 }
 
 matchesRouter.post('/matches', requireAdmin('matches'), wrap(async (req, res) => {
@@ -154,15 +156,18 @@ matchesRouter.post('/matches', requireAdmin('matches'), wrap(async (req, res) =>
   };
   if (idx >= 0) store.matches[idx] = match;
   else store.matches.push(match);
+  ensureMatchPredictions(store);
   db.save();
   let notification: NotificationItem | undefined;
   let fantasy: any = null;
+  let predictions: any = null;
   if (match.status === 'completed') {
     const r = await onMatchCompleted(match.id, prev?.status !== 'completed' && b.notify !== false);
     notification = r.notification;
     fantasy = r.fantasy;
+    predictions = r.predictions;
   }
-  res.json({ success: true, matches: store.matches.sort(sortByStart), targetMatch: match, notification, fantasy });
+  res.json({ success: true, matches: store.matches.sort(sortByStart), targetMatch: match, notification, fantasy, predictions });
 }));
 
 function sanitizeScorecard(raw: any, teamA: string, teamB: string) {

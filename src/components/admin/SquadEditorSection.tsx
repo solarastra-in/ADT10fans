@@ -58,11 +58,12 @@ type PlayerDraft = {
   photoUrl: string;
   cricbuzzProfileUrl: string;
   credits: string;
+  cricketdataId: string;
   links: Record<EditableLink, string>;
 };
 
 /** Links an admin can set; Cricbuzz has its own field above. */
-type EditableLink = 'espncricinfo' | 'wikipedia' | 'instagram' | 'x' | 'facebook' | 'youtube';
+type EditableLink = 'espncricinfo' | 'wikipedia' | 'instagram' | 'x' | 'facebook' | 'youtube' | 'tiktok' | 'threads';
 const LINK_FIELDS: { key: EditableLink; label: string; placeholder: string }[] = [
   { key: 'espncricinfo', label: 'ESPNcricinfo profile', placeholder: 'https://www.espncricinfo.com/cricketers/…' },
   { key: 'wikipedia', label: 'Wikipedia article', placeholder: 'https://en.wikipedia.org/wiki/…' },
@@ -70,8 +71,10 @@ const LINK_FIELDS: { key: EditableLink; label: string; placeholder: string }[] =
   { key: 'x', label: 'X', placeholder: 'https://x.com/…' },
   { key: 'facebook', label: 'Facebook', placeholder: 'https://www.facebook.com/…' },
   { key: 'youtube', label: 'YouTube channel', placeholder: 'https://www.youtube.com/@…' },
+  { key: 'tiktok', label: 'TikTok', placeholder: 'https://www.tiktok.com/@…' },
+  { key: 'threads', label: 'Threads', placeholder: 'https://www.threads.com/@…' },
 ];
-const noLinks = (): Record<EditableLink, string> => ({ espncricinfo: '', wikipedia: '', instagram: '', x: '', facebook: '', youtube: '' });
+const noLinks = (): Record<EditableLink, string> => ({ espncricinfo: '', wikipedia: '', instagram: '', x: '', facebook: '', youtube: '', tiktok: '', threads: '' });
 
 const emptyPlayerDraft = (teamId: string): PlayerDraft => ({
   id: genId(teamId || 'player'),
@@ -88,6 +91,7 @@ const emptyPlayerDraft = (teamId: string): PlayerDraft => ({
   photoUrl: '',
   cricbuzzProfileUrl: '',
   credits: '',
+  cricketdataId: '',
   links: noLinks(),
 });
 
@@ -107,6 +111,7 @@ const fromPlayer = (p: Player): PlayerDraft => ({
   cricbuzzProfileUrl: p.cricbuzzProfileUrl || '',
   // Credits shown in the API are already the effective value; keep blank only for brand-new players.
   credits: typeof p.creditsOverride === 'number' ? String(p.creditsOverride) : '',
+  cricketdataId: p.cricketdataId || '',
   links: { ...noLinks(), ...Object.fromEntries(Object.entries(p.links || {}).filter(([k]) => k !== 'cricbuzz')) } as Record<EditableLink, string>,
 });
 
@@ -214,6 +219,7 @@ export const SquadEditorSection: React.FC<{
     if (draft.photoUrl.trim() && !/^https:\/\//.test(draft.photoUrl.trim())) errors.photoUrl = 'Photo link must start with https://';
     if (draft.cricbuzzProfileUrl.trim() && !/^https:\/\//.test(draft.cricbuzzProfileUrl.trim())) errors.cricbuzzProfileUrl = 'Profile link must start with https://';
     for (const f of LINK_FIELDS) if (draft.links[f.key].trim() && !/^https:\/\//.test(draft.links[f.key].trim())) errors[`link-${f.key}`] = 'Link must start with https://';
+    if (draft.cricketdataId.trim() && !/^[\w-]{6,60}$/.test(draft.cricketdataId.trim())) errors.cricketdataId = 'Paste the player id from CricketData.org (letters, digits and dashes)';
 
     setPlayerErrors(errors);
     if (Object.keys(errors).length > 0) return;
@@ -239,6 +245,7 @@ export const SquadEditorSection: React.FC<{
       photoUrl: draft.photoUrl.trim() || undefined,
       cricbuzzProfileUrl: draft.cricbuzzProfileUrl.trim() || undefined,
       credits: draft.credits.trim() ? Math.round(Number(draft.credits) * 2) / 2 : undefined,
+      cricketdataId: draft.cricketdataId.trim() || undefined,
       links: Object.keys(links).length ? links : undefined,
     };
 
@@ -485,6 +492,24 @@ export const SquadEditorSection: React.FC<{
                 title="ESPNcricinfo, Wikipedia and official social accounts, matched by Cricbuzz id. Links you typed are kept."
               >
                 Find player links
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() =>
+                  run('career', async () => {
+                    if (isDirty && !window.confirm('Save or discard your squad changes first: fetching career stats reloads the squad. Continue and discard them?')) return;
+                    const r = await api.refreshCareerStats({});
+                    await onRefreshAll();
+                    setIsDirty(false);
+                    setNotice({ kind: 'ok', text: r.report.join(' ') });
+                  })
+                }
+                loading={busy === 'career'}
+                disabled={!!busy}
+                title="T20I, IPL and other career records from CricketData.org, up to 15 players at a time within the daily request budget (Settings)."
+              >
+                Fetch career stats
               </Button>
               <Button
                 variant="secondary"
@@ -990,6 +1015,17 @@ export const SquadEditorSection: React.FC<{
               <p className="text-xs text-slate-400">
                 Career stats and official accounts shown on the player card. <strong className="text-slate-200">Find player links</strong> fills these by matching ids (Cricbuzz → ESPNcricinfo → Wikidata); anything you type here is kept and never replaced.
               </p>
+              <Field
+                label="CricketData player id (career record)"
+                hint="Filled automatically when the name matches exactly. Paste the id from the player's CricketData.org page to fix a wrong or missing career record."
+                error={playerErrors.cricketdataId}
+              >
+                <TextInput
+                  placeholder="e.g. 9a2f…"
+                  value={editingPlayer.draft.cricketdataId}
+                  onChange={e => setEditingPlayer(prev => (prev ? { ...prev, draft: { ...prev.draft, cricketdataId: e.target.value } } : null))}
+                />
+              </Field>
               {LINK_FIELDS.map(f => {
                 const source = workingSquad[editingPlayer.index ?? -1]?.linkSources?.[f.key];
                 return (

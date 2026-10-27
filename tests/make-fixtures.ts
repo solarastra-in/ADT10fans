@@ -95,7 +95,9 @@ put(google('"Abu Dhabi T10"'), newsRss([
   { title: '[test] League article one', url: 'https://news.test.invalid/league-1', source: 'Test Wire' },
   { title: '[test] League article two', url: 'https://news.test.invalid/league-2', source: 'Test Wire' },
 ]));
-const [bulls, ...others] = OFFICIAL_2026_TEAMS;
+// Teams by id (the official list's order can change).
+const bulls = OFFICIAL_2026_TEAMS.find(t => t.id === 'bulls')!;
+const others = OFFICIAL_2026_TEAMS.filter(t => t.id !== 'bulls');
 // Bulls: Google is down, Bing answers.
 put(google(`"${bulls.name}" T10`), 'unavailable', 503);
 put(bing(`"${bulls.name}" T10`), newsRss([{ title: '[test] Bulls article', url: 'https://news.test.invalid/bulls-1', source: 'Test Daily' }]));
@@ -111,12 +113,35 @@ put(
 // ---------- CricketData (live scores) ----------
 const aces = OFFICIAL_2026_TEAMS.find(t => t.id === 'aces')!;
 const api = (p: string, params: Record<string, string>) => `https://api.cricapi.com/v1/${p}?${new URLSearchParams({ apikey: 'test-cricket-key', ...params }).toString()}`;
-const ub = bulls.squad.map(p => p.name);
-const aa = aces.squad.map(p => p.name);
+const named = (team: typeof bulls, ...names: string[]) => names.map(n => team.squad.find(p => p.name === n)?.name || n);
+const ub = named(bulls, 'Max Bryant', 'Kieron Pollard');
+ub[17] = named(bulls, 'Muhammad Rohid')[0];
+const aa = named(aces, 'Ibrahim Masood', 'Moeen Ali');
+aa[17] = named(aces, 'Amshi de Silva')[0];
 const score = [
   { r: 121, w: 4, o: 10, inning: `${bulls.name} Inning 1` },
   { r: 109, w: 7, o: 10, inning: `${aces.name} Inning 1` },
 ];
+// Career records (players search + players_info), in CricketData's own row format with padded values.
+const stat = (fn: string, matchtype: string, rows: Record<string, string>) => Object.entries(rows).map(([k, v]) => ({ fn, matchtype, stat: ` ${k} `, value: ` ${v} ` }));
+put(api('players', { search: 'Kieron Pollard', offset: '0' }), JSON.stringify({ status: 'success', data: [{ id: 'cd-pollard-0001', name: 'Kieron Pollard', country: 'West Indies' }, { id: 'cd-other-0002', name: 'Kieron Powell', country: 'West Indies' }] }));
+put(api('players_info', { id: 'cd-pollard-0001' }), JSON.stringify({
+  status: 'success',
+  data: {
+    id: 'cd-pollard-0001',
+    name: 'Kieron Pollard',
+    country: 'West Indies',
+    stats: [
+      ...stat('batting', 'test', { m: '0', inn: '0', runs: '0' }),
+      ...stat('batting', 't20', { m: '101', inn: '83', runs: '1569', hs: '75*', avg: '25.31', sr: '135.14', '100s': '0', '50s': '6', '4s': '99', '6s': '99' }),
+      ...stat('bowling', 't20', { m: '101', inn: '69', b: '1030', runs: '1428', wkts: '42', bbi: '4/25', econ: '8.32', avg: '34.00' }),
+      ...stat('batting', 'ipl', { m: '189', inn: '171', runs: '3412', hs: '87*', avg: '28.67', sr: '147.32', '100s': '0', '50s': '16', '4s': '218', '6s': '223' }),
+      ...stat('bowling', 'ipl', { m: '189', inn: '107', b: '1666', runs: '2448', wkts: '69', bbi: '4/44', econ: '8.79', avg: '35.48' }),
+    ],
+  },
+}));
+put(api('players', { search: 'Max Bryant', offset: '0' }), JSON.stringify({ status: 'success', data: [{ id: 'cd-bryant-0001', name: 'Max Bryant', country: 'Australia' }, { id: 'cd-bryant-0002', name: 'Max Bryant', country: 'Australia' }] }));
+
 put(api('match_info', { id: FIXTURE.cricketMatchId }), JSON.stringify({
   status: 'success',
   data: { id: FIXTURE.cricketMatchId, name: `${bulls.name} vs ${aces.name}, 1st Match`, matchStarted: true, matchEnded: true, matchWinner: bulls.name, status: `${bulls.name} won by 12 runs`, tossWinner: aces.name, tossChoice: 'bowl', score },
@@ -194,7 +219,7 @@ put(CRICSHEET_PEOPLE_URL, [
   'ee55ff66,No Cricbuzz,No Cricbuzz,,,123456,',
 ].join('\n') + '\n');
 put(wikidataUrl(['230559']), JSON.stringify({
-  head: { vars: ['id', 'item', 'itemLabel', 'article', 'ig', 'x', 'fb', 'yt'] },
+  head: { vars: ['id', 'item', 'itemLabel', 'article', 'ig', 'x', 'fb', 'yt', 'tt', 'th'] },
   results: { bindings: [{
     id: { type: 'literal', value: '230559' },
     item: { type: 'uri', value: 'http://www.wikidata.org/entity/Q3196442' },
@@ -202,6 +227,8 @@ put(wikidataUrl(['230559']), JSON.stringify({
     article: { type: 'uri', value: 'https://en.wikipedia.org/wiki/Kieron_Pollard' },
     ig: { type: 'literal', value: 'test_pollard_ig' },
     x: { type: 'literal', value: 'test_pollard_x' },
+    tt: { type: 'literal', value: 'test_pollard_tt' },
+    th: { type: 'literal', value: 'test_pollard_th' },
   }] },
 }));
 
