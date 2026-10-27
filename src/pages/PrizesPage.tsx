@@ -231,7 +231,8 @@ export default function PrizesPage() {
               const isTicket = p.title.toLowerCase().includes('ticket');
               const isSigned = p.title.toLowerCase().includes('signed');
               const isBat = p.title.toLowerCase().includes('bat');
-              const team = p.teamOnly ? teamById(p.teamOnly) : null;
+              // The team stamp: the franchise offering the prize, or whose fans it is for.
+              const team = p.teamOnly || p.teamId ? teamById((p.teamOnly || p.teamId)!) : null;
 
               return (
                 <Card key={p.id} className="overflow-hidden flex flex-col relative" data-testid="prize-card">
@@ -251,7 +252,7 @@ export default function PrizesPage() {
                         )}
                         {isBat && (
                           <span className="inline-flex items-center gap-1 text-[10px] font-black text-cyan-300 bg-cyan-500/15 border border-cyan-500/30 px-2 py-0.5 rounded-md">
-                            🏏 Willow Bat
+                            🏏 Miniature Bat
                           </span>
                         )}
                       </div>

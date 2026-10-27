@@ -36,7 +36,7 @@ scraperRouter.get('/scraper/match/:provider/:id', requireAdmin('matches'), wrap(
 /**
  * Admin endpoint: Sync an Abu Dhabi T10 fixture with live scores from Cricbuzz or Cricinfo.
  */
-scraperRouter.post('/scraper/sync/:matchId', requireAdmin, wrap(async (req, res) => {
+scraperRouter.post('/scraper/sync/:matchId', requireAdmin('matches'), wrap(async (req, res) => {
   const matchId = req.params.matchId;
   const b = req.body || {};
   const provider = b.provider === 'cricinfo' ? 'cricinfo' : 'cricbuzz';
@@ -54,7 +54,7 @@ scraperRouter.post('/scraper/sync/:matchId', requireAdmin, wrap(async (req, res)
 /**
  * Admin endpoint: Test scraper on any custom Cricbuzz / Cricinfo URL or ID.
  */
-scraperRouter.post('/scraper/test', requireAdmin, wrap(async (req, res) => {
+scraperRouter.post('/scraper/test', requireAdmin('matches'), wrap(async (req, res) => {
   const b = req.body || {};
   const target = str(b.url || b.matchId, 250).trim();
   if (!target) return bad(res, 'Target match URL or Match ID is required');
@@ -97,7 +97,7 @@ scraperRouter.post('/scraper/test', requireAdmin, wrap(async (req, res) => {
 /**
  * Admin endpoint: Scrape Abu Dhabi T10 squads from Cricbuzz.
  */
-scraperRouter.get('/scraper/squads', requireAdmin, wrap(async (req, res) => {
+scraperRouter.get('/scraper/squads', requireAdmin('matches'), wrap(async (req, res) => {
   const seriesId = str(req.query.seriesId, 30) || '13307';
   const seriesSlug = str(req.query.slug, 80) || 'abu-dhabi-t10-league-2026';
   const squads = await scraperService.getSeriesSquads(seriesId, seriesSlug);
@@ -107,7 +107,7 @@ scraperRouter.get('/scraper/squads', requireAdmin, wrap(async (req, res) => {
 /**
  * Admin endpoint: Seed & link Cricbuzz Series 13307 into system fixtures and settings.
  */
-scraperRouter.post('/scraper/seed-series', requireAdmin, wrap(async (req, res) => {
+scraperRouter.post('/scraper/seed-series', requireAdmin('matches'), wrap(async (req, res) => {
   const store = db.get();
   const seriesId = str(req.body?.seriesId, 30) || '13307';
   const seriesSlug = str(req.body?.seriesSlug, 80) || 'abu-dhabi-t10-league-2026';

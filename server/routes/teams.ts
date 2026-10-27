@@ -111,7 +111,10 @@ export async function resolvePlayerLinks(opts: { all?: boolean; teamId?: string 
 /** Admin: fetch career records from CricketData.org now (within the daily budget). */
 teamsRouter.post('/admin/players/career/refresh', requireAdmin('teams'), wrap(async (req, res) => {
   const playerId = str(req.body?.playerId, 80) || undefined;
-  const result = await refreshCareerStats({ all: Boolean(req.body?.all), playerId, max: playerId ? 1 : 15 });
+  // A team admin refreshes their own squad only (the request budget is shared by the league).
+  const scope = teamScopeOf(userOf(req));
+  if (scope !== null && playerId && !db.get().teams.find(t => t.id === scope)?.squad.some(p => p.id === playerId)) return bad(res, 'You can only manage your own team', 403);
+  const result = await refreshCareerStats({ all: Boolean(req.body?.all), playerId, teamId: scope ?? undefined, max: playerId ? 1 : 15 });
   res.json({ success: true, ...result });
 }));
 

@@ -118,9 +118,9 @@ function budgetLeft(store: AppStore, day: string): number {
 }
 
 /** Players whose career record is missing or due a re-check, most important first. */
-function due(store: AppStore, now: number, all: boolean, playerId?: string): Player[] {
+function due(store: AppStore, now: number, all: boolean, playerId?: string, teamId?: string): Player[] {
   const have = new Map(store.playerCareer.map(c => [c.playerId, c]));
-  const players = store.teams.flatMap(t => t.squad).filter(p => !playerId || p.id === playerId);
+  const players = store.teams.filter(t => !teamId || t.id === teamId).flatMap(t => t.squad).filter(p => !playerId || p.id === playerId);
   return players
     .filter(p => {
       if (all || playerId) return true;
@@ -137,12 +137,12 @@ function due(store: AppStore, now: number, all: boolean, playerId?: string): Pla
  * Fetches career records for the players that need them, within today's request budget. Network
  * first, then one short write. `playerId` fetches one player now (admin button).
  */
-export async function refreshCareerStats(opts: { all?: boolean; playerId?: string; max?: number } = {}) {
+export async function refreshCareerStats(opts: { all?: boolean; playerId?: string; teamId?: string; max?: number } = {}) {
   if (!careerStatsConfigured()) return { checked: 0, found: 0, report: ['Career stats need the CricketData.org key (Admin → Environment → CricketData).'] };
   const day = new Date().toISOString().slice(0, 10);
   const store = db.get();
   let left = budgetLeft(store, day);
-  const targets = due(store, Date.now(), Boolean(opts.all), opts.playerId).slice(0, opts.playerId ? 1 : Math.max(1, opts.max ?? PER_RUN));
+  const targets = due(store, Date.now(), Boolean(opts.all), opts.playerId, opts.teamId).slice(0, opts.playerId ? 1 : Math.max(1, opts.max ?? PER_RUN));
   if (!targets.length) return { checked: 0, found: 0, report: ['Every player was checked recently.'] };
   if (left <= 0) return { checked: 0, found: 0, report: [`Today's CricketData budget for career stats (${store.settings.careerStatsDailyCalls ?? 30} requests) is used up; it continues tomorrow.`] };
 

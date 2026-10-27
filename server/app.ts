@@ -1,3 +1,4 @@
+import { teamPortalRouter } from './routes/teamPortal';
 import 'dotenv/config';
 import express, { NextFunction, Request, Response } from 'express';
 import fs from 'fs';
@@ -77,7 +78,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use('/api', referralCheckMiddleware);
-for (const r of [coreRouter, teamsRouter, feedsRouter, matchesRouter, playRouter, prizesRouter, communityRouter, notificationsRouter, fanSpacesRouter, adminRouter, scraperRouter, fanWallRouter]) app.use('/api', r);
+for (const r of [coreRouter, teamsRouter, feedsRouter, matchesRouter, playRouter, prizesRouter, communityRouter, notificationsRouter, fanSpacesRouter, adminRouter, scraperRouter, fanWallRouter, teamPortalRouter]) app.use('/api', r);
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
 
 function baseUrl(req: Request) {

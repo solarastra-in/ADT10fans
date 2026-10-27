@@ -45,7 +45,7 @@ const fmtDate = (iso: string) => {
 };
 
 export const INDEXABLE_STATIC = ['/', '/matches', '/teams', '/players', '/social', '/videos', '/news', '/play', '/fantasy', '/games', '/fanwall', '/contests', '/prizes', '/leaderboard', '/fans', '/forum', '/fanspaces', '/rules', '/privacy', '/terms'];
-const PRIVATE = ['/admin', '/proposal', '/profile'];
+const PRIVATE = ['/team-portal', '/team-invite', '/admin', '/proposal', '/profile'];
 
 function teamName(store: AppStore, id: string) {
   return store.teams.find(t => t.id === id)?.name || id;
@@ -655,5 +655,5 @@ export const SITEMAP_EXTRA: ((store: AppStore, base: string) => { loc: string; l
  * X-Robots-Tag: noindex instead, so they never show up in results themselves.
  */
 export function robotsTxt(base: string) {
-  return `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /proposal\nDisallow: /profile\nDisallow: /api/admin/\nDisallow: /api/cron/\n\nSitemap: ${base}/sitemap.xml\n`;
+  return `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /team-portal\nDisallow: /team-invite\nDisallow: /proposal\nDisallow: /profile\nDisallow: /api/admin/\nDisallow: /api/cron/\n\nSitemap: ${base}/sitemap.xml\n`;
 }

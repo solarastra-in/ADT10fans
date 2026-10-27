@@ -738,6 +738,8 @@ export interface PrizeItem {
   pointsCost: number;
   stock: number;
   teamOnly?: string | null;
+  /** The franchise offering and fulfilling the prize. */
+  teamId?: string | null;
   active: boolean;
   fulfilment: string;
   createdAt: string;
@@ -1222,4 +1224,41 @@ export interface FanWallResponse {
   review: 'photos' | 'all' | 'none';
   fanOfTheDayPoints: number;
   careerStatsDailyCalls?: number;
+}
+
+// ---------- team portals ----------
+export interface TeamInviteView {
+  id: string;
+  email: string;
+  name: string;
+  teamId: string;
+  invitedBy: string;
+  createdAt: string;
+  expiresAt: string;
+  status: 'pending' | 'accepted' | 'revoked' | 'expired';
+  acceptedAt?: string;
+  sentAt?: string;
+  emailed?: boolean;
+}
+
+export interface TeamInvitePublic {
+  name: string;
+  team: { id: string; name: string; short: string; color: string; logo?: string } | null;
+  emailHint: string;
+  status: TeamInviteView['status'];
+  expiresAt: string;
+  signedInAsInvitee: boolean;
+}
+
+export interface TeamPortalOverview {
+  team: { id: string; name: string; short: string; color: string; secondaryColor?: string; logo?: string };
+  fans: number;
+  squad: number;
+  playersWithLinks: number;
+  handles: { verified: number; pending: number };
+  posts: number;
+  prizes: { active: number; total: number };
+  claims: { pending: number; total: number };
+  admins: { email: string; name: string; addedAt: string }[];
+  pendingInvites: { name: string; email: string; expiresAt: string }[];
 }

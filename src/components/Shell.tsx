@@ -167,7 +167,18 @@ export function UserDropdown() {
               <Gamepad2 className="w-4 h-4 text-sky-400" />
               {t('Daily Games')}
             </Link>
-            {user.role === 'admin' && (
+            {user.role === 'admin' && (user.adminRole === 'team_official' || user.isSuperAdmin) && (
+              <Link
+                to="/team-portal"
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-amber-300 hover:text-amber-200 hover:bg-slate-800/80"
+                role="menuitem"
+              >
+                <Shield className="w-4 h-4 text-amber-400" />
+                {t('Team portal')}
+              </Link>
+            )}
+            {user.role === 'admin' && user.adminRole !== 'team_official' && (
               <Link
                 to="/admin"
                 onClick={() => setOpen(false)}
@@ -281,7 +292,8 @@ export function BottomNav({ route }: { route: Route }) {
     ['/rules', t('Rules')],
     [user ? '/profile' : '/rules', user ? t('My profile & stats') : t('How it works')],
     ...(user ? ([['/profile#details', t('Update profile')], ['/profile#badges', t('My badges')]] as [string, string][]) : []),
-    ...(user?.role === 'admin' ? ([['/admin', t('Admin console')]] as [string, string][]) : []),
+    ...(user?.role === 'admin' && user.adminRole !== 'team_official' ? ([['/admin', t('Admin console')]] as [string, string][]) : []),
+    ...(user?.role === 'admin' && (user.adminRole === 'team_official' || user.isSuperAdmin) ? ([['/team-portal', t('Team portal')]] as [string, string][]) : []),
   ];
   return (
     <>

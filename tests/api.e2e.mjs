@@ -593,6 +593,53 @@ ok('official cannot moderate another team\'s threads', (await post(`/api/admin/f
 ok('official can moderate Bulls threads', (await post(`/api/admin/forum/threads/${T}/pin`, { value: true }, O)).status === 200);
 ok('removing the official revokes access', (await del('/api/admin/admins/official@test.dev', A)).status === 200 && (await get('/api/admin/feeds/health', O)).status === 403);
 
+// ============ 12b. Team portals: onboarding team admins by invitation ============
+ok('only a super admin can invite team admins', (await post('/api/admin/team-invites', { name: 'Sam', email: 'aces.admin@test.dev', teamId: 'aces' }, F1)).status === 403);
+ok('invitation needs a name, a valid email and a team', (await post('/api/admin/team-invites', { name: '', email: 'x@test.dev', teamId: 'aces' }, A)).status === 400 && (await post('/api/admin/team-invites', { name: 'X', email: 'nope', teamId: 'aces' }, A)).status === 400 && (await post('/api/admin/team-invites', { name: 'X', email: 'x@test.dev', teamId: 'nope' }, A)).status === 400);
+ok('an existing league admin cannot be invited as a team admin', (await post('/api/admin/team-invites', { name: 'Admin', email: 'admin@test.dev', teamId: 'aces' }, A)).status === 409);
+const inv = await post('/api/admin/team-invites', { name: 'Sara Aces', email: 'Aces.Admin@test.dev', teamId: 'aces' }, A);
+ok('super admin invites a team admin; without a mail server the link is returned to pass on', inv.status === 200 && inv.json.invite.status === 'pending' && inv.json.invite.emailed === false && /\/team-invite\/[\w-]{40,}$/.test(inv.json.link), inv.json);
+ok('the invitation list never shows the token', !JSON.stringify((await get('/api/admin/team-invites', A)).json).includes(inv.json.link.split('/').pop()) && !('tokenHash' in (await get('/api/admin/team-invites', A)).json.invites[0]));
+const token = inv.json.link.split('/').pop();
+const pubInv = (await get(`/api/team-invites/${token}`)).json;
+ok('the invitation page shows the team and a partly hidden address', pubInv.team.id === 'aces' && pubInv.name === 'Sara Aces' && pubInv.emailHint.startsWith('ac') && !pubInv.emailHint.includes('aces.admin') && pubInv.status === 'pending');
+ok('a wrong link is refused', (await get('/api/team-invites/notarealtoken000000000000000')).status === 404);
+ok('accepting needs a signed-in user', (await post(`/api/team-invites/${token}/accept`, {})).status === 401);
+ok('someone else cannot accept it', (await post(`/api/team-invites/${token}/accept`, {}, F1)).status === 403);
+const sara = await login('aces.admin@test.dev');
+ok('before accepting, the invited person is a fan', sara.user.role === 'fan');
+ok('the invitation page knows the invited person is signed in', (await get(`/api/team-invites/${token}`, sara.token)).json.signedInAsInvitee === true);
+const acc = await post(`/api/team-invites/${token}/accept`, {}, sara.token);
+ok('accepting makes them a team admin for that team only', acc.status === 200 && acc.json.user.role === 'admin' && acc.json.user.adminRole === 'team_official' && acc.json.user.adminTeamId === 'aces', acc.json);
+ok('the link works once', (await post(`/api/team-invites/${token}/accept`, {}, sara.token)).status === 409);
+ok('the super admin sees it accepted, and the admin listed', (await get('/api/admin/team-invites', A)).json.invites.find(i => i.email === 'aces.admin@test.dev').status === 'accepted' && (await get('/api/admin/admins', A)).json.admins.some(a => a.email === 'aces.admin@test.dev' && a.role === 'team_official' && a.teamId === 'aces'));
+const S = sara.token;
+// The portal: their own team, nothing league-wide.
+const ov = await get('/api/team-portal/aces/overview', S);
+ok('team portal overview for their own team', ov.status === 200 && ov.json.team.id === 'aces' && ov.json.squad === 18 && ov.json.admins.some(a => a.email === 'aces.admin@test.dev'), ov.json);
+ok('no portal for another team', (await get('/api/team-portal/bulls/overview', S)).status === 403);
+const sDash = (await get('/api/admin/dashboard', S)).json;
+ok('team admins get no league-wide dashboard, settings or admin addresses', sDash.teamScope === 'aces' && sDash.usersCount === undefined && !JSON.stringify(sDash).includes('admin@test.dev'));
+ok('team admins cannot run prize draws, fans\' points or Fan of the Day', (await post('/api/admin/draws', { title: 'x', prize: 'y', closesAt: inMinutes(60) }, S)).status === 403 && (await get('/api/admin/points?q=fan', S)).status === 403 && (await post('/api/admin/points/x/adjust', { delta: 5 }, S)).status === 403);
+ok('team admins cannot sync matches or test email', (await post('/api/scraper/seed-series', {}, S)).status === 403 && (await post('/api/admin/smtp/test', { to: 'x@test.dev' }, S)).status === 403);
+// Prizes for their fans.
+const leaguePrize = (await post('/api/admin/prizes', { title: 'League cap', pointsCost: 50, stock: 5, fulfilment: 'Fan Zone desk' }, A)).json.prize;
+const teamPrize = await post('/api/admin/prizes', { title: 'Aces training session pass', pointsCost: 120, stock: 10, teamOnly: 'aces', fulfilment: 'We email you the session time', teamId: 'bulls' }, S);
+ok('a team admin adds a prize for their own fans; it belongs to their team whatever they send', teamPrize.status === 200 && teamPrize.json.prize.teamId === 'aces' && teamPrize.json.prize.teamOnly === 'aces', teamPrize.json);
+ok('a team prize cannot be reserved for another team\'s fans', (await post('/api/admin/prizes', { title: 'x', pointsCost: 10, stock: 1, teamOnly: 'bulls', fulfilment: 'x' }, S)).status === 403);
+ok('a team admin cannot edit or delete league prizes', (await post('/api/admin/prizes', { id: leaguePrize.id, title: 'Hacked', pointsCost: 1, stock: 999, fulfilment: 'x' }, S)).status === 403 && (await del(`/api/admin/prizes/${leaguePrize.id}`, S)).status === 403);
+const sPrizes = (await get('/api/admin/prizes', S)).json;
+ok('a team admin sees only their own prizes and claims', sPrizes.prizes.length === 1 && sPrizes.prizes[0].id === teamPrize.json.prize.id && sPrizes.redemptions.every(r => r.prizeId === teamPrize.json.prize.id));
+ok('fans see the team prize with its team', (await get('/api/prizes')).json.prizes.some(p => p.id === teamPrize.json.prize.id && p.teamId === 'aces'));
+// Invitations can be withdrawn, and a new one replaces a pending one.
+const inv2 = await post('/api/admin/team-invites', { name: 'Lee', email: 'lions.admin@test.dev', teamId: 'lions' }, A);
+const inv3 = await post('/api/admin/team-invites', { name: 'Lee', email: 'lions.admin@test.dev', teamId: 'lions' }, A);
+ok('a new invitation replaces the pending one (the old link stops working)', (await get(`/api/team-invites/${inv2.json.link.split('/').pop()}`)).json.status === 'revoked' && (await get(`/api/team-invites/${inv3.json.link.split('/').pop()}`)).json.status === 'pending');
+ok('a super admin can withdraw an invitation', (await del(`/api/admin/team-invites/${inv3.json.invite.id}`, A)).status === 200);
+const lee = await login('lions.admin@test.dev');
+ok('a withdrawn invitation cannot be accepted', (await post(`/api/team-invites/${inv3.json.link.split('/').pop()}/accept`, {}, lee.token)).status === 410 && (await me(lee.token)).role === 'fan');
+ok('the team portal page is kept out of search engines', /noindex/.test((await call('GET', '/team-portal', null, null, { headers: { Accept: 'text/html' } })).text) && /Disallow: \/team-portal/.test((await call('GET', '/robots.txt')).text));
+
 // ============ 13. Settings ============
 const st = await post('/api/admin/settings', { referralRewardPoints: 75, lockReminderMinutes: 45 }, A);
 ok('referral reward and reminder time are configurable', st.json.settings.referralRewardPoints === 75 && st.json.settings.lockReminderMinutes === 45);

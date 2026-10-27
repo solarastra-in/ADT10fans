@@ -33,7 +33,7 @@ export const ALL_PERMISSIONS: AdminPermission[] = [
 ];
 
 /** What a team official may do: only for their own franchise. */
-export const TEAM_OFFICIAL_PERMISSIONS: AdminPermission[] = ['team', 'social', 'community', 'notifications'];
+export const TEAM_OFFICIAL_PERMISSIONS: AdminPermission[] = ['team', 'social', 'community', 'notifications', 'prizes'];
 
 export type AdminRole =
   | 'superadmin'
@@ -55,6 +55,27 @@ export interface AdminUserRecord {
   addedBy?: string;
   addedAt: string;
   updatedAt?: string;
+}
+
+/**
+ * An invitation for someone to run a franchise's team portal. A super admin sends it (name, email,
+ * team); it becomes a team admin (team_official) when that person signs in with the same email and
+ * accepts. Only a hash of the link's token is kept.
+ */
+export interface TeamInvite {
+  id: string;
+  tokenHash: string;
+  email: string;
+  name: string;
+  teamId: string;
+  invitedBy: string;
+  createdAt: string;
+  expiresAt: string;
+  status: 'pending' | 'accepted' | 'revoked';
+  acceptedAt?: string;
+  /** Last time the invitation email was sent, and whether it went out. */
+  sentAt?: string;
+  emailed?: boolean;
 }
 
 export interface User {
@@ -461,6 +482,8 @@ export interface PrizeItem {
   pointsCost: number;
   stock: number;
   teamOnly?: string | null;
+  /** The franchise offering and fulfilling the prize (set for prizes a team admin creates). */
+  teamId?: string | null;
   active: boolean;
   /** How the fan receives it, shown after claiming (e.g. "Collect at the Fan Zone with your code"). */
   fulfilment: string;
@@ -880,6 +903,7 @@ export interface AppStore {
   fanPosts: FanPost[];
   fansOfTheDay: FanOfTheDay[];
   playerCareer: PlayerCareer[];
+  teamInvites: TeamInvite[];
   sessions: Session[];
   passportInterest: PassportInterest[];
   claimedBadges: Record<string, boolean>;
@@ -1000,6 +1024,7 @@ export function emptyStore(): AppStore {
     fanPosts: [],
     fansOfTheDay: [],
     playerCareer: [],
+    teamInvites: [],
     sessions: [],
     passportInterest: [],
     claimedBadges: {},

@@ -38,6 +38,8 @@ const GrowthPage = React.lazy(() => import('./pages/GrowthPage'));
 const ProfilePage = React.lazy(() => import('./pages/ProfilePage'));
 const InfoPage = React.lazy(() => import('./pages/InfoPage'));
 const AdminPage = React.lazy(() => import('./pages/AdminPage'));
+const TeamPortalPage = React.lazy(() => import('./pages/TeamPortalPage'));
+const TeamInvitePage = React.lazy(() => import('./pages/TeamInvitePage'));
 const ProposalPage = React.lazy(() => import('./pages/ProposalPage'));
 
 function Page() {
@@ -74,6 +76,8 @@ function Page() {
     case 'privacy':
     case 'terms': return <InfoPage kind={route.name} />;
     case 'admin': return <AdminPage section={p.section} />;
+    case 'teamPortal': return <TeamPortalPage section={p.section} />;
+    case 'teamInvite': return <TeamInvitePage token={p.token} />;
     case 'proposal': return <ProposalPage />;
     default: return <NotFoundPage />;
   }

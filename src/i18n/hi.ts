@@ -1069,4 +1069,5 @@ export const hi: Record<string, string> = {
   "Team saved": "टीम सेव हो गई",
   "Next to open: {a} vs {b} on {date}. Each match opens at midnight UAE time on the day before match day.": "अगला: {a} बनाम {b}, {date} को। हर मैच, मैच वाले दिन से एक दिन पहले UAE समय के अनुसार आधी रात को खुलता है।",
   "Team Tactical Profile & Core Skills": "टीम की रणनीतिक प्रोफ़ाइल और मुख्य कौशल",
+  "Team portal": "टीम पोर्टल",
 };

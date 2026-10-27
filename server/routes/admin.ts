@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import { Router } from 'express';
 import { ALL_PERMISSIONS, AdminPermission, AdminRole, db, defaultSettings, requestContext, SUPER_ADMIN_EMAIL, TEAM_OFFICIAL_PERMISSIONS } from '../db';
-import { adminEmails, IS_PROD, isSuperAdmin, rateLimit, requireAdmin, requireSuperAdmin, requireUser, smtpConfigured, firebaseProjectId, resetSmtpErrorState, smtpConfig, formatFromAddress } from '../auth';
+import { adminEmails, IS_PROD, isSuperAdmin, rateLimit, requireAdmin, teamScopeOf, requireSuperAdmin, requireUser, smtpConfigured, firebaseProjectId, resetSmtpErrorState, smtpConfig, formatFromAddress } from '../auth';
 import { bad, newId, num, str, userOf, wrap } from '../http';
 import { runDiscoveryAgent, runSocialAgent, runNewsAgent, runScoresAgent, runContentAgent, runOpsAgent } from '../agents';
 import { geminiConfigured, chatWithGemini, searchGroundingCricket, generateMarketingContent, transcribeAudioVoice } from '../gemini';
@@ -36,8 +36,15 @@ async function firestoreOpenToPublic(): Promise<boolean> {
   return open;
 }
 
-adminRouter.get('/admin/dashboard', requireAdmin, wrap(async (_req, res) => {
+adminRouter.get('/admin/dashboard', requireAdmin, wrap(async (req, res) => {
   const s = db.get();
+  // Team admins get their own team's portal (/api/team-portal/:id/overview), not league-wide figures,
+  // settings or other admins' addresses.
+  const scope = teamScopeOf(userOf(req));
+  if (scope !== null) {
+    const approvals = s.approvals.filter(a => a.status === 'pending' && (a.payload?.teamId === scope || a.payload?.handle?.teamId === scope));
+    return res.json({ teamScope: scope, pendingApprovals: approvals, agentRuns: [], warnings: [], settings: { brandName: s.settings.brandName, seasonStart: s.settings.seasonStart } });
+  }
   const warning = ephemeralDiskWarning(db.backend);
   const rulesOpen = await firestoreOpenToPublic();
   res.json({
@@ -96,6 +103,8 @@ adminRouter.post('/admin/approvals/:id/decide', requireAdmin(['social', 'feeds']
   const a = store.approvals.find(x => x.id === req.params.id);
   if (!a) return bad(res, 'Approval not found', 404);
   if (a.status !== 'pending') return bad(res, 'Already decided');
+  const scope = teamScopeOf(userOf(req));
+  if (scope !== null && !(a.kind === 'handle' && a.payload?.teamId === scope)) return bad(res, 'You can only decide on your own team\'s accounts', 403);
   const approve = req.body?.decision === 'approve';
   a.status = approve ? 'approved' : 'rejected';
   a.decidedAt = new Date().toISOString();
@@ -176,7 +185,7 @@ adminRouter.post('/admin/settings', requireAdmin('settings'), (req, res) => {
   res.json({ success: true, settings: maskedSettings() });
 });
 
-adminRouter.post('/admin/smtp/test', requireAdmin, wrap(async (req, res) => {
+adminRouter.post('/admin/smtp/test', requireAdmin('settings'), wrap(async (req, res) => {
   const b = req.body || {};
   const c = smtpConfig();
   const host = b.host ? str(b.host, 120) : c.host;

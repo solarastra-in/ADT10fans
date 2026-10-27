@@ -5,13 +5,18 @@ import type { PrizeItem, PrizeRedemption, Team } from '../../types';
 import { FanPointsPanel } from './FanPointsPanel';
 import { Actions, Button, Card, Checkbox, Chip, EmptyState, Errors, Field, Notice, SectionHeader, Select, Sheet, TextArea, TextInput, isHttpsUrl, statusTone, useRunner } from './ui';
 
-type Draft = { id?: string; title: string; description: string; image: string; pointsCost: string; stock: string; teamOnly: string; active: boolean; fulfilment: string };
-const blank: Draft = { title: '', description: '', image: '', pointsCost: '200', stock: '10', teamOnly: '', active: true, fulfilment: 'Show your claim code at the Fan Zone merchandise desk.' };
+type Draft = { id?: string; title: string; description: string; image: string; pointsCost: string; stock: string; teamOnly: string; teamId: string; active: boolean; fulfilment: string };
+const blank: Draft = { title: '', description: '', image: '', pointsCost: '200', stock: '10', teamOnly: '', teamId: '', active: true, fulfilment: 'Show your claim code at the Fan Zone merchandise desk.' };
 
-/** Rewards fans can claim with points, and the claims waiting to be fulfilled. */
-export const PrizesSection: React.FC<{ teams: Team[] }> = ({ teams }) => {
-  const [prizes, setPrizes] = useState<PrizeItem[]>([]);
-  const [claims, setClaims] = useState<PrizeRedemption[]>([]);
+/**
+ * Rewards fans can claim with points, and the claims waiting to be fulfilled. In a team portal
+ * (`team`), only that franchise's prizes and claims, for any fan or for its own fans only.
+ */
+export const PrizesSection: React.FC<{ teams: Team[]; team?: Team | null }> = ({ teams, team }) => {
+  const [allPrizes, setPrizes] = useState<PrizeItem[]>([]);
+  const [allClaims, setClaims] = useState<PrizeRedemption[]>([]);
+  const prizes = team ? allPrizes.filter(p => p.teamId === team.id) : allPrizes;
+  const claims = team ? allClaims.filter(c => prizes.some(p => p.id === c.prizeId)) : allClaims;
   const [draft, setDraft] = useState<Draft | null>(null);
   const [errors, setErrors] = useState<Errors>({});
   const [filter, setFilter] = useState<'pending' | 'all'>('pending');
@@ -41,7 +46,7 @@ export const PrizesSection: React.FC<{ teams: Team[] }> = ({ teams }) => {
     if (draft.image && !isHttpsUrl(draft.image)) e.image = 'Image must be an https:// link.';
     setErrors(e);
     if (Object.keys(e).length) return;
-    const r = await run('save', () => api.savePrize({ id: draft.id, title: draft.title.trim(), description: draft.description.trim(), image: draft.image.trim() || undefined, pointsCost: Number(draft.pointsCost), stock: Number(draft.stock), teamOnly: draft.teamOnly || null, active: draft.active, fulfilment: draft.fulfilment.trim() }), 'Prize saved.');
+    const r = await run('save', () => api.savePrize({ id: draft.id, title: draft.title.trim(), description: draft.description.trim(), image: draft.image.trim() || undefined, pointsCost: Number(draft.pointsCost), stock: Number(draft.stock), teamOnly: draft.teamOnly || null, teamId: team ? team.id : draft.teamId || null, active: draft.active, fulfilment: draft.fulfilment.trim() }), 'Prize saved.');
     if (r) {
       setDraft(null);
       load();
@@ -62,13 +67,13 @@ export const PrizesSection: React.FC<{ teams: Team[] }> = ({ teams }) => {
   return (
     <div className="space-y-5">
       <SectionHeader
-        title="Prizes & claims"
-        description="Fans spend points on these. Spending never lowers their leaderboard score. Each claim gets a code; fulfil it when the fan collects, or cancel to refund the points."
+        title={team ? `${team.name} prizes` : 'Prizes & claims'}
+        description={team ? `Rewards ${team.name} offers. Fans spend points on them (spending never lowers their leaderboard score). Each claim gets a code: fulfil it when the fan collects, or cancel to refund the points.` : 'Fans spend points on these. Spending never lowers their leaderboard score. Each claim gets a code; fulfil it when the fan collects, or cancel to refund the points.'}
         actions={<Button variant="primary" size="sm" icon={<Plus className="w-4 h-4" />} onClick={() => { setErrors({}); setDraft({ ...blank }); }}>Add prize</Button>}
       />
       <Notice notice={notice} onClose={() => setNotice(null)} />
       {prizes.length === 0 ? (
-        <EmptyState title="No prizes yet" description="Add rewards such as signed merchandise, Fan Space VIP upgrades or matchday tickets." />
+        <EmptyState title="No prizes yet" description={team ? 'Add rewards for your fans: signed merchandise, meet-and-greets, matchday tickets or training-session passes.' : 'Add rewards such as signed merchandise, Fan Space VIP upgrades or matchday tickets.'} />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {prizes.map(p => {
@@ -81,11 +86,12 @@ export const PrizesSection: React.FC<{ teams: Team[] }> = ({ teams }) => {
                   <Chip tone={p.active ? 'green' : 'slate'}>{p.active ? 'active' : 'off'}</Chip>
                   <Chip>{claimed}/{p.stock} claimed</Chip>
                   {p.teamOnly && <Chip tone="blue">{teams.find(t => t.id === p.teamOnly)?.short} fans</Chip>}
+                  {!team && p.teamId && <Chip>Offered by {teams.find(t => t.id === p.teamId)?.short || p.teamId}</Chip>}
                 </div>
                 {p.description && <p className="text-sm text-slate-400 mt-2">{p.description}</p>}
                 <p className="text-xs text-slate-500 mt-1">{p.fulfilment}</p>
                 <Actions className="mt-3">
-                  <Button size="sm" icon={<Edit3 className="w-4 h-4" />} onClick={() => { setErrors({}); setDraft({ id: p.id, title: p.title, description: p.description, image: p.image || '', pointsCost: String(p.pointsCost), stock: String(p.stock), teamOnly: p.teamOnly || '', active: p.active, fulfilment: p.fulfilment }); }}>Edit</Button>
+                  <Button size="sm" icon={<Edit3 className="w-4 h-4" />} onClick={() => { setErrors({}); setDraft({ id: p.id, title: p.title, description: p.description, image: p.image || '', pointsCost: String(p.pointsCost), stock: String(p.stock), teamOnly: p.teamOnly || '', teamId: p.teamId || '', active: p.active, fulfilment: p.fulfilment }); }}>Edit</Button>
                   <Button size="sm" variant="danger" icon={<Trash2 className="w-4 h-4" />} loading={busy === `del:${p.id}`} onClick={() => remove(p)}>Delete</Button>
                 </Actions>
               </Card>
@@ -124,7 +130,7 @@ export const PrizesSection: React.FC<{ teams: Team[] }> = ({ teams }) => {
           </ul>
         )}
       </Card>
-      <FanPointsPanel teams={teams} />
+      {!team && <FanPointsPanel teams={teams} />}
       <Sheet open={!!draft} title={draft?.id ? 'Edit prize' : 'Add prize'} onClose={() => setDraft(null)} footer={<><Button onClick={() => setDraft(null)}>Cancel</Button><Button variant="primary" onClick={save} loading={busy === 'save'}>Save prize</Button></>}>
         {draft && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -132,7 +138,14 @@ export const PrizesSection: React.FC<{ teams: Team[] }> = ({ teams }) => {
             <Field label="Description" className="sm:col-span-2"><TextArea value={draft.description} onChange={e => setDraft({ ...draft, description: e.target.value })} /></Field>
             <Field label="Points cost" required error={errors.pointsCost}><TextInput type="number" min={1} value={draft.pointsCost} onChange={e => setDraft({ ...draft, pointsCost: e.target.value })} error={!!errors.pointsCost} /></Field>
             <Field label="Stock" required error={errors.stock} hint="How many can be claimed in total"><TextInput type="number" min={0} value={draft.stock} onChange={e => setDraft({ ...draft, stock: e.target.value })} error={!!errors.stock} /></Field>
-            <Field label="Only for fans of"><Select value={draft.teamOnly} onChange={e => setDraft({ ...draft, teamOnly: e.target.value })}><option value="">Any team</option>{teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></Field>
+            {team ? (
+              <Field label="Who can claim it"><Select value={draft.teamOnly} onChange={e => setDraft({ ...draft, teamOnly: e.target.value })}><option value="">Any fan</option><option value={team.id}>{team.name} fans only</option></Select></Field>
+            ) : (
+              <>
+                <Field label="Only for fans of"><Select value={draft.teamOnly} onChange={e => setDraft({ ...draft, teamOnly: e.target.value })}><option value="">Any team</option>{teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></Field>
+                <Field label="Offered by" hint="The franchise that fulfils it; its team portal manages it"><Select value={draft.teamId} onChange={e => setDraft({ ...draft, teamId: e.target.value })}><option value="">The league</option>{teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></Field>
+              </>
+            )}
             <Field label="Image link" error={errors.image} hint="Optional https:// image"><TextInput type="url" value={draft.image} onChange={e => setDraft({ ...draft, image: e.target.value })} error={!!errors.image} /></Field>
             <Field label="How fans receive it" required error={errors.fulfilment} className="sm:col-span-2"><TextArea rows={2} value={draft.fulfilment} onChange={e => setDraft({ ...draft, fulfilment: e.target.value })} /></Field>
             <Checkbox label="Active (visible to fans)" checked={draft.active} onChange={v => setDraft({ ...draft, active: v })} />

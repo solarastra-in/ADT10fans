@@ -56,7 +56,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = props => {
 
   const canAccess = (id: AdminSectionId): boolean => {
     if (id === 'dashboard') return true;
-    if (isTeamOfficial && ['tools', 'approvals', 'marketing', 'growth', 'fanspaces', 'checkin', 'settings', 'proposal', 'matches', 'contests', 'fantasy', 'prizes', 'draws'].includes(id)) return false;
+    if (isTeamOfficial && ['tools', 'approvals', 'marketing', 'growth', 'fanspaces', 'checkin', 'settings', 'proposal', 'matches', 'contests', 'fantasy', 'draws'].includes(id)) return false;
     const perm = SECTION_PERMISSION[id];
     if (!perm) return true;
     if (perm === 'super') return isSuper;
@@ -140,11 +140,11 @@ export const AdminPortal: React.FC<AdminPortalProps> = props => {
         {section === 'matches' && <MatchesSection matches={matches} teams={teams} settings={settings} onRefreshAll={onRefreshAll} />}
         {section === 'contests' && <ContestsSection contests={contests} matches={matches} teams={teams} onRefreshAll={onRefreshAll} />}
         {section === 'fantasy' && <FantasySection matches={matches} teams={teams} />}
-        {section === 'prizes' && <PrizesSection teams={teams} />}
+        {section === 'prizes' && <PrizesSection teams={teams} team={myTeam} />}
         {section === 'draws' && <DrawsSection draws={draws} teams={teams} onRefreshAll={onRefreshAll} />}
         {section === 'forum' && <ForumSection teams={scopedTeams} />}
         {section === 'polls' && <PollsSection teams={scopedTeams} matches={matches} isTeamOfficial={isTeamOfficial} />}
-        {section === 'fanwall' && <FanWallSection teams={scopedTeams} />}
+        {section === 'fanwall' && <FanWallSection teams={scopedTeams} teamMode={isTeamOfficial} />}
         {section === 'notifications' && <NotificationsSection notifications={notifications} teams={scopedTeams} matches={matches} contests={contests} isTeamOfficial={isTeamOfficial} />}
         {section === 'fanspaces' && <FanSpacesSection />}
         {section === 'checkin' && <FanCheckInPanel />}
