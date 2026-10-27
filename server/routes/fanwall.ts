@@ -266,7 +266,8 @@ fanWallRouter.post('/admin/fanwall/:id/feature', requireAdmin('community'), wrap
   const p = store.fanPosts.find(x => x.id === req.params.id);
   if (!p) return bad(res, 'Post not found', 404);
   if (p.status !== 'live') return bad(res, 'Approve the post first');
-  if (!canManageTeam(admin, p.teamId) && p.teamId) return bad(res, 'You can only pick your own team’s fans', 403);
+  // Fan of the Day is the league's award (one a day, with points): picked by league admins only.
+  if (!canManageTeam(admin, '__league__')) return bad(res, 'Fan of the Day is picked by the league organisers', 403);
   const day = dubaiDay();
   const points = Math.min(1000, Math.max(0, Math.round(num(req.body?.points, store.settings.fanOfTheDayPoints ?? 100))));
   const note = str(req.body?.note, 200);

@@ -11,7 +11,7 @@ type Status = 'pending' | 'reported' | 'live' | 'hidden';
  * review). Picking a Fan of the Day gives the fan points and notifies them; picking another post the
  * same day moves the title and the points.
  */
-export const FanWallSection: React.FC<{ teams: Team[] }> = ({ teams }) => {
+export const FanWallSection: React.FC<{ teams: Team[]; /** Team portal: moderation only (Fan of the Day is the league's pick). */ teamMode?: boolean }> = ({ teams, teamMode }) => {
   const [status, setStatus] = useState<Status>('pending');
   const [data, setData] = useState<Awaited<ReturnType<typeof api.getAdminFanWall>> | null>(null);
   const [feature, setFeature] = useState<{ post: FanPostView; points: string; note: string } | null>(null);
@@ -55,7 +55,7 @@ export const FanWallSection: React.FC<{ teams: Team[] }> = ({ teams }) => {
         description="Approve fans' photos, deal with reports, and pick a Fan of the Day. What waits for review, and how many points Fan of the Day is worth, are set in Settings."
       />
       <Notice notice={notice} onClose={() => setNotice(null)} />
-      <Card className="p-4 flex flex-wrap items-center gap-3">
+      {!teamMode && <Card className="p-4 flex flex-wrap items-center gap-3">
         <Trophy className="w-5 h-5 text-amber-400" />
         {data?.today ? (
           <p className="text-sm text-slate-200">
@@ -64,7 +64,7 @@ export const FanWallSection: React.FC<{ teams: Team[] }> = ({ teams }) => {
         ) : (
           <p className="text-sm text-slate-300">No Fan of the Day yet today. Open "On the wall" and pick one.</p>
         )}
-      </Card>
+      </Card>}
       <div className="flex flex-wrap gap-2">
         {tabs.map(([id, label, n]) => (
           <button
@@ -112,7 +112,7 @@ export const FanWallSection: React.FC<{ teams: Team[] }> = ({ teams }) => {
                       Keep (clear reports)
                     </Button>
                   )}
-                  {p.status === 'live' && (
+                  {p.status === 'live' && !teamMode && (
                     <Button size="sm" variant="primary" icon={<Trophy className="w-4 h-4" />} onClick={() => setFeature({ post: p, points: String(data.fanOfTheDayPoints), note: '' })}>
                       Fan of the Day
                     </Button>

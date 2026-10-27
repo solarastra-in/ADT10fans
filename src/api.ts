@@ -1,4 +1,7 @@
 import type {
+  TeamInviteView,
+  TeamInvitePublic,
+  TeamPortalOverview,
   PublicConfig, User, Team, Player, SocialHandle, FeedItem, Match, MatchDetail, Contest, ContestEntry, PrizeDraw, SystemSettings,
   ForumThread, ForumComment, NotificationItem, AdminUserRecord, AdminRole, AdminPermission, EnvVariableInfo, CricketSyncResult,
   FantasyTeam, DreamXIRules, FantasyMatchSummary, LeaderRow, FantasyLeague, GamesToday, GuessState, SuperOverState, Shot,
@@ -286,6 +289,14 @@ export const api = {
 
   // ----- admin -----
   getAdminDashboard: () => req<any>('/api/admin/dashboard'),
+  // Team portals
+  getTeamInvites: () => req<{ invites: TeamInviteView[] }>('/api/admin/team-invites'),
+  inviteTeamAdmin: (b: { name: string; email: string; teamId: string }) => post<Ok & { invite: TeamInviteView; link: string; message: string }>('/api/admin/team-invites', b),
+  resendTeamInvite: (id: string) => post<Ok & { invite: TeamInviteView; link: string; message: string }>(`/api/admin/team-invites/${encodeURIComponent(id)}/resend`),
+  revokeTeamInvite: (id: string) => del<Ok & { invite: TeamInviteView }>(`/api/admin/team-invites/${encodeURIComponent(id)}`),
+  getTeamInvite: (token: string) => req<TeamInvitePublic>(`/api/team-invites/${encodeURIComponent(token)}`),
+  acceptTeamInvite: (token: string) => post<Ok & { teamId: string; user: User }>(`/api/team-invites/${encodeURIComponent(token)}/accept`),
+  getTeamOverview: (teamId: string) => req<TeamPortalOverview>(`/api/team-portal/${encodeURIComponent(teamId)}/overview`),
   runAgent: (name: string) => post<Ok & { agent: string; result: any }>(`/api/admin/agents/${name}/run`),
   runScheduledJobs: (only?: string) => post<any>(`/api/cron/run${qs({ only })}`),
   decideApproval: (id: string, decision: 'approve' | 'reject') => post<Ok & { approval: Approval }>(`/api/admin/approvals/${id}/decide`, { decision }),

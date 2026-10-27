@@ -51,9 +51,12 @@ export default function AdminPage({ section }: { section?: string }) {
     }
   }, []);
 
+  // Team admins have their own portal.
+  const isTeamAdmin = user?.adminRole === 'team_official';
   useEffect(() => {
-    if (user?.role === 'admin') load();
-  }, [user?.id, user?.role, load]);
+    if (isTeamAdmin) navigate('/team-portal', { replace: true });
+    else if (user?.role === 'admin') load();
+  }, [user?.id, user?.role, isTeamAdmin, load]);
 
   const refreshAll = useCallback(async () => {
     await Promise.all([load(), refreshTeams(), refreshMatches(), refreshUser()]);

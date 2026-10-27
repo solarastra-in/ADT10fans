@@ -56,6 +56,7 @@ In development, email sign-in shows the one-time code on screen, so no mail serv
 | `/rules`, `/privacy`, `/terms` | How points work, privacy notice, terms |
 | `/profile` | Points, badges, Pick XI history, claims, passes, invite link (not indexed) |
 | `/admin` | Admin console (not indexed) |
+| `/team-portal` | A franchise's own portal for its team admins (not indexed) |
 
 Each page gets its own title, description, canonical link, Open Graph tags, a 1200×630 share image drawn by the server (`/og/…`, no player photos), breadcrumbs and structured data: SportsEvent (with location, teams and status), SportsTeam and SportsOrganization, ProfilePage and Person with `sameAs` links to the player's verified profiles, VideoObject, DiscussionForumPosting. `/sitemap.xml` lists pages with their real last-change dates and images; `/robots.txt` keeps crawlers out of `/api/admin/` and `/api/cron/` only, so the data pages render fully for Google. API responses carry `X-Robots-Tag: noindex`. Unknown addresses return a real 404.
 
@@ -65,7 +66,9 @@ Each page gets its own title, description, canonical link, Open Graph tags, a 12
 
 - **Super admins:** the owner account, everyone in `ADMIN_EMAILS`, and admins added with the super admin role. They can add other admins.
 - **Other admin roles:** each gets the sections its permissions cover.
-- **Team officials:** manage only their own team's page, social accounts, posts, forum threads, polls and fan notifications.
+- **Team admins (team officials):** run only their own franchise in its **team portal** (`/team-portal`): team page, squad and player details, official accounts, posts, prizes for their fans (and fulfilling those claims), polls, forum, fan wall moderation and messages to their fans. They never see league-wide figures, settings, other teams, fans' points, prize draws or Fan of the Day.
+
+**Onboarding a team admin:** Admin → Admins & RBAC → *Onboard a team admin*: enter their name, email and team, then send. They get an email with a link (valid 7 days, works once). They sign in with that same email, accept, and land in their team's portal. Without email (SMTP) set up, the link is shown to you once to send yourself. You can resend (a fresh link) or withdraw a pending invitation, and remove a team admin in the list below it. As super admin, open any team's portal from the menu (Team portal) to see what its admins see.
 
 **First steps after deploying:**
 

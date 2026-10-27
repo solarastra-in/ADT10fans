@@ -1069,4 +1069,5 @@ export const ar: Record<string, string> = {
   "Team saved": "تم حفظ الفريق",
   "Next to open: {a} vs {b} on {date}. Each match opens at midnight UAE time on the day before match day.": "التالية: {a} ضد {b} في {date}. تُفتح كل مباراة عند منتصف الليل بتوقيت الإمارات في اليوم السابق ليوم المباراة.",
   "Team Tactical Profile & Core Skills": "الملف التكتيكي للفريق والمهارات الأساسية",
+  "Team portal": "بوابة الفريق",
 };

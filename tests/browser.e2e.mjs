@@ -261,6 +261,39 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
     ok(`${w}px admin "${s}" opens without errors and fits`, adm.errors.length === 0 && (await noOverflow(adm.page)), { errors: adm.errors, overflow: await adm.page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]) });
   }
   await adm.ctx.close();
+
+  // 13. Team portal: a super admin invites a team admin, who accepts and runs their team's portal.
+  const inviteEmail = `aces${w}@test.dev`;
+  const sa = await newPage(w, h, A);
+  await go(sa.page, '/admin/admins');
+  const panel = sa.page.locator('[data-testid="team-invites"]');
+  await panel.waitFor();
+  await panel.locator('input').nth(0).fill(`Aces Admin ${w}`);
+  await panel.locator('input[type="email"]').fill(inviteEmail);
+  await panel.locator('select').selectOption('aces');
+  await panel.locator('button[type="submit"]').click();
+  await sa.page.waitForSelector('[data-testid="invite-link"] input');
+  const inviteUrl = await sa.page.locator('[data-testid="invite-link"] input').inputValue();
+  ok(`${w}px super admin sends an invitation and gets its link`, /\/team-invite\/[\w-]{40,}$/.test(inviteUrl) && (await noOverflow(sa.page)));
+  await sa.ctx.close();
+  const invitee = await newPage(w, h, await apiLogin(inviteEmail));
+  await go(invitee.page, new URL(inviteUrl).pathname);
+  await invitee.page.locator('[data-testid="accept-invite"]').click();
+  await invitee.page.waitForSelector('[data-testid="team-portal"]');
+  ok(`${w}px the invited person accepts and lands in the Aces portal`, (await invitee.page.locator('[data-testid="team-portal"] h1').innerText()).includes('Arabian Aces'));
+  await invitee.page.waitForSelector('[data-testid="team-overview"]');
+  const portalSections = await invitee.page.locator('#team-portal-section option').evaluateAll(os => os.map(o => o.value));
+  ok(`${w}px team portal lists its sections`, portalSections.length === 10, portalSections);
+  for (const s of portalSections) {
+    await invitee.page.selectOption('#team-portal-section', s);
+    await invitee.page.waitForTimeout(250);
+    await invitee.page.waitForLoadState('networkidle').catch(() => undefined);
+    ok(`${w}px team portal "${s}" opens without errors and fits`, invitee.errors.length === 0 && (await noOverflow(invitee.page)), { errors: invitee.errors });
+  }
+  await go(invitee.page, '/admin');
+  await invitee.page.waitForSelector('[data-testid="team-portal"]');
+  ok(`${w}px a team admin opening /admin goes to their team portal`, new URL(invitee.page.url()).pathname === '/team-portal');
+  await invitee.ctx.close();
 }
 
 // Right-to-left: Arabic and Urdu lay out correctly on a phone.
