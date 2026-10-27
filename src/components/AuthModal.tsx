@@ -15,7 +15,10 @@ function describeAuthError(e: any, t: (s: string) => string): string {
     case 'auth/network-request-failed':
       return t('Network error. Check your connection and try again.');
     case 'auth/unauthorized-domain':
-      return t('Google sign-in is not enabled for this web address yet. Please use email sign-in.');
+      return t('Domain unauthorized: Please add this domain to your Firebase Console > Authentication > Settings > Authorized domains.');
+    case 'auth/operation-not-allowed':
+    case 'auth/configuration-not-found':
+      return t('Google sign-in is not enabled in Firebase Console. Please enable Google under Authentication > Sign-in method in project adt10-fans-club.');
     case 'auth/too-many-requests':
       return t('Too many attempts. Please wait a moment and try again.');
     default:
