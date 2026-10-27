@@ -503,18 +503,18 @@ export const TieredRewardDashboard: React.FC<TieredRewardDashboardProps> = ({
           </button>
         </div>
 
-        {/* Highlight 3: Full-Size Signed Willow Bats */}
+        {/* Highlight 3: Miniature Signed Bats of International Players */}
         <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between gap-2 mb-2">
               <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-purple-400 bg-purple-400/10 px-2 py-0.5 rounded-md border border-purple-400/20">
-                <Award className="w-3 h-3" /> Tier 4 & 5 · 1,100+ pts
+                <Award className="w-3 h-3" /> Tier 4 & 5 · 1,000+ pts
               </span>
-              <span className="text-[11px] text-slate-400 font-medium">Monster Blades</span>
+              <span className="text-[11px] text-slate-400 font-medium">International Icons</span>
             </div>
-            <h4 className="text-sm font-black text-white">Full-Size Signed Bats</h4>
+            <h4 className="text-sm font-black text-white">Miniature Signed Bats of International Players</h4>
             <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-              Grade-1 willow commemorative T10 bats hand-signed by Moeen, Dre Russ, and Liam, plus powerhouse bat + jersey bundles.
+              Authentic miniature display bats hand-signed by international icons Moeen Ali, Dre Russ, and Liam Livingstone with Certificate of Authenticity.
             </p>
           </div>
           <button
@@ -522,7 +522,7 @@ export const TieredRewardDashboard: React.FC<TieredRewardDashboardProps> = ({
             onClick={() => onSelectCategory('bats')}
             className="mt-3 text-xs font-bold text-purple-400 hover:text-purple-300 flex items-center gap-1 transition-colors cursor-pointer self-start"
           >
-            Filter Cricket Bats ({tierItemCounts['tier-4'] || 3}) <ChevronRight className="w-3.5 h-3.5" />
+            Filter Miniature Bats ({tierItemCounts['tier-4'] || 3}) <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
