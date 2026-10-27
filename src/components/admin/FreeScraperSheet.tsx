@@ -13,6 +13,14 @@ interface FreeScraperSheetProps {
   onRefreshAll: () => Promise<void>;
 }
 
+/** A scraped team as text: the scraper sends objects, but older responses used plain names. */
+function teamOf(t: unknown): { name: string; short: string; score: string; overs: string } {
+  if (typeof t === 'string') return { name: t, short: t, score: '', overs: '' };
+  const o = (t && typeof t === 'object' ? t : {}) as Record<string, unknown>;
+  const name = String(o.name || '—');
+  return { name, short: String(o.shortName || name), score: o.score ? String(o.score) : '', overs: o.overs ? String(o.overs) : '' };
+}
+
 export const FreeScraperSheet: React.FC<FreeScraperSheetProps> = ({
   open,
   onClose,
@@ -215,12 +223,15 @@ export const FreeScraperSheet: React.FC<FreeScraperSheetProps> = ({
             <div className="grid grid-cols-1 gap-3 max-h-[360px] overflow-y-auto pr-1">
               {liveData.matches.map((item: any, idx: number) => {
                 const isSelected = syncingId === item.id;
+                // Each team arrives as { name, shortName?, score?, overs? } (server/scrapers/types.ts).
+                const a = teamOf(item.teamA);
+                const b = teamOf(item.teamB);
                 return (
                   <Card key={`${item.provider}-${item.id || idx}`} className="p-3.5 bg-slate-900/80 border-slate-800 hover:border-slate-700 space-y-2">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <Chip tone={item.status === 'live' ? 'red' : item.status === 'completed' ? 'green' : 'amber'}>
-                          {item.status.toUpperCase()}
+                          {String(item.status || 'unknown').toUpperCase()}
                         </Chip>
                         <Chip tone={item.provider === 'cricbuzz' ? 'green' : 'blue'}>
                           {item.provider}
@@ -237,11 +248,11 @@ export const FreeScraperSheet: React.FC<FreeScraperSheetProps> = ({
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <div className="text-sm font-black text-white">
-                          {item.teamA} <span className="text-slate-500 font-normal">vs</span> {item.teamB}
+                          {a.name} <span className="text-slate-500 font-normal">vs</span> {b.name}
                         </div>
-                        {(item.scoreA || item.scoreB) && (
+                        {(a.score || b.score) && (
                           <div className="text-xs font-mono text-amber-400 mt-0.5">
-                            {item.teamA}: {item.scoreA || '—'} {item.oversA ? `(${item.oversA} ov)` : ''} · {item.teamB}: {item.scoreB || '—'} {item.oversB ? `(${item.oversB} ov)` : ''}
+                            {a.short}: {a.score || '—'} {a.overs ? `(${a.overs} ov)` : ''} · {b.short}: {b.score || '—'} {b.overs ? `(${b.overs} ov)` : ''}
                           </div>
                         )}
                         {item.statusText && (
