@@ -31,6 +31,7 @@ function loadLocalBackup(): string | null {
 }
 
 let globalWriteQuotaExceededUntil = 0;
+let permissionDeniedUntil = 0;
 export const isWriteQuotaExceeded = () => Date.now() < globalWriteQuotaExceededUntil;
 
 export class FirestoreSdkBackend implements StorageBackend {
@@ -40,7 +41,7 @@ export class FirestoreSdkBackend implements StorageBackend {
   private readonly firestore: Firestore;
   private readonly collectionName: string;
   private lastChunks = 0;
-  private currentLocalVersion = 'v1';
+  private currentLocalVersion = 'backup-v1';
 
   constructor(private readonly cfg: ReturnType<typeof firebaseAppConfig>, collectionName = 'adt10_store') {
     this.collectionName = collectionName;
@@ -55,15 +56,21 @@ export class FirestoreSdkBackend implements StorageBackend {
   }
 
   async currentVersion(): Promise<string | null> {
-    if (Date.now() < globalWriteQuotaExceededUntil) {
+    if (Date.now() < globalWriteQuotaExceededUntil || Date.now() < permissionDeniedUntil) {
       return this.currentLocalVersion;
     }
     try {
       const metaRef = doc(this.firestore, this.collectionName, 'meta');
-      const snap = await getDoc(metaRef);
+      const snap = await Promise.race([
+        getDoc(metaRef),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000)),
+      ]);
       if (!snap.exists()) return this.currentLocalVersion;
       return String(snap.data()?.version || snap.data()?.updatedAt || '');
     } catch (err: any) {
+      if (err?.code === 'permission-denied' || String(err?.message).includes('Missing or insufficient permissions')) {
+        permissionDeniedUntil = Date.now() + 60 * 1000;
+      }
       return this.currentLocalVersion;
     }
   }
@@ -71,7 +78,10 @@ export class FirestoreSdkBackend implements StorageBackend {
   async load(): Promise<LoadResult> {
     try {
       const metaRef = doc(this.firestore, this.collectionName, 'meta');
-      const metaSnap = await getDoc(metaRef);
+      const metaSnap = await Promise.race([
+        getDoc(metaRef),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Firestore load timeout')), 3500)),
+      ]);
       if (!metaSnap.exists()) {
         const backup = loadLocalBackup();
         if (backup) return { data: backup, version: 'backup-v1' };
@@ -96,6 +106,9 @@ export class FirestoreSdkBackend implements StorageBackend {
       saveLocalBackup(joined);
       return { data: joined, version };
     } catch (err: any) {
+      if (err?.code === 'permission-denied' || String(err?.message).includes('Missing or insufficient permissions')) {
+        permissionDeniedUntil = Date.now() + 60 * 1000;
+      }
       console.warn('[FirestoreSdkBackend] cloud load fallback to snapshot:', err.message);
       const backup = loadLocalBackup();
       if (backup) {
@@ -107,6 +120,11 @@ export class FirestoreSdkBackend implements StorageBackend {
   }
 
   async save(data: string, expectedVersion: string | null): Promise<string> {
+    const currentV = await this.currentVersion().catch(() => null);
+    if (expectedVersion && currentV && currentV !== expectedVersion) {
+      throw new ConflictError();
+    }
+
     const chunks = FirestoreBackend.split(data);
     const newVersion = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
     this.currentLocalVersion = newVersion;
@@ -114,14 +132,9 @@ export class FirestoreSdkBackend implements StorageBackend {
     // Always mirror to local backup for rock-solid persistence regardless of cloud quota
     saveLocalBackup(data);
 
-    if (Date.now() < globalWriteQuotaExceededUntil) {
+    if (Date.now() < globalWriteQuotaExceededUntil || Date.now() < permissionDeniedUntil) {
       this.lastChunks = chunks.length;
       return newVersion;
-    }
-
-    const currentV = await this.currentVersion().catch(() => null);
-    if (expectedVersion && currentV && currentV !== expectedVersion) {
-      throw new ConflictError();
     }
     const batch = writeBatch(this.firestore);
 
@@ -146,12 +159,23 @@ export class FirestoreSdkBackend implements StorageBackend {
     }
 
     try {
-      await batch.commit();
+      await Promise.race([
+        batch.commit(),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('commit timeout')), 15000)),
+      ]);
       this.lastChunks = chunks.length;
       return newVersion;
     } catch (err: any) {
-      if (err?.code === 'resource-exhausted' || String(err?.message).includes('RESOURCE_EXHAUSTED')) {
-        globalWriteQuotaExceededUntil = Date.now() + 24 * 60 * 60 * 1000;
+      if (
+        err?.code === 'resource-exhausted' ||
+        err?.code === 'permission-denied' ||
+        String(err?.message).includes('PERMISSION_DENIED') ||
+        String(err?.message).includes('RESOURCE_EXHAUSTED') ||
+        String(err?.message).includes('timeout') ||
+        String(err?.message).includes('Missing or insufficient permissions')
+      ) {
+        permissionDeniedUntil = Date.now() + 60 * 1000;
+        console.warn('[FirestoreSdkBackend] Cloud write held in local backup:', err?.message || err);
         this.lastChunks = chunks.length;
         return newVersion;
       }
