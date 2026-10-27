@@ -14,6 +14,7 @@ import { PrizesSection } from './admin/PrizesSection';
 import { DrawsSection } from './admin/DrawsSection';
 import { ForumSection } from './admin/ForumSection';
 import { PollsSection } from './admin/PollsSection';
+import { FanWallSection } from './admin/FanWallSection';
 import { NotificationsSection } from './admin/NotificationsSection';
 import { FanSpacesSection } from './admin/FanSpacesSection';
 import { FanCheckInPanel } from './admin/FanCheckInPanel';
@@ -143,6 +144,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = props => {
         {section === 'draws' && <DrawsSection draws={draws} teams={teams} onRefreshAll={onRefreshAll} />}
         {section === 'forum' && <ForumSection teams={scopedTeams} />}
         {section === 'polls' && <PollsSection teams={scopedTeams} matches={matches} isTeamOfficial={isTeamOfficial} />}
+        {section === 'fanwall' && <FanWallSection teams={scopedTeams} />}
         {section === 'notifications' && <NotificationsSection notifications={notifications} teams={scopedTeams} matches={matches} contests={contests} isTeamOfficial={isTeamOfficial} />}
         {section === 'fanspaces' && <FanSpacesSection />}
         {section === 'checkin' && <FanCheckInPanel />}

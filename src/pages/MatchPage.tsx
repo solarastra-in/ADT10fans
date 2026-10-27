@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ExternalLink, Globe, MapPin, MessageSquarePlus, Trophy, Target, Users } from 'lucide-react';
 import { api } from '../api';
 import { useApp, useLoad } from '../state';
 import { useT } from '../i18n';
 import { Link, usePageMeta } from '../router';
+import { playerLinkProps } from '../components/PlayerCard';
 import { ButtonLink, Card, Countdown, ErrorBox, PageHeader, SectionTitle, Spinner, Tabs, TeamBadge, cx, useFormat, ROLE_SHORT } from '../components/ui';
 import { ScoreSourceLabel, StatusPill } from '../components/matches';
 import { YouTubePlayer } from '../components/social';
@@ -86,49 +87,6 @@ export default function MatchPage({ id }: { id: string }) {
   const b = teamById(m?.teamB);
   usePageMeta(m ? `${a?.name} vs ${b?.name}, ${t('Match {n}', { n: m.matchNo })}` : null, m ? `${f.dateTime(m.startsAt)} · ${m.venue}${m.result ? ` · ${m.result}` : ''}` : undefined, config?.brandName);
 
-  // SEO: Embed Schema.org SportsEvent LD+JSON for Google Search rich match snippet
-  useEffect(() => {
-    if (!m || !a || !b) return;
-    const scriptId = `schema-match-${m.id}`;
-    let script = document.getElementById(scriptId) as HTMLScriptElement | null;
-    if (!script) {
-      script = document.createElement('script');
-      script.id = scriptId;
-      script.type = 'application/ld+json';
-      document.head.appendChild(script);
-    }
-    const schemaData = {
-      '@context': 'https://schema.org',
-      '@type': 'SportsEvent',
-      name: `${a.name} vs ${b.name} - Abu Dhabi T10 2026 (Match #${m.matchNo})`,
-      sport: 'Cricket',
-      startDate: m.startsAt,
-      eventStatus: m.status === 'live' ? 'https://schema.org/EventLive' : m.status === 'completed' ? 'https://schema.org/EventMovedOnline' : 'https://schema.org/EventScheduled',
-      location: {
-        '@type': 'Place',
-        name: m.venue || 'Zayed Cricket Stadium',
-        address: {
-          '@type': 'PostalAddress',
-          addressLocality: 'Abu Dhabi',
-          addressCountry: 'UAE',
-        },
-      },
-      competitor: [
-        { '@type': 'SportsTeam', name: a.name, sport: 'Cricket' },
-        { '@type': 'SportsTeam', name: b.name, sport: 'Cricket' },
-      ],
-      sameAs: [
-        'https://www.cricbuzz.com/cricket-series/13307/abu-dhabi-t10-league-2026',
-        ...(m.externalId ? [`https://www.cricbuzz.com/live-cricket-scores/${m.externalId}`] : []),
-      ],
-    };
-    script.textContent = JSON.stringify(schemaData);
-
-    return () => {
-      const el = document.getElementById(scriptId);
-      if (el) el.remove();
-    };
-  }, [m?.id, m?.startsAt, m?.status, m?.venue, m?.externalId, a?.name, b?.name]);
   const innings = useMemo(() => [m?.scorecard?.innings1, m?.scorecard?.innings2].filter(Boolean) as InningsScorecard[], [m]);
   const [tab, setTab] = useState('0');
 
@@ -231,14 +189,14 @@ export default function MatchPage({ id }: { id: string }) {
           <SectionTitle title={t('Pick XI points')} action={<Link to="/rules#dream-xi" className="text-xs font-bold text-amber-400">{t('How points work')}</Link>} />
           <Card className="divide-y divide-slate-800">
             {data.fantasy.playerPoints.slice(0, 15).map(p => (
-              <Link key={p.playerId} to={`/players/${p.playerId}`} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-800/40">
+              <a key={p.playerId} {...playerLinkProps(p.playerId)} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-800/40">
                 <span className="w-2 h-2 rounded-full" style={{ background: teamById(p.teamId)?.color }} />
                 <span className="flex-1 min-w-0">
                   <span className="block text-sm font-bold text-white truncate">{p.name}</span>
                   <span className="block text-[11px] text-slate-500 truncate">{p.detail}</span>
                 </span>
                 <span className="font-black text-amber-400 tabular-nums">{p.points}</span>
-              </Link>
+              </a>
             ))}
           </Card>
         </section>
@@ -296,9 +254,9 @@ export default function MatchPage({ id }: { id: string }) {
                 <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1">
                   {team.squad.map(p => (
                     <li key={p.id} className="text-sm">
-                      <Link to={`/players/${p.id}`} className={cx('hover:text-amber-300', p.isIcon ? 'text-amber-200 font-bold' : 'text-slate-300')}>
+                      <a {...playerLinkProps(p.id)} className={cx('hover:text-amber-300', p.isIcon ? 'text-amber-200 font-bold' : 'text-slate-300')}>
                         {p.name}
-                      </Link>{' '}
+                      </a>{' '}
                       <span className="text-[10px] text-slate-500">{ROLE_SHORT[p.role]}</span>
                     </li>
                   ))}

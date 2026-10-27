@@ -1,4 +1,5 @@
-// A small stand-in for the Firestore REST API (batchGet with readTime, commit with preconditions)
+// A small stand-in for the Firestore REST API (batchGet with readTime, commit with preconditions and
+// REQUEST_TIME transforms, runQuery with one GREATER_THAN filter)
 // plus a Google OAuth token endpoint, for tests/storage.e2e.mjs. Keeps every document version so
 // reads at a readTime see a consistent snapshot, as Firestore does.
 import http from 'node:http';
@@ -12,7 +13,7 @@ export function startFakeFirestore() {
     const v = (docs.get(name) || []).filter(x => x.t <= us).pop();
     return v && v.fields ? v : null;
   };
-  const stats = { commits: 0, conflicts: 0, tokens: 0 };
+  const stats = { commits: 0, conflicts: 0, tokens: 0, lastCommitBytes: 0, maxCommitBytes: 0, queries: 0 };
   const options = { publicRead: false };
   const server = http.createServer((req, res) => {
     const chunks = [];
@@ -34,6 +35,26 @@ export function startFakeFirestore() {
           return v ? { found: { name, fields: v.fields, updateTime: iso(v.t) }, readTime: iso(now) } : { missing: name, readTime: iso(now) };
         }));
       }
+      if (req.url.endsWith(':runQuery')) {
+        stats.queries++;
+        const root = req.url.replace(/^\/v1\//, '').replace(/:runQuery$/, '');
+        const q = json.structuredQuery || {};
+        const col = q.from?.[0]?.collectionId;
+        const f = q.where?.fieldFilter;
+        const rows = [];
+        for (const name of docs.keys()) {
+          const rest = name.startsWith(`${root}/${col}/`) ? name.slice(root.length + col.length + 2) : null;
+          if (rest === null || rest.includes('/')) continue;
+          const v = at(name, tick);
+          if (!v) continue;
+          if (f) {
+            const have = v.fields[f.field.fieldPath]?.timestampValue;
+            if (!have || !(f.op === 'GREATER_THAN' && parse(have) > parse(f.value.timestampValue))) continue;
+          }
+          rows.push({ document: { name, fields: v.fields, updateTime: iso(v.t) }, readTime: iso(tick) });
+        }
+        return send(200, rows.length ? rows : [{ readTime: iso(tick) }]);
+      }
       if (req.url.endsWith(':commit')) {
         for (const w of json.writes) {
           const name = w.update ? w.update.name : w.delete;
@@ -43,10 +64,15 @@ export function startFakeFirestore() {
           if (pre && pre.updateTime && (!cur || iso(cur.t) !== pre.updateTime)) { stats.conflicts++; return send(400, { error: { status: 'FAILED_PRECONDITION' } }); }
         }
         tick += 1000 + Math.floor(Math.random() * 500);
+        const bytes = body.length;
+        stats.lastCommitBytes = bytes;
+        stats.maxCommitBytes = Math.max(stats.maxCommitBytes, bytes);
         for (const w of json.writes) {
           const name = w.update ? w.update.name : w.delete;
           if (!docs.has(name)) docs.set(name, []);
-          docs.get(name).push({ t: tick, fields: w.update ? w.update.fields : null });
+          let fields = w.update ? { ...w.update.fields } : null;
+          for (const t of w.updateTransforms || []) if (t.setToServerValue === 'REQUEST_TIME') fields[t.fieldPath] = { timestampValue: iso(tick) };
+          docs.get(name).push({ t: tick, fields });
           const bytes = JSON.stringify(w.update?.fields || {}).length;
           if (bytes > 1_048_576) return send(400, { error: { status: 'INVALID_ARGUMENT', message: 'document too large' } });
         }
@@ -57,5 +83,11 @@ export function startFakeFirestore() {
     });
   });
   const latest = name => at(name, tick);
-  return new Promise(resolve => server.listen(0, () => resolve({ server, port: server.address().port, stats, latest, docs, options })));
+  /** Writes a document directly (to set up a store in an older layout before the servers start). */
+  const put = (name, fields) => {
+    tick += 1000;
+    if (!docs.has(name)) docs.set(name, []);
+    docs.get(name).push({ t: tick, fields });
+  };
+  return new Promise(resolve => server.listen(0, () => resolve({ server, port: server.address().port, stats, latest, docs, options, put })));
 }

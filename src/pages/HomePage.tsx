@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { ArrowRight, CalendarDays, Flame, Gamepad2, Gift, MessageSquare, Target, Trophy, Users, Zap } from 'lucide-react';
+import { ArrowRight, CalendarDays, Camera, Flame, Gamepad2, Gift, MessageSquare, Target, Trophy, Users, Zap } from 'lucide-react';
 import { api } from '../api';
 import { useApp, useLoad } from '../state';
 import { useT } from '../i18n';
 import { Link, usePageMeta } from '../router';
 import { Button, ButtonLink, Card, Countdown, EmptyState, SectionTitle, TeamBadge, cx, useFormat } from '../components/ui';
+import { FanOfTheDayHero } from '../components/fanwall';
 import { MatchCard, sortMatches } from '../components/matches';
 import { FeedCard } from '../components/social';
 import { InviteCard } from '../components/InviteCard';
@@ -20,6 +21,7 @@ export default function HomePage() {
   const posts = useLoad(() => api.getFeeds({ category: 'social', limit: 6 }), []);
   const threads = useLoad(() => api.getForumThreads({ sort: 'active' }), []);
   const board = useLoad(() => api.getLeaderboard(), [user?.points]);
+  const wall = useLoad(() => api.getFanWall(), []);
   const [checking, setChecking] = useState(false);
   const seasonStarted = config ? Date.now() >= +new Date(`${config.seasonStart}T00:00:00+04:00`) : false;
   const checkedToday = user?.lastCheckin && new Date(user.lastCheckin).toLocaleDateString('en-CA', { timeZone: 'Asia/Dubai' }) === new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Dubai' });
@@ -165,7 +167,7 @@ export default function HomePage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {[
             ['/fantasy', Trophy, t('Pick XI'), t('Pick 11 for every match')],
-            ['/games', Gamepad2, t('Daily games'), t('Guess the Player · Super Over')],
+            ['/games', Gamepad2, t('Daily games'), t('Connections · Grid · Stat Wars')],
             ['/contests', Target, t('Predictions'), config?.stats.openContests ? t('{n} open now', { n: config.stats.openContests }) : t('Call the result')],
             ['/prizes', Gift, t('Prizes'), config?.stats.prizes || config?.stats.openDraws ? t('Spend your points') : t('Rewards and draws')],
           ].map(([to, Icon, title, sub]: any) => (
@@ -176,6 +178,21 @@ export default function HomePage() {
             </Link>
           ))}
         </div>
+      </section>
+
+      <section>
+        <SectionTitle title={t('Fan wall')} action={<Link to="/fanwall" className="text-sm font-bold text-amber-400">{t('Open the wall')}</Link>} />
+        {wall.data?.fansOfTheDay[0]?.post ? (
+          <FanOfTheDayHero fotd={wall.data.fansOfTheDay[0]} />
+        ) : (
+          <Link to="/fanwall" className="flex items-center gap-4 p-5 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-amber-400/50">
+            <Camera className="w-8 h-8 text-amber-400 shrink-0" />
+            <span>
+              <span className="block font-black text-white">{t('Show how big a fan you are')}</span>
+              <span className="block text-sm text-slate-400">{t('Post your matchday photo. Every day the organisers pick a Fan of the Day.')}</span>
+            </span>
+          </Link>
+        )}
       </section>
 
       {(videos.data?.items.length || 0) > 0 && (

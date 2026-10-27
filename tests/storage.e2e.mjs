@@ -4,6 +4,7 @@
 // Usage: node tests/storage.e2e.mjs <tmpdir> [gcs|firestore]
 import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import { startFakeGcs } from './fake-gcs.mjs';
 import { startFakeFirestore } from './fake-firestore.mjs';
 
@@ -39,18 +40,31 @@ if (MODE === 'firestore') {
     STORE_CHUNK_BYTES: '40000',
   };
 } else {
-  storeEnv = { STORE_BUCKET: 'test-bucket', GCS_ACCESS_TOKEN: 'test-gcs-token', GCS_API_BASE: `http://127.0.0.1:${fake.port}` };
+  storeEnv = { STORE_BACKEND: 'gcs', STORE_BUCKET: 'test-bucket', GCS_ACCESS_TOKEN: 'test-gcs-token', GCS_API_BASE: `http://127.0.0.1:${fake.port}` };
 }
-// The stored JSON, read back from the fake service.
+// The stored JSON, read back from the fake service. Firestore: the store is split into shards
+// (adt10_store_shards/<shard> + adt10_store_chunks/<shard>~<i>); each shard holds one key or part of one.
+const appCfg = JSON.parse(fs.readFileSync(new URL('../firebase-applet-config.json', import.meta.url), 'utf8'));
+const ROOT = `projects/${appCfg.projectId}/databases/${appCfg.firestoreDatabaseId}/documents`;
 function storedJson() {
   if (MODE !== 'firestore') return JSON.parse([...fake.objects.values()][0].data);
-  const names = [...fake.docs.keys()];
-  const meta = names.find(n => n.endsWith('/meta'));
-  const root = meta.slice(0, -'meta'.length);
-  const count = Number(fake.latest(meta).fields.chunks.integerValue);
-  let text = '';
-  for (let i = 0; i < count; i++) text += fake.latest(`${root}c${String(i).padStart(4, '0')}`).fields.d.stringValue;
-  return { json: JSON.parse(text), count };
+  const metas = [...fake.docs.keys()].filter(n => n.startsWith(`${ROOT}/adt10_store_shards/`)).map(n => [n, fake.latest(n)]).filter(([, v]) => v && !v.fields.deleted?.booleanValue);
+  const json = {};
+  for (const [name, v] of metas) {
+    const shard = name.split('/').pop();
+    let text = '';
+    for (let i = 0; i < Number(v.fields.chunks.integerValue); i++) text += fake.latest(`${ROOT}/adt10_store_chunks/${shard}~${i}`).fields.d.stringValue;
+    const p = JSON.parse(text);
+    if (p.items) (json[p.key] ||= []).push(...p.items);
+    else json[p.key] = p.value;
+  }
+  return { json, count: metas.length };
+}
+// Firestore: start from a store in the older single-document layout, which the servers must move into shards.
+if (MODE === 'firestore') {
+  const legacy = { schemaVersion: 5, forumThreads: [{ id: 'thread-legacy', title: 'Written before the move to shards', content: 'Kept', category: 'general', userId: 'usr_old', userName: 'Old Fan', userAvatar: '', upvotes: 0, upvotedBy: [], commentsCount: 0, createdAt: '2026-10-01T00:00:00.000Z', lastActivityAt: '2026-10-01T00:00:00.000Z' }], users: [{ id: 'usr_old', email: 'old@test.dev', name: 'Old Fan', points: 40, teamId: 'bulls', badges: [], streak: 0, createdAt: '2026-10-01T00:00:00.000Z' }] };
+  fake.put(`${ROOT}/adt10_store/meta`, { chunks: { integerValue: '1' } });
+  fake.put(`${ROOT}/adt10_store/c0000`, { d: { stringValue: JSON.stringify(legacy) } });
 }
 async function startServer(port) {
   const p = spawn('npx', ['tsx', 'server.ts'], {
@@ -80,6 +94,9 @@ const call = async (srv, method, path, body, token, ip = '10.1.1.1') => {
 };
 
 const health = await call(A, 'GET', '/api/health');
+if (MODE === 'firestore') {
+  ok('a store in the older single-document layout is moved into shards', (await call(B, 'GET', '/api/forum/threads/thread-legacy')).json.thread?.title === 'Written before the move to shards');
+}
 ok(`server uses the shared ${MODE} store`, health.json.storage === MODE);
 ok('both instances see the seeded teams', (await call(A, 'GET', '/api/teams')).json.teams.length === 6 && (await call(B, 'GET', '/api/teams')).json.teams.length === 6);
 ok('seeding happened once', MODE === 'firestore' ? fake.stats.commits >= 1 && Boolean(storedJson().json.teams.length === 6) : gcs.objects.size === 1);
@@ -113,6 +130,12 @@ const storedRaw = storedJson();
 const stored = MODE === 'firestore' ? storedRaw.json : storedRaw;
 if (MODE === 'firestore') ok('the store is split across several Firestore documents', storedRaw.count > 1, storedRaw.count);
 ok('the stored object has every reply and check-in', stored.forumComments.length === 30 && stored.users.filter(u => u.lastCheckin).length === 6);
+if (MODE === 'firestore') {
+  // A single change sends only the shards it touched, not the whole store.
+  const total = JSON.stringify(stored).length;
+  await call(A, 'POST', `/api/forum/threads/${T}/comments`, { content: 'one more' }, tokens[0], '10.6.0.1');
+  ok('a reply writes a small part of the store, not all of it', fake.stats.lastCommitBytes < total / 4, { commit: fake.stats.lastCommitBytes, store: total });
+}
 const pts = (await call(B, 'GET', '/api/me', null, tokens[3])).json.user.points;
 ok('points from both servers add up (5 replies x5 + check-in 10)', pts === 35, pts);
 // A key saved in the Admin console on one instance applies on the other (no environment variables).

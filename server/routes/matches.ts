@@ -70,15 +70,19 @@ export function resultNotificationFor(match: Match) {
 
 /** What happens when a match is first saved as completed: result push, Pick XI scoring, personal results. */
 export async function onMatchCompleted(matchId: string, notify = true) {
-  const m = db.get().matches.find(x => x.id === matchId);
-  if (!m) return { notification: undefined, fantasy: null };
+  // Claim the result notification in a short write, so it goes out once even with several servers.
+  const claim = await db.mutate(store => {
+    const m = store.matches.find(x => x.id === matchId);
+    if (!m) return null;
+    const key = `match-result:${m.id}`;
+    const send = notify && !store.jobLog[key];
+    if (send) store.jobLog[key] = new Date().toISOString();
+    return { input: send ? resultNotificationFor(m) : null };
+  });
+  if (!claim) return { notification: undefined, fantasy: null };
   let notification: NotificationItem | undefined;
-  const key = `match-result:${m.id}`;
-  if (notify && !db.get().jobLog[key]) {
-    db.get().jobLog[key] = new Date().toISOString();
-    notification = await dispatchNotification(resultNotificationFor(m));
-  }
-  const fantasy = await afterMatchCompleted(m.id);
+  if (claim.input) notification = await dispatchNotification(claim.input);
+  const fantasy = await afterMatchCompleted(matchId);
   return { notification, fantasy };
 }
 

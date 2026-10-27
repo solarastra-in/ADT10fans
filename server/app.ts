@@ -18,7 +18,9 @@ import { notificationsRouter } from './routes/notifications';
 import { fanSpacesRouter } from './routes/fanspaces';
 import { adminRouter } from './routes/admin';
 import { scraperRouter } from './routes/scraper';
+import { fanWallRouter, serveLocalPhoto } from './routes/fanwall';
 import { injectIntoTemplate, renderPage, robotsTxt, sitemapXml } from './seo';
+import { ogPng, type OgKind } from './ogImage';
 
 export const app = express();
 
@@ -38,7 +40,28 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     res.setHeader('Access-Control-Max-Age', '86400');
     res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Robots-Tag', 'noindex');
     if (req.method === 'OPTIONS') return res.status(204).end();
+  }
+  next();
+});
+
+/**
+ * Public data that is the same for every visitor may be cached by the CDN for a few seconds (the
+ * client reads these without the sign-in header). During a match every open page polls scores, so
+ * this keeps that traffic off the server. Live data is cached briefly; squads and tables longer.
+ */
+const CDN_CACHE: [RegExp, number][] = [
+  [/^\/api\/(matches(\/[^/]+)?|scraper\/live)$/, 5],
+  [/^\/api\/(teams|players\/[^/]+|fans|fantasy\/leaderboard|growth-catalysts)$/, 30],
+];
+app.use((req, res, next) => {
+  if (req.method === 'GET' && !req.headers.authorization) {
+    const hit = CDN_CACHE.find(([re]) => re.test(req.path));
+    if (hit) {
+      res.setHeader('Cache-Control', `public, max-age=0, s-maxage=${hit[1]}, stale-while-revalidate=${hit[1] * 6}`);
+      res.setHeader('Vary', 'Authorization');
+    }
   }
   next();
 });
@@ -54,7 +77,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use('/api', referralCheckMiddleware);
-for (const r of [coreRouter, teamsRouter, feedsRouter, matchesRouter, playRouter, prizesRouter, communityRouter, notificationsRouter, fanSpacesRouter, adminRouter, scraperRouter]) app.use('/api', r);
+for (const r of [coreRouter, teamsRouter, feedsRouter, matchesRouter, playRouter, prizesRouter, communityRouter, notificationsRouter, fanSpacesRouter, adminRouter, scraperRouter, fanWallRouter]) app.use('/api', r);
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
 
 function baseUrl(req: Request) {
@@ -62,6 +85,19 @@ function baseUrl(req: Request) {
 }
 app.get('/robots.txt', (req, res) => res.type('text/plain').send(robotsTxt(baseUrl(req))));
 app.get('/sitemap.xml', (req, res) => res.type('application/xml').send(sitemapXml(db.get(), baseUrl(req))));
+
+// Fan wall photos stored on this server's disk (single-server mode; production uses Firebase Storage).
+app.get('/uploads/:file', serveLocalPhoto);
+
+// Share images (1200x630) for players, matches, teams and the site.
+app.get('/og/:kind(player|match|team|site)/:id.png', (req, res) => {
+  const out = ogPng(db.get(), req.params.kind as OgKind, req.params.id);
+  if (out === null) return res.status(404).type('text/plain').send('Not found');
+  if (out === 'no-renderer') return res.redirect(302, '/logos/adt10.png');
+  // Matches change during play; players and teams rarely.
+  res.setHeader('Cache-Control', `public, max-age=300, s-maxage=${req.params.kind === 'match' ? 60 : 3600}, stale-while-revalidate=86400`);
+  res.type('image/png').send(out);
+});
 
 // ---------- pages (server-rendered SEO + the app) ----------
 type TemplateLoader = (url: string) => Promise<string>;

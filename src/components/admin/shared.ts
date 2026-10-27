@@ -14,6 +14,7 @@ export type AdminSectionId =
   | 'fantasy'
   | 'prizes'
   | 'polls'
+  | 'fanwall'
   | 'checkin'
   | 'draws'
   | 'forum'
@@ -41,6 +42,7 @@ export const ADMIN_SECTIONS: { id: AdminSectionId; label: string }[] = [
   { id: 'draws', label: 'Prize draws' },
   { id: 'forum', label: 'Forum & reports' },
   { id: 'polls', label: 'Polls' },
+  { id: 'fanwall', label: 'Fan wall' },
   { id: 'notifications', label: 'Notifications' },
   { id: 'fanspaces', label: 'Fan Spaces' },
   { id: 'checkin', label: 'Door check-in' },
@@ -67,7 +69,7 @@ export function can(user: { isSuperAdmin?: boolean; adminRole?: string; permissi
 
 export const SECTION_PERMISSION: Partial<Record<AdminSectionId, string | 'super'>> = {
   tools: 'teams', env: 'super', admins: 'super', teams: 'teams', squads: 'teams', handles: 'social', feeds: 'social', matches: 'matches',
-  contests: 'contests', fantasy: 'fantasy', prizes: 'prizes', draws: 'draws', forum: 'community', polls: 'community', notifications: 'notifications',
+  contests: 'contests', fantasy: 'fantasy', prizes: 'prizes', draws: 'draws', forum: 'community', polls: 'community', fanwall: 'community', notifications: 'notifications',
   fanspaces: 'fanspaces', checkin: 'fanspaces', growth: 'growth', approvals: 'social', marketing: 'social', settings: 'settings', proposal: 'settings',
 };
 

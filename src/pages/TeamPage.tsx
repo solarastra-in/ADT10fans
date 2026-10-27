@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useApp, useLoad } from '../state';
 import { useT } from '../i18n';
 import { Link, usePageMeta } from '../router';
+import { playerLinkProps } from '../components/PlayerCard';
 import { Avatar, Button, ButtonLink, Card, EmptyState, Notice, Pill, SectionTitle, Spinner, Tabs, TeamBadge, ROLE_LABEL, cx } from '../components/ui';
 import { MatchCard, sortMatches } from '../components/matches';
 import { FeedCard, HandleEmbed, PlatformIcon } from '../components/social';
@@ -24,7 +25,7 @@ export default function TeamPage({ id }: { id: string }) {
   const threads = useLoad(() => api.getForumThreads({ teamId: id }), [id]);
   const polls = useLoad(() => api.getPolls({ teamId: id }), [id]);
   const fans = useLoad(() => api.getLeaderboard(id), [id]);
-  const [tab, setTab] = useState<'analytics' | 'squad' | 'channels' | 'fixtures' | 'fans'>('analytics');
+  const [tabChoice, setTab] = useState<'analytics' | 'squad' | 'channels' | 'fixtures' | 'fans' | null>(null);
   const [platformFilter, setPlatformFilter] = useState<string>('all');
   const [selectedHandleId, setSelectedHandleId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -36,6 +37,9 @@ export default function TeamPage({ id }: { id: string }) {
   }, [feed.loading, postsCount]);
   const [pulling, setPulling] = useState(false);
   const teamMatches = useMemo(() => matches.filter(m => m.teamA === id || m.teamB === id), [matches, id]);
+  // Analytics need real results; until the team has played, the page opens on the squad.
+  const hasResults = teamMatches.some(m => m.status === 'completed' && (m.teamA === id ? m.scoreA : m.scoreB));
+  const tab = tabChoice || (hasResults ? 'analytics' : 'squad');
 
   const verified = (handles.data?.handles || []).filter(h => h.status === 'verified');
   const allPosts = feed.data?.items || [];
@@ -157,9 +161,12 @@ export default function TeamPage({ id }: { id: string }) {
         ]}
       />
 
-      {tab === 'analytics' && (
-        <TeamAnalytics team={team} matches={teamMatches} allTeams={teams} />
-      )}
+      {tab === 'analytics' &&
+        (hasResults ? (
+          <TeamAnalytics team={team} matches={teamMatches} allTeams={teams} />
+        ) : (
+          <EmptyState title={t('Analytics start after the first match')} body={t('Run rates, results and form are worked out from real scorecards once {team} has played.', { team: team.name })} />
+        ))}
 
       {tab === 'squad' && (
         <div className="space-y-5">
@@ -171,20 +178,20 @@ export default function TeamPage({ id }: { id: string }) {
                 <SectionTitle title={`${t(ROLE_LABEL[role] + 's')} (${players.length})`} />
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                   {players.map(p => (
-                    <Link key={p.id} to={`/players/${p.id}`} className="flex items-center gap-3 p-3 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-slate-600" data-testid="player-row">
+                    <a key={p.id} {...playerLinkProps(p.id)} className="flex items-center gap-3 p-3 rounded-2xl bg-slate-900/80 border border-slate-800 hover:border-slate-600" data-testid="player-row">
                       <Avatar name={p.name} src={p.photoUrl} size={44} />
                       <span className="flex-1 min-w-0">
                         <span className="block text-sm font-bold text-white truncate">{p.name}</span>
                         <span className="block text-[11px] text-slate-400 truncate">{[p.battingStyle, p.bowlingStyle].filter(Boolean).join(' · ') || t(ROLE_LABEL[p.role])}</span>
                       </span>
                       {p.category && <Pill tone={p.category === 'Icon' ? 'amber' : 'blue'}>{t(p.category)}</Pill>}
-                    </Link>
+                    </a>
                   ))}
                 </div>
               </section>
             );
           })}
-          <p className="text-xs text-slate-500">{t('Squads as published after the {season} player draft. Player profiles link to Cricbuzz for career statistics.', { season: config?.seasonLabel || '' })}</p>
+          <p className="text-xs text-slate-500">{t('Squads as published after the {season} player draft. Tap a player for their card: season figures, career stats and official accounts.', { season: config?.seasonLabel || '' })}</p>
         </div>
       )}
 

@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { db, NotificationItem, User } from './db';
 import { pushServerConfigured, sendFcm } from './push';
+import { inParallel, runInBackground } from './background';
 
 export interface NotificationInput {
   title: string;
@@ -51,12 +52,14 @@ function recipients(n: NotificationItem): string[] {
 }
 
 /**
- * Stores a notification (shown in the in-app notification centre) and sends it as a push to
- * subscribed devices when FCM is configured. Personal notifications (perUser) are pushed one by one
- * so each fan gets their own text.
+ * Stores a notification (shown in the in-app notification centre) and, when FCM is configured, pushes
+ * it to subscribed devices.
+ *
+ * The notification is stored in one short write. Pushes are sent afterwards in the background, many
+ * at a time, outside the write lock: sending one personal push per fan used to hold every other
+ * change on the server for minutes after a match. Delivery counts are added when sending finishes.
  */
 export async function dispatchNotification(input: NotificationInput): Promise<NotificationItem> {
-  const store = db.get();
   const item: NotificationItem = {
     id: 'notif-' + crypto.randomUUID().replace(/-/g, '').slice(0, 10),
     title: input.title.slice(0, 160),
@@ -76,46 +79,53 @@ export async function dispatchNotification(input: NotificationInput): Promise<No
     delivery: 'in-app',
     readBy: [],
   };
-  const tokens = recipients(item);
-  item.recipientCount = item.targetAudience === 'users' ? (item.userIds || []).length : tokens.length;
-  store.notifications.unshift(item);
-  store.notifications = store.notifications.slice(0, 300);
-  db.save();
+  const sendTo = await db.mutate(store => {
+    const tokens = recipients(item);
+    item.recipientCount = item.targetAudience === 'users' ? (item.userIds || []).length : tokens.length;
+    if (pushServerConfigured() && tokens.length) item.delivery = 'fcm';
+    store.notifications.unshift(item);
+    store.notifications = store.notifications.slice(0, 300);
+    const byToken = new Map(store.fcmTokens.map(t => [t.token, t.userId]));
+    return tokens.map(token => ({ token, userId: byToken.get(token) || null }));
+  });
+  if (item.delivery === 'fcm') void runInBackground(`push ${item.id}`, () => deliver(item, sendTo));
+  return item;
+}
 
-  if (pushServerConfigured() && tokens.length) {
+/** Sends the pushes for a stored notification, then records the counts and disables dead tokens. */
+async function deliver(item: NotificationItem, targets: { token: string; userId: string | null }[]) {
+  const url = typeof item.data?.url === 'string' ? item.data.url : '/';
+  const data = { notificationId: item.id, category: item.category };
+  // Fans with the same text are sent together.
+  const groups = new Map<string, { title: string; body: string; tokens: string[] }>();
+  for (const t of targets) {
+    const personal = item.perUser && t.userId ? item.perUser[t.userId] : undefined;
+    const title = personal?.title || item.title;
+    const body = personal?.body || item.body;
+    const k = `${title}\u0000${body}`;
+    if (!groups.has(k)) groups.set(k, { title, body, tokens: [] });
+    groups.get(k)!.tokens.push(t.token);
+  }
+  let success = 0;
+  let failure = 0;
+  const dead = new Set<string>();
+  await inParallel([...groups.values()], 8, async g => {
     try {
-      const url = typeof item.data?.url === 'string' ? item.data.url : '/';
-      const data = { notificationId: item.id, category: item.category };
-      let success = 0;
-      let failure = 0;
-      const dead: string[] = [];
-      if (item.perUser) {
-        const byToken = new Map(store.fcmTokens.map(t => [t.token, t.userId]));
-        for (const token of tokens) {
-          const uid = byToken.get(token);
-          const personal = uid ? item.perUser[uid] : undefined;
-          const r = await sendFcm([token], { title: personal?.title || item.title, body: personal?.body || item.body, url, data });
-          success += r.success;
-          failure += r.failure;
-          dead.push(...r.invalidTokens);
-        }
-      } else {
-        const r = await sendFcm(tokens, { title: item.title, body: item.body, url, data });
-        success = r.success;
-        failure = r.failure;
-        dead.push(...r.invalidTokens);
-      }
-      item.delivery = 'fcm';
-      item.fcmSuccessCount = success;
-      item.fcmFailureCount = failure;
-      if (dead.length) {
-        const deadSet = new Set(dead);
-        for (const t of store.fcmTokens) if (deadSet.has(t.token)) t.enabled = false;
-      }
-      db.save();
+      const r = await sendFcm(g.tokens, { title: g.title, body: g.body, url, data });
+      success += r.success;
+      failure += r.failure;
+      for (const t of r.invalidTokens) dead.add(t);
     } catch (e: any) {
+      failure += g.tokens.length;
       console.error('[PUSH] send failed:', e?.message);
     }
-  }
-  return item;
+  });
+  await db.mutate(store => {
+    const n = store.notifications.find(x => x.id === item.id);
+    if (n) {
+      n.fcmSuccessCount = success;
+      n.fcmFailureCount = failure;
+    }
+    if (dead.size) for (const t of store.fcmTokens) if (dead.has(t.token)) t.enabled = false;
+  });
 }

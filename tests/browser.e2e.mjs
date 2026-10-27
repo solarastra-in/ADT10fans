@@ -154,7 +154,7 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
   // 5. Build and save a Dream XI.
   await go(fan.page, `/fantasy/${match.id}`);
   const names = ['Max Bryant', 'Matiullah Khan', 'Aneurin Donald', 'Khushdil Shah', 'Mohammad Amir', 'Moeen Ali', 'Amshi de Silva', 'Ibrahim Masood', 'Muhammad Arfan', 'Sam Billings', 'Paul Walter'];
-  for (const n of names) await fan.page.locator('[data-testid="player-pool"] button', { hasText: n }).first().click();
+  for (const n of names) await fan.page.locator('[data-testid="player-pool"] > div', { hasText: n }).first().locator('button[data-player]').click();
   ok(`${w}px Dream XI counters show 11 picked`, /11\s*\/\s*11/.test(await fan.page.locator('[data-testid="xi-counters"]').innerText()));
   await fan.page.locator('[data-testid="xi-next"]').click();
   await fan.page.locator('[data-role="captain"]').first().click();
@@ -217,6 +217,9 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
 
   // 11. Profile: invite link and points.
   await go(fan.page, '/profile');
+  await fan.page.waitForSelector('[data-testid="invite-link"]', { timeout: 15000 }).catch(async () => {
+    console.log('--- profile page', fan.errors, (await fan.page.locator('main').innerText().catch(() => '')).slice(0, 1500));
+  });
   const invite = await fan.page.locator('[data-testid="invite-link"]').first().inputValue();
   ok(`${w}px profile shows an invite link`, /\?ref=[A-Z0-9]{6}/.test(invite));
   await fan.page.waitForSelector('[data-testid="points-row"]');

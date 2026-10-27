@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { db, ForumComment, ForumThread, Poll, REACTIONS, ReactionEmoji } from '../db';
+import { db, ForumComment, ForumThread, Poll, REACTIONS, ReactionEmoji, User } from '../db';
 import { canManageTeam, getAuthUser, hasPermission, publicUser, rateLimit, requireAdmin, requireUser, selfUser, teamScopeOf } from '../auth';
 import { bad, isoOrEmpty, newId, str, userOf } from '../http';
 import { awardPoints, earnedOnDay } from '../points';
@@ -388,7 +388,17 @@ communityRouter.delete('/admin/polls/:id', requireAdmin('community'), (req, res)
 });
 
 // ---------- leaderboards & fan base ----------
-communityRouter.get('/leaderboard', (req, res) => {
+/**
+ * Leaderboards sort every fan, so the tables are shared by everyone asking within a short window
+ * (a fan's own rank comes from the same ranking). They are worked out again after a change on this
+ * server (at most every 2 seconds), and at least every 15 seconds for changes made on other servers.
+ */
+const LEADERBOARD_TTL_MS = 15_000;
+const MIN_RECOMPUTE_MS = () => Number(process.env.LEADERBOARD_MIN_RECOMPUTE_MS ?? 2_000);
+const fresh = (c: { at: number; epoch: number } | null) => Boolean(c && (Date.now() - c.at < MIN_RECOMPUTE_MS() || (c.epoch === db.epoch && Date.now() - c.at < LEADERBOARD_TTL_MS)));
+let boardCache: { at: number; epoch: number; fanWars: any[]; ranked: User[]; rankOf: Map<string, number>; byTeam: Map<string, any[]> } | null = null;
+function leaderboardTables() {
+  if (boardCache && fresh(boardCache)) return boardCache;
   const store = db.get();
   const totals = new Map(store.teams.map(t => [t.id, { team: { id: t.id, name: t.name, short: t.short, color: t.color }, points: 0, fansCount: 0 }]));
   for (const u of store.users) {
@@ -399,15 +409,24 @@ communityRouter.get('/leaderboard', (req, res) => {
     }
   }
   const fanWars = [...totals.values()].sort((a, b) => b.points - a.points || b.fansCount - a.fansCount);
+  const ranked = [...store.users].sort((a, b) => b.points - a.points);
+  const rankOf = new Map(ranked.map((u, i) => [u.id, i + 1]));
+  boardCache = { at: Date.now(), epoch: db.epoch, fanWars, ranked, rankOf, byTeam: new Map() };
+  return boardCache;
+}
+
+communityRouter.get('/leaderboard', (req, res) => {
+  const t = leaderboardTables();
   const teamId = str(req.query.teamId, 60);
-  const pool = store.users.filter(u => u.points > 0 && (!teamId || u.teamId === teamId));
-  const topFans = [...pool].sort((a, b) => b.points - a.points).slice(0, 50).map(publicUser);
+  const key = teamId || '*';
+  if (!t.byTeam.has(key)) t.byTeam.set(key, t.ranked.filter(u => u.points > 0 && (!teamId || u.teamId === teamId)).slice(0, 50).map(publicUser));
   const viewer = getAuthUser(req);
-  const myRank = viewer ? [...store.users].sort((a, b) => b.points - a.points).findIndex(u => u.id === viewer.id) + 1 : null;
-  res.json({ fanWars, topFans, myRank });
+  res.json({ fanWars: t.fanWars, topFans: t.byTeam.get(key), myRank: viewer ? t.rankOf.get(viewer.id) || null : null });
 });
 
+let fansCache: { at: number; epoch: number; body: any } | null = null;
 communityRouter.get('/fans', (_req, res) => {
+  if (fansCache && fresh(fansCache)) return res.json(fansCache.body);
   const store = db.get();
   const teams = store.teams.map(t => {
     const fans = store.users.filter(u => u.teamId === t.id);
@@ -423,11 +442,13 @@ communityRouter.get('/fans', (_req, res) => {
   const countries = new Map<string, number>();
   for (const u of store.users) if (u.country) countries.set(u.country, (countries.get(u.country) || 0) + 1);
   const recent = [...store.users].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt)).slice(0, 12).map(u => ({ name: u.name, avatar: u.avatar, teamId: u.teamId, country: u.country, joinedAt: u.createdAt }));
-  res.json({
+  const body = {
     totalFans: store.users.length,
     unaffiliated: store.users.filter(u => !u.teamId).length,
     teams,
     countries: [...countries.entries()].map(([country, fans]) => ({ country, fans })).sort((a, b) => b.fans - a.fans).slice(0, 30),
     recent,
-  });
+  };
+  fansCache = { at: Date.now(), epoch: db.epoch, body };
+  res.json(body);
 });

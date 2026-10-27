@@ -1,9 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { Award, BookOpen, Check, ChevronDown, ChevronUp, Flame, Gamepad2, HelpCircle, Info, Lightbulb, Search, Sparkles, Target, Trophy, X, Zap } from 'lucide-react';
+import { Award, BookOpen, Check, ChevronDown, ChevronUp, Flame, Gamepad2, Grid3x3, HelpCircle, Info, Lightbulb, Puzzle, Search, Sparkles, Swords, Target, Trophy, X, Zap } from 'lucide-react';
 import { api } from '../api';
 import { useApp, useLoad } from '../state';
 import { useT } from '../i18n';
 import { Link, usePageMeta } from '../router';
+import { playerLinkProps } from '../components/PlayerCard';
+import { CricketGrid, SquadConnections, StatWars } from '../components/SkillGames';
 import { Avatar, Button, Card, ErrorBox, Notice, PageHeader, Pill, SectionTitle, Spinner, cx, inputCls } from '../components/ui';
 import type { GamesToday, GuessState, SuperOverState } from '../types';
 
@@ -147,7 +149,7 @@ function GuessGame({ data, onChange }: { data: GamesToday; onChange: (g: GuessSt
           <Avatar name={g.answer?.name || '?'} src={g.answer?.photoUrl} size={52} />
           <div className="flex-1 min-w-0">
             <p className="text-xs text-slate-400">{g.solved ? t('Solved! +{n} points', { n: g.points || 0 }) : t('Today’s player was')}</p>
-            <Link to={`/players/${g.answer?.id}`} className="block font-black text-white hover:text-amber-300">{g.answer?.name}</Link>
+            {g.answer?.id ? <a {...playerLinkProps(g.answer.id)} className="block font-black text-white hover:text-amber-300">{g.answer.name}</a> : null}
             <p className="text-xs text-slate-400">{teamById(g.answer?.teamId)?.name}</p>
           </div>
           <span className="text-[11px] text-slate-500 text-end">{t('New player in {time}', { time: nextDubaiMidnight() })}</span>
@@ -446,7 +448,7 @@ function HowToPlayGuide() {
 export default function GamesPage() {
   const { user, teamById, config } = useApp();
   const t = useT();
-  usePageMeta(t('Daily cricket games'), t('Guess the mystery player and bat a Super Over. New games every day.'), config?.brandName);
+  usePageMeta(t('Daily cricket games'), t('Squad Connections, Cricket Grid, Stat Wars duels, Guess the Player and Super Over. New games every day.'), config?.brandName);
   const { data, setData, error, loading, reload } = useLoad(() => api.getGamesToday(), [user?.id]);
   if (loading && !data) return <Spinner />;
   if (error || !data) return <ErrorBox message={error || ''} onRetry={reload} />;
@@ -493,6 +495,18 @@ export default function GamesPage() {
           <Flame className="w-3.5 h-3.5 text-amber-400" />
           {t('Super Over')}
         </a>
+        <a href="#connections-game" className="px-3.5 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs font-bold text-slate-300 hover:text-white shrink-0 flex items-center gap-1.5">
+          <Puzzle className="w-3.5 h-3.5 text-amber-400" />
+          {t('Squad Connections')}
+        </a>
+        <a href="#grid-game" className="px-3.5 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs font-bold text-slate-300 hover:text-white shrink-0 flex items-center gap-1.5">
+          <Grid3x3 className="w-3.5 h-3.5 text-amber-400" />
+          {t('Cricket Grid')}
+        </a>
+        <a href="#statwars-game" className="px-3.5 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs font-bold text-slate-300 hover:text-white shrink-0 flex items-center gap-1.5">
+          <Swords className="w-3.5 h-3.5 text-amber-400" />
+          {t('Stat Wars')}
+        </a>
         <a href="#leaderboards" className="px-3.5 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs font-bold text-slate-300 hover:text-white shrink-0 flex items-center gap-1.5">
           <Trophy className="w-3.5 h-3.5 text-amber-400" />
           {t('Today’s Leaderboards')}
@@ -506,6 +520,13 @@ export default function GamesPage() {
       {!user && <Notice>{t('Sign in to play and earn points.')}</Notice>}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <SquadConnections state={data.connections} onChange={c => setData({ ...data, connections: c })} />
+        <CricketGrid state={data.grid} players={data.players} onChange={g => setData({ ...data, grid: g })} />
+      </div>
+
+      <StatWars state={data.statWars} onChange={s => setData({ ...data, statWars: s })} />
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <GuessGame data={data} onChange={g => setData({ ...data, guess: g })} />
         <SuperOver data={data} onChange={s => setData({ ...data, superOver: s })} />
       </div>
@@ -515,6 +536,9 @@ export default function GamesPage() {
       <section id="leaderboards" className="scroll-mt-20">
         <SectionTitle title={t('Today’s best')} />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {board(data.leaderboards.connections || [], t('Squad Connections'))}
+          {board(data.leaderboards.grid || [], t('Cricket Grid'))}
+          {board(data.leaderboards.statwars || [], t('Stat Wars'))}
           {board(data.leaderboards.guess, t('Guess the Player'))}
           {board(data.leaderboards.superover, t('Super Over'))}
         </div>

@@ -1,9 +1,10 @@
 import { db, requestContext } from './db';
-import { ConflictError, isWriteQuotaExceeded } from './storage';
+import { ConflictError } from './storage';
 import { syncAllFeeds } from './feeds';
 import { syncLiveScores } from './liveScores';
 import { runReminders } from './reminders';
 import { runScoresAgent, runSocialHarvesterAgent } from './agents';
+import { housekeeping } from './housekeeping';
 
 /**
  * Scheduled work:
@@ -50,8 +51,9 @@ export async function runScheduledJobs(opts: { only?: string[]; force?: boolean 
     if (due) {
       try {
         const r = await syncAllFeeds();
-        db.get().jobLog['jobs:feeds'] = new Date().toISOString();
-        db.save();
+        await db.mutate(s => {
+          s.jobLog['jobs:feeds'] = new Date().toISOString();
+        });
         out.feeds = { summary: r.summary, added: r.added, errors: r.errors.length };
       } catch (e: any) {
         out.feeds = { error: e?.message || String(e) };
@@ -65,8 +67,9 @@ export async function runScheduledJobs(opts: { only?: string[]; force?: boolean 
   if (want('harvest') && harvestDue) {
     try {
       const h = await runSocialHarvesterAgent();
-      db.get().jobLog['jobs:harvest'] = new Date().toISOString();
-      db.save();
+      await db.mutate(s => {
+        s.jobLog['jobs:harvest'] = new Date().toISOString();
+      });
       out.harvest = { summary: h.summary, added: h.items };
     } catch (e: any) {
       out.harvest = { error: e?.message || String(e) };
@@ -80,8 +83,37 @@ export async function runScheduledJobs(opts: { only?: string[]; force?: boolean 
       out.checks = { error: e?.message || String(e) };
     }
   }
-  db.get().jobLog['jobs:last-run'] = new Date().toISOString();
-  db.save();
+  // Player links (ESPNcricinfo, Wikipedia, official social accounts): new players, and a re-check
+  // every 14 days. At most once an hour.
+  const lastLinks = db.get().jobLog['jobs:player-links'];
+  if (want('links') && (opts.only?.includes('links') || !lastLinks || Date.now() - +new Date(lastLinks) >= 60 * 60_000)) {
+    try {
+      const { resolvePlayerLinks } = await import('./routes/teams');
+      const r = await resolvePlayerLinks();
+      await db.mutate(s => {
+        s.jobLog['jobs:player-links'] = new Date().toISOString();
+      });
+      if (r.checked) out.links = r;
+    } catch (e: any) {
+      out.links = { error: e?.message || String(e) };
+    }
+  }
+  try {
+    const removed = await db.mutate(store => housekeeping(store));
+    if (Object.keys(removed).length) out.housekeeping = removed;
+  } catch (e: any) {
+    out.housekeeping = { error: e?.message || String(e) };
+  }
+  // Safety net: write anything that changed without being recorded (there should be nothing).
+  try {
+    const fixed = await db.mutate(() => db.reconcile());
+    if (fixed) out.reconcile = { shardsWritten: fixed };
+  } catch (e: any) {
+    out.reconcile = { error: e?.message || String(e) };
+  }
+  await db.mutate(s => {
+    s.jobLog['jobs:last-run'] = new Date().toISOString();
+  });
   return { tookMs: Date.now() - started, jobs: out };
 }
 
@@ -102,45 +134,41 @@ export function jobsDue(now = Date.now()) {
  * Runs the scheduled jobs once, unless they ran recently or another instance is running them.
  * A lease in the store (claimed with a conditional write) makes sure only one instance runs at a time.
  * `force` skips the "ran recently" check (used by an authorised cron call or a super admin).
+ *
+ * The jobs themselves run outside the write lock: they fetch from the network first and then make
+ * short writes, so fans' own changes are never queued behind a feed pull or a push send-out.
  */
 export async function runJobsOnce(opts: { force?: boolean } = {}): Promise<{ ran: boolean; reason?: string; result?: any }> {
   if (runningHere) return { ran: false, reason: 'already running' };
   runningHere = true;
   try {
-    if (!db.shared || isWriteQuotaExceeded()) {
+    if (!db.shared) {
       if (!opts.force && !jobsDue()) return { ran: false, reason: 'ran recently' };
-      return { ran: true, result: await runScheduledJobs() };
+      return { ran: true, result: await requestContext.exit(() => runScheduledJobs()) };
     }
-    return await db.exclusive(() =>
-      requestContext.run({ id: crypto.randomUUID() }, async () => {
-        await db.refreshIfStale();
-        const log = db.get().jobLog;
-        if (!opts.force && !jobsDue()) return { ran: false, reason: 'ran recently' };
-        const lease = log['jobs:lease'];
-        if (lease && Date.now() - +new Date(lease) < LEASE_MS) return { ran: false, reason: 'running on another instance' };
-        log['jobs:lease'] = new Date().toISOString();
-        db.save();
-        try {
-          await db.commit();
-        } catch (e) {
-          if (e instanceof ConflictError) {
-            await db.discardAndReload();
-            return { ran: false, reason: 'another instance started first' };
-          }
-          throw e;
-        }
-        const result = await runScheduledJobs(opts);
-        delete db.get().jobLog['jobs:lease'];
-        db.save();
-        try {
-          await db.commit();
-        } catch (e) {
-          if (e instanceof ConflictError) await db.discardAndReload();
-          else throw e;
-        }
-        return { ran: true, result };
-      }),
-    );
+    let reason: string | null;
+    try {
+      reason = await db.transaction(store => {
+        if (!opts.force && !jobsDue()) return 'ran recently';
+        const lease = store.jobLog['jobs:lease'];
+        if (lease && Date.now() - +new Date(lease) < LEASE_MS) return 'running on another instance';
+        store.jobLog['jobs:lease'] = new Date().toISOString();
+        return null;
+      }, 2);
+    } catch (e) {
+      if (e instanceof ConflictError) return { ran: false, reason: 'another instance started first' };
+      throw e;
+    }
+    if (reason) return { ran: false, reason };
+    try {
+      return { ran: true, result: await requestContext.exit(() => runScheduledJobs()) };
+    } finally {
+      await db
+        .transaction(store => {
+          delete store.jobLog['jobs:lease'];
+        })
+        .catch(() => undefined);
+    }
   } finally {
     runningHere = false;
   }

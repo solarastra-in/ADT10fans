@@ -106,6 +106,56 @@ export interface Player {
   nationality?: string;
   note?: string;
   selectedBy?: number;
+  cricinfoId?: string;
+  wikidataId?: string;
+  links?: Partial<Record<PlayerLinkKey, string>>;
+  linkSources?: Partial<Record<PlayerLinkKey, 'admin' | 'cricsheet' | 'wikidata' | 'squad'>>;
+  linksCheckedAt?: string;
+}
+
+export type PlayerLinkKey = 'espncricinfo' | 'cricbuzz' | 'wikipedia' | 'instagram' | 'x' | 'facebook' | 'youtube';
+
+/** This season's figures from real scorecards (null fields: not batted / not bowled yet). */
+export interface SeasonStats {
+  matches: number;
+  innings: number;
+  runs: number;
+  balls: number;
+  highest: number;
+  highestNotOut: boolean;
+  notOuts: number;
+  fours: number;
+  sixes: number;
+  fifties: number;
+  strikeRate: number | null;
+  average: number | null;
+  ballsBowled: number;
+  runsConceded: number;
+  wickets: number;
+  economy: number | null;
+  best: { wickets: number; runs: number } | null;
+  catches: number;
+  stumpings: number;
+}
+
+export interface PlayerFixture {
+  matchId: string;
+  matchNo: number;
+  opponent: string;
+  startsAt: string;
+  status: string;
+  result?: string;
+  fantasyPoints: number | null;
+  fantasyDetail: string | null;
+  selectedBy: number | null;
+}
+
+export interface PlayerDetail {
+  player: Player;
+  team: Team;
+  fixtures: PlayerFixture[];
+  season: SeasonStats | null;
+  links: { key: PlayerLinkKey; label: string; url: string; handle: string | null }[];
 }
 
 export interface Team {
@@ -522,11 +572,114 @@ export interface SuperOverState {
   bonus: number;
   last?: { shot: Shot; outcome: number | 'W' };
 }
+export interface GamePlayer {
+  id: string;
+  name: string;
+  photoUrl: string | null;
+  teamId: string;
+}
+
+export interface ConnectionsState {
+  day: string;
+  available: boolean;
+  maxMistakes?: number;
+  mistakes?: number;
+  finished?: boolean;
+  solved?: boolean;
+  points?: number;
+  groups?: { label: string; color: 'yellow' | 'green' | 'blue' | 'purple'; found: boolean; players: GamePlayer[] }[];
+  remaining?: GamePlayer[];
+  guesses?: string[][];
+  correct?: boolean;
+  oneAway?: boolean;
+  label?: string | null;
+}
+
+export interface GridState {
+  day: string;
+  available: boolean;
+  rows?: { id: string; label: string; teamId: string }[];
+  cols?: { id: string; label: string }[];
+  guessesLeft?: number;
+  finished?: boolean;
+  points?: number;
+  cells?: Record<string, GamePlayer & { pickedBy: number }>;
+  sizes?: Record<string, number>;
+  rarity?: number;
+  correct?: boolean;
+}
+
+export interface StatWarsState {
+  day: string;
+  available: boolean;
+  seconds: number;
+  questions: number;
+  played: boolean;
+  inProgress: boolean;
+  result: { correct: number; wrong: number; score: number; timeBonus: number; elapsedMs: number; late: boolean } | null;
+}
+
+export interface StatQuestion {
+  id: string;
+  prompt: string;
+  unit: string;
+  a: GamePlayer;
+  b: GamePlayer;
+}
+
+export interface StatWarsResult {
+  correct: number;
+  wrong: number;
+  answered: number;
+  score: number;
+  timeBonus: number;
+  elapsedMs: number;
+  late: boolean;
+  review: (StatQuestion & { answer: 'a' | 'b'; values: [number, number]; given: 'a' | 'b' | null; right: boolean })[];
+  duel?: DuelView;
+  user?: User;
+}
+
+export interface DuelSide {
+  userId: string;
+  name: string;
+  avatar: string;
+  teamId: string | null;
+  played: boolean;
+  score: number | null;
+  correct: number | null;
+  seconds: number | null;
+}
+
+export interface DuelView {
+  code: string;
+  open: boolean;
+  status: 'waiting' | 'done' | 'expired';
+  createdAt: string;
+  expiresAt: string;
+  challenger: DuelSide | null;
+  opponent: DuelSide | null;
+  winnerId: string | null;
+  youCanPlay: boolean;
+  youCanJoin: boolean;
+}
+
+type BoardRow = { userId: string; name: string; avatar: string; teamId: string | null; points: number };
+
 export interface GamesToday {
   day: string;
   guess: GuessState;
   superOver: SuperOverState;
-  leaderboards: { guess: { userId: string; name: string; avatar: string; teamId: string | null; points: number }[]; superover: { userId: string; name: string; avatar: string; teamId: string | null; points: number }[] };
+  connections: ConnectionsState;
+  grid: GridState;
+  statWars: StatWarsState;
+  leaderboards: {
+    guess: BoardRow[];
+    superover: BoardRow[];
+    connections: BoardRow[];
+    grid: (BoardRow & { squares: number; rarity: number })[];
+    statwars: (BoardRow & { correct: number })[];
+  };
   players: { id: string; name: string; teamId: string; role?: string }[];
 }
 
@@ -658,6 +811,8 @@ export interface SystemSettings {
   referralRewardPoints: number;
   referralMaxRewarded: number;
   lockReminderMinutes: number;
+  fanOfTheDayPoints?: number;
+  fanWallReview?: 'photos' | 'all' | 'none';
   smtp: { host: string; port: number; user: string; pass: string; from: string; enabled: boolean };
   cricbuzzSeriesId?: string;
   cricbuzzSeriesUrl?: string;
@@ -999,4 +1154,44 @@ export interface ProfileResponse {
   games: { played: number; points: number; guessSolved: number; bestSuperOver: number };
   redemptions: PrizeRedemption[];
   bookings: FanSpaceBooking[];
+}
+
+export type FanPostKind = 'moment' | 'matchday' | 'memorabilia' | 'travel' | 'other';
+
+export interface FanPostView {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  teamId: string | null;
+  text: string;
+  photoUrl: string | null;
+  photoWidth?: number;
+  photoHeight?: number;
+  kind: FanPostKind;
+  matchId: string | null;
+  status: 'live' | 'hidden' | 'pending';
+  reactions: Reaction[];
+  featuredOn: string[];
+  createdAt: string;
+  mine: boolean;
+  reports?: number;
+  reportReasons?: string[];
+}
+
+export interface FanOfTheDayView {
+  day: string;
+  points: number;
+  note: string;
+  post: FanPostView | null;
+  fan: { id: string; name: string; avatar?: string; teamId?: string | null };
+}
+
+export interface FanWallResponse {
+  posts: FanPostView[];
+  more: boolean;
+  fansOfTheDay: FanOfTheDayView[];
+  photosEnabled: boolean;
+  review: 'photos' | 'all' | 'none';
+  fanOfTheDayPoints: number;
 }

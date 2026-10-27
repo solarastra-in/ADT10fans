@@ -1,5 +1,6 @@
 import { AppStore, FantasyBreakdownLine, FantasyTeam, Match, Player, Team } from './db';
 import { awardPoints } from './points';
+import { statsFor } from './playerStats';
 
 /**
  * Pick XI: the fantasy game.
@@ -38,13 +39,33 @@ export const SCORING = {
   runOut: 16, // 16 pts per run out
 };
 
+/**
+ * Strike-rate and economy bands, used both to score and to publish the rules, so the two can never
+ * disagree again (they did: the rules page promised +12 for a strike rate above 200, the code gave +6).
+ */
+export const STRIKE_RATE_BANDS: { label: string; test: (sr: number) => boolean; points: number }[] = [
+  { label: 'Above 200.0', test: sr => sr > 200, points: 12 },
+  { label: '175.0 to 200.0', test: sr => sr >= 175, points: 8 },
+  { label: '150.0 to 174.9', test: sr => sr >= 150, points: 4 },
+  { label: 'Below 60.0', test: sr => sr < 60, points: -8 },
+  { label: '60.0 to 79.9', test: sr => sr < 80, points: -4 },
+];
+export const ECONOMY_BANDS: { label: string; test: (rpo: number) => boolean; points: number }[] = [
+  { label: 'Under 7.0 runs per over', test: e => e < 7, points: 12 },
+  { label: '7.0 to 8.5 rpo', test: e => e <= 8.5, points: 8 },
+  { label: '8.51 to 10.0 rpo', test: e => e <= 10, points: 4 },
+  { label: 'Above 15.5 rpo', test: e => e > 15.5, points: -8 },
+  { label: '14.0 to 15.5 rpo', test: e => e >= 14, points: -4 },
+];
+export const bandPoints = (bands: { test: (n: number) => boolean; points: number }[], value: number) => bands.find(b => b.test(value))?.points || 0;
+
 export function scoringRules() {
   return [
     { group: 'Batting', rules: [['Run', SCORING.run], ['Boundary four bonus', SCORING.boundaryBonus], ['Maximum six bonus', SCORING.sixBonus], ['30-run milestone', SCORING.thirtyBonus], ['50-run milestone', SCORING.fiftyBonus], ['Duck (batters/keepers/all-rounders)', SCORING.duck]] },
     { group: 'Bowling', rules: [['Wicket (excluding run out)', SCORING.wicket], ['Bowled / LBW dismissal bonus', SCORING.lbwBowledBonus], ['2-wicket haul bonus', SCORING.twoWicketBonus], ['3+ wicket haul bonus', SCORING.threeWicketBonus], ['Maiden over bonus', SCORING.maiden]] },
     { group: 'Fielding', rules: [['Catch', SCORING.catch], ['Stumping', SCORING.stumping], ['Run out', SCORING.runOut]] },
-    { group: 'Economy (min 1 over)', rules: [['Under 7.0 runs per over', 12], ['7.0 to 8.5 rpo', 8], ['8.51 to 10.0 rpo', 4], ['14.0 to 15.5 rpo', -4], ['Above 15.5 rpo', -8]] },
-    { group: 'Strike rate (min 5 balls)', rules: [['Above 200.0', 12], ['175.0 to 200.0', 8], ['150.0 to 174.9', 4], ['Below 80.0', -4], ['Below 60.0', -8]] },
+    { group: 'Economy (min 1 over)', rules: ECONOMY_BANDS.map(b => [b.label, b.points]) },
+    { group: 'Strike rate (min 5 balls, not bowlers)', rules: STRIKE_RATE_BANDS.map(b => [b.label, b.points]) },
     { group: 'Squad & Multipliers', rules: [['In the match playing squad', SCORING.playing], ['Captain (C)', '2x multiplier'], ['Vice-Captain (VC)', '1.5x multiplier']] },
   ];
 }
@@ -92,11 +113,8 @@ export function lineupPool(store: AppStore, match: Match): Player[] {
 }
 
 export function isTopPlayer(p: Player | PlayerWithForm): boolean {
-  const form = (p as any).form;
-  const lvl = form?.allocationLevel;
-  if (typeof lvl === 'number' && lvl >= 4) return true;
-  const tier = form?.tier || getPlayerTier(p);
-  if (tier === 'star') return true;
+  // From the official category (and admin-set credits) only, so the star limit is the same for every fan.
+  if (getPlayerTier(p) === 'star') return true;
   const playerCredits = (p as any).credits ?? creditsFor(p);
   return playerCredits >= 9.5;
 }
@@ -111,6 +129,13 @@ export function validateLineup(pool: Player[], playerIds: string[], captainId: s
   if (!ids.includes(viceCaptainId)) return { ok: false, error: `Choose a vice-captain from your ${DREAM_XI.size} players` };
   if (captainId === viceCaptainId) return { ok: false, error: 'Captain and vice-captain must be different players' };
 
+  // Shape of the team first (the clearer message when several rules are broken), then the budget.
+  const byTeam: Record<string, number> = {};
+  for (const p of players) byTeam[p.teamId] = (byTeam[p.teamId] || 0) + 1;
+  if (Object.values(byTeam).some(n => n > DREAM_XI.maxFromOneTeam)) {
+    return { ok: false, error: `Pick at most ${DREAM_XI.maxFromOneTeam} players from one team (squad size is ${DREAM_XI.size})` };
+  }
+
   // Calculate total credits & budget check
   const totalCredits = Math.round(players.reduce((sum, p) => sum + ((p as any).credits ?? creditsFor(p)), 0) * 10) / 10;
   if (DREAM_XI.creditCap && totalCredits > DREAM_XI.creditCap) {
@@ -121,12 +146,6 @@ export function validateLineup(pool: Player[], playerIds: string[], captainId: s
   const topCount = players.filter(p => isTopPlayer(p)).length;
   if (DREAM_XI.maxTopPlayers && topCount > DREAM_XI.maxTopPlayers) {
     return { ok: false, error: `Squad can have at most ${DREAM_XI.maxTopPlayers} top/star players (${topCount} selected). Balance with budget enablers.` };
-  }
-
-  const byTeam: Record<string, number> = {};
-  for (const p of players) byTeam[p.teamId] = (byTeam[p.teamId] || 0) + 1;
-  if (Object.values(byTeam).some(n => n > DREAM_XI.maxFromOneTeam)) {
-    return { ok: false, error: `Pick at most ${DREAM_XI.maxFromOneTeam} players from one team (squad size is ${DREAM_XI.size})` };
   }
 
   const counts: Record<string, number> = { wicketkeeper: 0, batter: 0, allrounder: 0, bowler: 0 };
@@ -161,6 +180,8 @@ export interface AllocationLevelInfo {
 }
 
 export interface PlayerHistoricalMetrics {
+  /** Always this season's figures from real scorecards. */
+  scope?: 'season';
   matches: number;
   totalRuns: number;
   highestScore: number;
@@ -255,11 +276,9 @@ export function getPlayerTier(p: Player): PlayerTier {
   if (p.category?.toLowerCase() === 'diamond' || p.category?.toLowerCase() === 'gold') return 'core';
   if (p.role === 'allrounder' || p.isKeeper) return 'core';
   if (p.category?.toLowerCase() === 'silver') return 'value';
-  // Domestic UAE or lower bracket
-  const hash = p.id.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
-  if (hash % 3 === 0) return 'budget';
-  if (hash % 3 === 1) return 'value';
-  return 'core';
+  // Everyone else (domestic and lower-bracket signings). This used to be picked from a hash of the
+  // player's id, which gave similar players different prices at random.
+  return 'value';
 }
 
 const TIER_BASE_CREDITS: Record<PlayerTier, number> = {
@@ -279,236 +298,102 @@ export function creditsFor(p: Player, formTrend?: FormTrend): number {
   return Math.round(base * 10) / 10;
 }
 
+/**
+ * A player's form for the Pick XI builder.
+ *
+ * Only real data is reported as such: recent scores are the player's actual Pick XI points from this
+ * season's completed matches, and `historicalMetrics` are this season's figures from real scorecards
+ * (absent until the player has appeared). Projections are labelled as estimates and come from the
+ * player's official category plus any real scores. Earlier versions invented "recent scores" and
+ * career statistics from a hash of the player's id; those are gone.
+ */
 export function calculatePlayerForm(p: Player, match: Match, store: AppStore): PlayerFormStats {
   const tier = getPlayerTier(p);
-  const norm = normName(p.name);
-  const hash = (p.id + match.id).split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
-
-  // Check if player participated in any completed tournament matches
-  const completedMatches = store.matches.filter(m => m.status === 'completed' && m.scorecard);
-  const scoresFromHistory: number[] = [];
-
-  for (const m of completedMatches) {
-    if (m.teamA !== p.teamId && m.teamB !== p.teamId) continue;
-    const ptsMap = computePlayerPoints(store, m);
-    const row = ptsMap.get(p.id);
-    if (row && row.points > 0) scoresFromHistory.push(row.points);
+  const completed = store.matches
+    .filter(m => m.status === 'completed' && m.scorecard && (m.teamA === p.teamId || m.teamB === p.teamId))
+    .sort((a, b) => +new Date(a.startsAt) - +new Date(b.startsAt));
+  const history: number[] = [];
+  for (const m of completed) {
+    const row = computePlayerPoints(store, m).get(p.id);
+    if (row) history.push(row.points);
   }
+  const recentScores = history.slice(-3);
+  const played = history.length > 0;
+  const round1 = (n: number) => Math.round(n * 10) / 10;
+  const recentAvg = played ? round1(recentScores.reduce((a, b) => a + b, 0) / recentScores.length) : 0;
+  const seasonAvg = played ? round1(history.reduce((a, b) => a + b, 0) / history.length) : 0;
 
-  // Generate deterministic recent match scores if tournament is early/upcoming
-  let recentScores: number[];
-  if (scoresFromHistory.length >= 2) {
-    recentScores = scoresFromHistory.slice(-3);
-  } else {
-    // Increased baseline T10 historical performance model with higher base point values
-    const baseByTier = {
-      star: [110, 142, 128],
-      core: [82, 106, 94],
-      value: [60, 82, 72],
-      budget: [44, 62, 52],
-    }[tier];
-    // Apply slight deterministic player variance (-10 to +15)
-    const var1 = (hash % 23) - 10;
-    const var2 = ((hash * 3) % 27) - 12;
-    const var3 = ((hash * 7) % 29) - 13;
-    recentScores = [
-      Math.max(25, baseByTier[0] + var1),
-      Math.max(30, baseByTier[1] + var2),
-      Math.max(28, baseByTier[2] + var3),
-    ];
-  }
-
-  const recentAvg = Math.round((recentScores.reduce((a, b) => a + b, 0) / recentScores.length) * 10) / 10;
-
-  // Determine form trend based on recent score trajectory
-  const lastScore = recentScores[recentScores.length - 1];
+  // Trend only from real scores (two or more matches).
   let trend: FormTrend = 'stable';
   let momentumScore = 0;
-
-  if (lastScore >= 110 || recentAvg >= 105) {
-    trend = 'hot';
-    momentumScore = Math.min(30, Math.round(((lastScore - 90) / 90) * 20 + 12));
-  } else if (lastScore > recentScores[0] + 15 || recentAvg >= 80) {
-    trend = 'rising';
-    momentumScore = Math.min(22, Math.max(8, Math.round((lastScore - recentScores[0]) * 0.8)));
-  } else if (lastScore <= 45 || recentAvg < 50) {
-    trend = 'cold';
-    momentumScore = -Math.min(24, Math.max(8, Math.round(60 - lastScore)));
-  } else {
-    trend = 'stable';
-    momentumScore = (hash % 9) - 4;
-  }
-
-  // Sheikh Zayed Cricket Stadium pitch conditions & upcoming match context factors
-  let pitchSuitability: 'Excellent' | 'Good' | 'Moderate' | 'Challenging' = 'Good';
-  let matchupNote = 'Balanced matchup';
-
-  if (p.role === 'batter' || (p.role === 'allrounder' && p.battingStyle)) {
-    pitchSuitability = tier === 'star' ? 'Excellent' : 'Good';
-    matchupNote = tier === 'star' ? 'Powerplay boundary threat (200+ SR)' : 'Middle-order acceleration';
-  } else if (p.role === 'bowler') {
-    if (p.bowlingStyle?.toLowerCase().includes('spin')) {
-      pitchSuitability = 'Good';
-      matchupNote = 'High wicket potential in middle overs 4-7';
-    } else {
-      pitchSuitability = tier === 'star' ? 'Excellent' : 'Good';
-      matchupNote = 'Death-overs yorker & wicket specialist';
+  if (recentScores.length >= 2) {
+    const first = recentScores[0];
+    const last = recentScores[recentScores.length - 1];
+    if (recentAvg >= 100 || last >= 110) {
+      trend = 'hot';
+      momentumScore = Math.min(30, Math.max(8, Math.round((last - 80) / 3)));
+    } else if (last >= first + 15) {
+      trend = 'rising';
+      momentumScore = Math.min(22, Math.max(5, Math.round((last - first) * 0.6)));
+    } else if (last <= first - 25 || recentAvg < 30) {
+      trend = 'cold';
+      momentumScore = -Math.min(24, Math.max(5, Math.round((first - last) * 0.6)));
     }
-  } else if (p.role === 'wicketkeeper') {
-    pitchSuitability = 'Good';
-    matchupNote = 'Top order striker + stumping bonuses';
   }
 
-  // Projected points for upcoming match - scaled on historical form, pitch suitability, and match context
-  const pitchMultiplier = pitchSuitability === 'Excellent' ? 1.22 : pitchSuitability === 'Good' ? 1.12 : pitchSuitability === 'Moderate' ? 1.00 : 0.92;
-  const futurePitchBoost = pitchSuitability === 'Excellent' ? 22 : pitchSuitability === 'Good' ? 12 : 0;
-  const futureOpponentBoost = Math.max(0, Math.round(momentumScore * 0.7));
-  const projectedPoints = Math.round(Math.max(30, recentAvg * (1 + momentumScore / 100) * pitchMultiplier + Math.round((hash % 9) - 4)));
+  // A neutral description of what the player does; no claims about statistics we do not have.
+  const style = p.role === 'bowler' ? p.bowlingStyle : p.role === 'allrounder' ? [p.battingStyle, p.bowlingStyle].filter(Boolean).join(', ') : p.battingStyle;
+  const roleName = { batter: 'Batter', bowler: 'Bowler', allrounder: 'All-rounder', wicketkeeper: 'Wicketkeeper' }[p.role];
+  const matchupNote = style ? `${roleName} · ${style}` : roleName;
+  const pitchSuitability: PlayerFormStats['pitchSuitability'] = 'Good';
 
-  // Volatility swing index (-10 to +25)
-  const swingIndex = Math.round(momentumScore + (hash % 11) - 5);
+  // Estimate for this match: the category baseline, blended with real scores once there are any.
+  const baseline = { star: 95, core: 75, value: 58, budget: 45 }[tier];
+  const projectedPoints = Math.round(played ? recentAvg * 0.6 + baseline * 0.4 : baseline);
+  const projectedCeiling = Math.round(projectedPoints * 1.35);
+  const projectedFloor = Math.round(projectedPoints * 0.6);
+  const compositeScore = played ? recentAvg * 0.45 + projectedPoints * 0.55 : baseline;
 
-  // Selection swing (+/- % weekly trend)
-  const selectionSwing = Math.round((momentumScore * 0.7 + ((hash % 13) - 6)) * 10) / 10;
-
-  // Composite allocation score combining past track record (45%) and future projected conditions (55%)
-  const compositeScore = recentAvg * 0.45 + projectedPoints * 0.55;
-
+  const pastFactor = played
+    ? `This season: ${seasonAvg} Pick XI pts a match over ${history.length} match(es) [${recentScores.join(', ')}]`
+    : 'No completed matches this season yet';
+  const futureFactor = `Estimate: ${projectedPoints} pts (${played ? 'this season\'s scores and ' : ''}${tier === 'star' ? 'Icon/Platinum or marquee signing' : 'signing category'})`;
+  const projectedRange = `${projectedFloor}–${projectedCeiling} pts (estimate)`;
+  const level = (n: PointAllocationLevel, badge: string, name: string, tierCategory: AllocationLevelInfo['tierCategory'], recommendedUsage: string, creditTier: string): AllocationLevelInfo => ({
+    level: n, badge, name, tierCategory, pastFactor, futureFactor, recommendedUsage, creditTier, projectedRange,
+  });
   let allocationLevel: AllocationLevelInfo;
-
   if (compositeScore >= 110 || (tier === 'star' && trend !== 'cold')) {
-    allocationLevel = {
-      level: 5,
-      badge: 'L5 Supernova',
-      name: 'Supernova Marquee Allocation',
-      tierCategory: 'Supernova',
-      pastFactor: `Past Form: ${recentAvg} avg pts · Trajectory [${recentScores.join(', ')}] (${trend.toUpperCase()})`,
-      futureFactor: `Future Outlook: ${projectedPoints} proj pts · ${pitchSuitability} pitch fit (${matchupNote})`,
-      recommendedUsage: 'Premier Captaincy candidate (2x) · Highest scoring ceiling',
-      creditTier: 'Supernova Tier',
-      projectedRange: '120–175+ pts',
-    };
+    allocationLevel = level(5, 'L5 Marquee', 'Marquee pick', 'Supernova', 'Captain (2x) candidate', 'Top tier');
   } else if (compositeScore >= 85 || (tier === 'star' && trend === 'cold') || (tier === 'core' && trend === 'hot')) {
-    allocationLevel = {
-      level: 4,
-      badge: 'L4 Premium',
-      name: 'High-Impact Premium Allocation',
-      tierCategory: 'Premium Star',
-      pastFactor: `Past Form: ${recentAvg} avg pts · Trajectory [${recentScores.join(', ')}] (Momentum: ${momentumScore > 0 ? '+' : ''}${momentumScore}%)`,
-      futureFactor: `Future Outlook: ${projectedPoints} proj pts · ${matchupNote}`,
-      recommendedUsage: 'Vice-Captain candidate (1.5x) or Core Strike Bowler',
-      creditTier: 'Premium Tier',
-      projectedRange: '88–118 pts',
-    };
+    allocationLevel = level(4, 'L4 Premium', 'Premium pick', 'Premium Star', 'Vice-captain (1.5x) candidate', 'Premium tier');
   } else if (compositeScore >= 66 || tier === 'core') {
-    allocationLevel = {
-      level: 3,
-      badge: 'L3 Core Anchor',
-      name: 'Core Anchor Point Allocation',
-      tierCategory: 'Core Anchor',
-      pastFactor: `Past Form: ${recentAvg} avg pts · Consistent matchday baseline`,
-      futureFactor: `Future Outlook: ${projectedPoints} proj pts · Middle overs boundary / wicket specialist`,
-      recommendedUsage: 'Essential squad anchor for steady returns',
-      creditTier: 'Core Tier',
-      projectedRange: '66–88 pts',
-    };
+    allocationLevel = level(3, 'L3 Core', 'Core pick', 'Core Anchor', 'Steady squad anchor', 'Core tier');
   } else if (compositeScore >= 48 || tier === 'value') {
-    allocationLevel = {
-      level: 2,
-      badge: 'L2 Tactical',
-      name: 'Tactical Differential Allocation',
-      tierCategory: 'Tactical Swing',
-      pastFactor: `Past Form: ${recentAvg} avg pts · Differential swing potential`,
-      futureFactor: `Future Outlook: ${projectedPoints} proj pts · Matchup specific weapon`,
-      recommendedUsage: 'High-upside differential pick',
-      creditTier: 'Tactical Tier',
-      projectedRange: '48–66 pts',
-    };
+    allocationLevel = level(2, 'L2 Value', 'Value pick', 'Tactical Swing', 'Differential pick', 'Value tier');
   } else {
-    allocationLevel = {
-      level: 1,
-      badge: 'L1 Enabler',
-      name: 'Emerging Talent Allocation',
-      tierCategory: 'Budget Enabler',
-      pastFactor: `Past Form: ${recentAvg} avg pts · Developing UAE squad player`,
-      futureFactor: `Future Outlook: ${projectedPoints} proj pts · Vital squad depth option`,
-      recommendedUsage: 'Squad balance specialist',
-      creditTier: 'Support Tier',
-      projectedRange: '32–48 pts',
-    };
+    allocationLevel = level(1, 'L1 Budget', 'Budget pick', 'Budget Enabler', 'Frees up credits for stars', 'Budget tier');
   }
 
-  const pastPointsAvg = recentAvg;
-  const projectedCeiling = Math.round(projectedPoints * 1.38 + 12);
-  const projectedFloor = Math.max(20, Math.round(projectedPoints * 0.68));
-  const adaptationSummary = `${allocationLevel.name}: Past trajectory (${recentAvg} avg, ${trend}) adapted with future ${pitchSuitability.toLowerCase()} pitch fit & ${matchupNote.toLowerCase()} (${projectedPoints} projected pts, range ${projectedFloor}–${projectedCeiling}).`;
-
-  // Generate authentic historical metrics for player info popover
-  const isBattingSpecialist = p.role === 'batter' || p.role === 'wicketkeeper';
-  const isBowlingSpecialist = p.role === 'bowler';
-  const isAllRounder = p.role === 'allrounder';
-
-  const histMatches = Math.max(12, 18 + (hash % 20));
-  let histRuns = 0;
-  let histHighest = 0;
-  let histSr = 0;
-  let histBatAvg = 0;
-  let histWickets = 0;
-  let histEconomy = 0;
-  let histBestBowling = '—';
-  let histCatches = 0;
-  let histStumpings = 0;
-  let histBoundaries = 0;
-  let histSixes = 0;
-
-  if (isBattingSpecialist) {
-    histRuns = tier === 'star' ? 520 + (hash % 240) : tier === 'core' ? 340 + (hash % 160) : 180 + (hash % 100);
-    histHighest = tier === 'star' ? 76 + (hash % 24) : 52 + (hash % 20);
-    histSr = tier === 'star' ? 195.5 + ((hash % 35) / 10) : 165.0 + ((hash % 30) / 10);
-    histBatAvg = tier === 'star' ? 36.5 + ((hash % 80) / 10) : 26.2 + ((hash % 60) / 10);
-    histCatches = 8 + (hash % 14);
-    histStumpings = (p.role === 'wicketkeeper' || p.isKeeper) ? 5 + (hash % 7) : 0;
-    histBoundaries = Math.round(histRuns * 0.12);
-    histSixes = Math.round(histRuns * 0.08);
-  } else if (isAllRounder) {
-    histRuns = tier === 'star' ? 380 + (hash % 160) : tier === 'core' ? 240 + (hash % 120) : 130 + (hash % 80);
-    histHighest = tier === 'star' ? 62 + (hash % 22) : 44 + (hash % 18);
-    histSr = tier === 'star' ? 188.0 + ((hash % 30) / 10) : 155.0 + ((hash % 25) / 10);
-    histBatAvg = tier === 'star' ? 28.5 + ((hash % 60) / 10) : 21.0 + ((hash % 50) / 10);
-    histWickets = tier === 'star' ? 24 + (hash % 12) : tier === 'core' ? 16 + (hash % 10) : 9 + (hash % 6);
-    histEconomy = tier === 'star' ? 8.2 + ((hash % 14) / 10) : 8.9 + ((hash % 16) / 10);
-    histBestBowling = tier === 'star' ? `3/${12 + (hash % 10)}` : `2/${16 + (hash % 12)}`;
-    histCatches = 10 + (hash % 12);
-    histBoundaries = Math.round(histRuns * 0.11);
-    histSixes = Math.round(histRuns * 0.07);
-  } else if (isBowlingSpecialist) {
-    histWickets = tier === 'star' ? 34 + (hash % 18) : tier === 'core' ? 24 + (hash % 12) : 14 + (hash % 8);
-    histEconomy = tier === 'star' ? 7.6 + ((hash % 12) / 10) : 8.5 + ((hash % 14) / 10);
-    histBestBowling = tier === 'star' ? `4/${10 + (hash % 8)}` : `3/${14 + (hash % 10)}`;
-    histRuns = 35 + (hash % 45);
-    histHighest = 16 + (hash % 15);
-    histSr = 130.0 + ((hash % 30) / 10);
-    histBatAvg = 11.2 + ((hash % 40) / 10);
-    histCatches = 6 + (hash % 8);
-    histBoundaries = Math.round(histRuns * 0.08);
-    histSixes = Math.round(histRuns * 0.05);
-  }
-
-  const historicalMetrics: PlayerHistoricalMetrics = {
-    matches: histMatches,
-    totalRuns: histRuns,
-    highestScore: histHighest,
-    strikeRate: Math.round(histSr * 10) / 10,
-    battingAvg: Math.round(histBatAvg * 10) / 10,
-    totalWickets: histWickets,
-    economy: Math.round(histEconomy * 10) / 10,
-    bestBowling: histBestBowling,
-    catches: histCatches,
-    stumpings: histStumpings,
-    avgPointsPerMatch: recentAvg,
-    boundaryCount: histBoundaries,
-    sixCount: histSixes,
-  };
+  const season = statsFor(store, p.id);
+  const historicalMetrics: PlayerHistoricalMetrics | undefined = season
+    ? {
+        scope: 'season',
+        matches: season.matches,
+        totalRuns: season.runs,
+        highestScore: season.highest,
+        strikeRate: season.strikeRate ?? 0,
+        battingAvg: season.average ?? 0,
+        totalWickets: season.wickets,
+        economy: season.economy ?? 0,
+        bestBowling: season.best ? `${season.best.wickets}/${season.best.runs}` : '—',
+        catches: season.catches,
+        stumpings: season.stumpings,
+        avgPointsPerMatch: seasonAvg,
+        boundaryCount: season.fours,
+        sixCount: season.sixes,
+      }
+    : undefined;
 
   return {
     trend,
@@ -516,20 +401,20 @@ export function calculatePlayerForm(p: Player, match: Match, store: AppStore): P
     recentScores,
     recentAvg,
     projectedPoints,
-    swingIndex,
+    swingIndex: momentumScore,
     pitchSuitability,
     matchupNote,
-    selectionSwing,
+    selectionSwing: 0,
     tier,
     allocationLevel: allocationLevel.level,
     allocationLabel: allocationLevel.badge,
     allocationInfo: allocationLevel,
-    pastPointsAvg,
-    futurePitchBoost,
-    futureOpponentBoost,
+    pastPointsAvg: seasonAvg,
+    futurePitchBoost: 0,
+    futureOpponentBoost: Math.max(0, Math.round(momentumScore * 0.7)),
     projectedCeiling,
     projectedFloor,
-    adaptationSummary,
+    adaptationSummary: `${pastFactor}. ${futureFactor}.`,
     historicalMetrics,
   };
 }
@@ -731,40 +616,60 @@ export function generateLineupVariations(pool: PlayerWithForm[], match: Match): 
   return presets;
 }
 
-export function getMatchSwingInsights(match: Match, pool: PlayerWithForm[]): MatchSwingInsights {
-  const paceBowlers = pool.filter(p => p.role === 'bowler' && p.bowlingStyle?.toLowerCase().includes('pace'));
-  const spinBowlers = pool.filter(p => p.role === 'bowler' && p.bowlingStyle?.toLowerCase().includes('spin'));
-
-  const starCount = pool.filter(p => p.form.tier === 'star' || isTopPlayer(p)).length;
-
+/**
+ * Conditions summary for the Pick XI builder, worked out from this season's completed matches at the
+ * venue. Until there are any, it says so instead of quoting figures (earlier versions shipped fixed,
+ * invented numbers such as a chasing win rate).
+ */
+export function getMatchSwingInsights(match: Match, pool: PlayerWithForm[], store?: AppStore): MatchSwingInsights {
+  const starCount = pool.filter(p => isTopPlayer(p)).length;
+  const done = (store?.matches || []).filter(m => m.status === 'completed' && m.scorecard?.innings1 && m.scorecard?.innings2);
+  const firsts = done.map(m => m.scorecard!.innings1!.totalRuns).filter(n => Number.isFinite(n) && n > 0);
+  const decided = done.filter(m => m.winner);
+  const chaseWins = decided.filter(m => m.winner === m.scorecard!.innings2!.teamId).length;
+  let pace = 0;
+  let spin = 0;
+  if (store) {
+    const byName = new Map(store.teams.flatMap(t => t.squad).map(p => [normName(p.name), p]));
+    for (const m of done) {
+      for (const inn of [m.scorecard!.innings1!, m.scorecard!.innings2!]) {
+        for (const bw of inn.bowling || []) {
+          const style = (byName.get(normName(bw.bowler))?.bowlingStyle || '').toLowerCase();
+          if (/spin|break|orthodox|googly|chinaman/.test(style)) spin += bw.wickets || 0;
+          else if (style) pace += bw.wickets || 0;
+        }
+      }
+    }
+  }
+  const total = pace + spin;
+  const avgFirst = firsts.length ? Math.round(firsts.reduce((a, b) => a + b, 0) / firsts.length) : null;
   return {
     pitchProfile: {
-      venue: match.venue || 'Sheikh Zayed Cricket Stadium, Abu Dhabi',
-      condition: 'True bounce, fast outfield with dew factor in evening overs',
-      expectedScore: '118 - 134 in 10 overs',
-      tossAdvantage: 'Teams chasing have won 58% of night fixtures under lights',
+      venue: match.venue || 'Zayed Cricket Stadium, Abu Dhabi',
+      condition: done.length ? `Based on ${done.length} completed match(es) this season` : 'No completed matches this season yet',
+      expectedScore: avgFirst ? `${avgFirst} average first-innings total this season` : 'Not enough matches yet',
+      tossAdvantage: decided.length ? `Chasing teams have won ${chaseWins} of ${decided.length} this season` : 'Not enough matches yet',
       paceVsSpin: {
-        pacePct: 62,
-        spinPct: 38,
-        paceWickets: Math.max(14, paceBowlers.length * 4),
-        spinWickets: Math.max(9, spinBowlers.length * 3),
+        pacePct: total ? Math.round((pace / total) * 100) : 0,
+        spinPct: total ? Math.round((spin / total) * 100) : 0,
+        paceWickets: pace,
+        spinWickets: spin,
       },
     },
     starQuotaGuide: {
-      recommendedStars: Math.min(4, Math.max(3, Math.floor(starCount / 2))),
-      description: 'Allocating 3 to 4 Star Players (Icons & Platinum) anchors your 11-player squad within the 100 credits budget, balanced with in-form tactical value players and budget enablers.',
-      creditBufferNotice: 'Dynamic point scaling adapts to pitch context, powerplay boundary threats, and middle-overs spin grip for peak projected fantasy points.',
+      recommendedStars: Math.min(DREAM_XI.maxTopPlayers || 4, Math.max(1, Math.floor(starCount / 2))),
+      description: `Up to ${DREAM_XI.maxTopPlayers || 4} star players (Icon, Platinum and marquee signings) fit in a lineup; fill the rest within the ${DREAM_XI.creditCap}-credit budget.`,
+      creditBufferNotice: 'Stars cost more credits, so cheaper picks leave room for them.',
     },
     radarAverages: {
-      power: 78,
-      bowling: 74,
-      starPower: 82,
-      matchup: 76,
-      volatility: 68,
+      power: 0,
+      bowling: 0,
+      starPower: pool.length ? Math.round((starCount / pool.length) * 100) : 0,
+      matchup: 0,
+      volatility: 0,
     },
   };
 }
-
 
 export function lineupLocked(match: Match) {
   return match.status !== 'upcoming' || +new Date(match.startsAt) <= Date.now();
@@ -830,7 +735,7 @@ export function computePlayerPoints(store: AppStore, match: Match): Map<string, 
       if (b.runs === 0 && out && b.balls > 0 && p.role !== 'bowler') add(p, SCORING.duck, 'duck');
       if (b.balls >= 5 && p.role !== 'bowler') {
         const sr = (b.runs / b.balls) * 100;
-        const bonus = sr > 190 ? 6 : sr >= 170 ? 4 : sr >= 150 ? 2 : sr < 60 ? -6 : sr < 70 ? -4 : sr <= 80 ? -2 : 0;
+        const bonus = bandPoints(STRIKE_RATE_BANDS, sr);
         add(p, bonus, `strike rate ${sr.toFixed(0)}`);
       }
       // Fielding and bowling credit from the dismissal text, e.g. "c Hetmyer b Boult", "st Pooran b Narine", "run out (Salt)", "lbw b Ali".
@@ -864,7 +769,7 @@ export function computePlayerPoints(store: AppStore, match: Match): Map<string, 
       const balls = oversToBalls(bw.overs);
       if (balls >= 6) {
         const econ = bw.runs / (balls / 6);
-        const bonus = econ < 7 ? 6 : econ < 8 ? 4 : econ <= 9 ? 2 : econ > 16 ? -6 : econ > 15 ? -4 : econ >= 14 ? -2 : 0;
+        const bonus = bandPoints(ECONOMY_BANDS, econ);
         add(p, bonus, `economy ${econ.toFixed(1)}`);
       }
     }

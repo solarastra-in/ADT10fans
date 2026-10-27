@@ -4,6 +4,7 @@ import path from 'path';
 import type { Request, Response, NextFunction } from 'express';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import nodemailer from 'nodemailer';
+import { findBy } from './indexes';
 import { db, User, SUPER_ADMIN_EMAIL, AdminPermission, AdminUserRecord, TEAM_OFFICIAL_PERMISSIONS } from './db';
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
@@ -181,7 +182,8 @@ export function createSession(userId: string): string {
   const token = crypto.randomBytes(32).toString('base64url');
   const store = db.get();
   const now = Date.now();
-  store.sessions = (store.sessions || []).filter(s => new Date(s.expiresAt).getTime() > now);
+  // Only appended here (expired sessions are removed by the scheduled housekeeping), so a sign-in
+  // writes one small shard and two sign-ins on different servers do not conflict.
   store.sessions.push({
     id: sha256(token),
     userId,
@@ -197,8 +199,9 @@ export function revokeSession(req: Request) {
   const token = bearer(req);
   if (!token) return;
   const store = db.get();
-  const id = sha256(token);
-  store.sessions = (store.sessions || []).filter(s => s.id !== id);
+  const session = findBy(store.sessions, 'id', sha256(token));
+  // Expired in place (removed later by housekeeping), so logging out writes one small shard.
+  if (session) session.expiresAt = new Date(0).toISOString();
   db.save();
 }
 
@@ -213,9 +216,9 @@ export function getAuthUser(req: Request): User | null {
   const token = bearer(req);
   if (!token) return null;
   const store = db.get();
-  const session = (store.sessions || []).find(s => s.id === sha256(token));
+  const session = findBy(store.sessions, 'id', sha256(token));
   if (!session || new Date(session.expiresAt).getTime() < Date.now()) return null;
-  const user = store.users.find(u => u.id === session.userId) || null;
+  const user = findBy(store.users, 'id', session.userId) || null;
   if (user) syncUserRbac(user);
   return user;
 }
@@ -344,8 +347,9 @@ export function smtpConfigured(): boolean {
   return Boolean(c.host && c.from && c.enabled);
 }
 
+/** Email sign-in works when SMTP is set up; in development the code is shown on screen instead. */
 export function emailOtpAvailable(): boolean {
-  return true;
+  return smtpConfigured() || !IS_PROD;
 }
 
 export function resetSmtpErrorState() {
@@ -355,7 +359,9 @@ export function resetSmtpErrorState() {
 export async function sendOtpEmail(to: string, code: string, brand: string): Promise<'sent' | 'dev'> {
   const c = smtpConfig();
   if (!c.host || !c.from || !c.enabled) {
-    console.info(`[sendOtpEmail] SMTP not fully configured (host: ${c.host || 'none'}, user: ${c.user || 'none'}). Dev sign-in code for ${to}: ${code}`);
+    // Never in production: a sign-in code in the logs lets anyone who can read them sign in as that fan.
+    if (IS_PROD) throw new Error('Email delivery (SMTP) is not set up');
+    console.info(`[sendOtpEmail] SMTP is not set up; development sign-in code for ${to}: ${code}`);
     return 'dev';
   }
   try {
@@ -364,9 +370,9 @@ export async function sendOtpEmail(to: string, code: string, brand: string): Pro
       port: c.port,
       secure: c.port === 465,
       auth: c.user ? { user: c.user, pass: c.pass } : undefined,
-      tls: {
-        rejectUnauthorized: false,
-      },
+      // Certificates are checked: the email carries a sign-in code. SMTP_INSECURE_TLS=1 is only for a
+      // private mail server with a self-signed certificate.
+      tls: { rejectUnauthorized: process.env.SMTP_INSECURE_TLS !== '1' },
     });
     await transporter.sendMail({
       from: c.from,
@@ -387,7 +393,8 @@ export async function sendOtpEmail(to: string, code: string, brand: string): Pro
     if (err.message?.includes('534-5.7.9') || err.message?.includes('Application-specific password')) {
       console.warn('[sendOtpEmail] Gmail SMTP requires a 16-character App Password. Configure in Admin Portal -> Settings -> Email Delivery (SMTP).');
     }
-    console.info(`[OTP] Generated sign-in code for ${to}: ${code}`);
+    if (IS_PROD) throw err;
+    console.info(`[OTP] development sign-in code for ${to}: ${code}`);
     return 'dev';
   }
 }

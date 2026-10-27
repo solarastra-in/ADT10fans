@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Save, Info, Sparkles, CheckCircle2, AlertTriangle, ShieldCheck, Mail, Send } from 'lucide-react';
 import { SystemSettings } from '../../types';
 import { api } from '../../api';
-import { Button, Card, Checkbox, Errors, Field, Notice, SectionHeader, TextArea, TextInput, splitList, toDateInput, toNumber, useRunner } from './ui';
+import { Button, Card, Checkbox, Errors, Field, Notice, SectionHeader, TextArea, TextInput, splitList, toDateInput, toNumber, useRunner, Select } from './ui';
 
 type Draft = {
   brandName: string;
@@ -24,6 +24,8 @@ type Draft = {
   referralRewardPoints: string;
   referralMaxRewarded: string;
   lockReminderMinutes: string;
+  fanOfTheDayPoints: string;
+  fanWallReview: 'photos' | 'all' | 'none';
   smtpHost: string;
   smtpPort: string;
   smtpUser: string;
@@ -53,6 +55,8 @@ const toDraft = (s: Partial<SystemSettings> | null | undefined): Draft => ({
   referralRewardPoints: String(s?.referralRewardPoints ?? 50),
   referralMaxRewarded: String(s?.referralMaxRewarded ?? 10),
   lockReminderMinutes: String(s?.lockReminderMinutes ?? 30),
+  fanOfTheDayPoints: String(s?.fanOfTheDayPoints ?? 100),
+  fanWallReview: s?.fanWallReview || 'photos',
   smtpHost: s?.smtp?.host || '',
   smtpPort: s?.smtp?.port ? String(s.smtp.port) : '',
   smtpUser: s?.smtp?.user || '',
@@ -127,6 +131,8 @@ export const SettingsSection: React.FC<{ settings: SystemSettings; onRefreshAll:
     if (!(Number.isInteger(refMax) && refMax >= 0 && refMax <= 1000)) er.referralMaxRewarded = 'Use a whole number from 0 to 1000.';
     const lockMin = toNumber(draft.lockReminderMinutes, -1);
     if (!(Number.isInteger(lockMin) && lockMin >= 5 && lockMin <= 240)) er.lockReminderMinutes = 'Use a whole number from 5 to 240.';
+    const fotdPts = toNumber(draft.fanOfTheDayPoints, -1);
+    if (!(Number.isInteger(fotdPts) && fotdPts >= 0 && fotdPts <= 1000)) er.fanOfTheDayPoints = 'Use a whole number from 0 to 1000.';
     if (!(Number.isInteger(max) && max >= 1 && max <= 50)) er.maxSocialPerPlatform = 'Use a whole number from 1 to 50.';
     const port = toNumber(draft.smtpPort, -1);
     if (draft.smtpPort && !(Number.isInteger(port) && port > 0 && port < 65536)) er.smtpPort = 'Port must be 1–65535.';
@@ -169,6 +175,8 @@ export const SettingsSection: React.FC<{ settings: SystemSettings; onRefreshAll:
       referralRewardPoints: refPts,
       referralMaxRewarded: refMax,
       lockReminderMinutes: lockMin,
+      fanOfTheDayPoints: fotdPts,
+      fanWallReview: draft.fanWallReview,
       newsQueries: draft.newsQueries
         .split('\n')
         .map(l => l.trim())
@@ -424,6 +432,16 @@ export const SettingsSection: React.FC<{ settings: SystemSettings; onRefreshAll:
 
           <Field label="Lock reminder (minutes before start)" error={errors.lockReminderMinutes} hint="Fans with an unsaved Pick XI or open contest get a reminder this long before lock.">
             <TextInput type="number" inputMode="numeric" min={5} max={240} value={draft.lockReminderMinutes} onChange={e => set({ lockReminderMinutes: e.target.value })} error={!!errors.lockReminderMinutes} />
+          </Field>
+          <Field label="Fan of the Day points" error={errors.fanOfTheDayPoints} hint="Given to the fan whose fan wall post you pick each day (Admin → Fan wall).">
+            <TextInput type="number" inputMode="numeric" min={0} max={1000} value={draft.fanOfTheDayPoints} onChange={e => set({ fanOfTheDayPoints: e.target.value })} error={!!errors.fanOfTheDayPoints} />
+          </Field>
+          <Field label="Fan wall review" hint="Which posts wait for a moderator before fans see them. Reported posts always wait.">
+            <Select value={draft.fanWallReview} onChange={e => set({ fanWallReview: e.target.value as Draft['fanWallReview'] })}>
+              <option value="photos">Posts with a photo (recommended)</option>
+              <option value="all">Every post</option>
+              <option value="none">None (reports only)</option>
+            </Select>
           </Field>
 
           <Field 

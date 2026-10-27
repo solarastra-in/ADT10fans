@@ -44,6 +44,7 @@ export function AuthModal() {
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [sent, setSent] = useState(false);
+  const [devCode, setDevCode] = useState<string | null>(null);
   const [loading, setLoading] = useState<'google' | 'send' | 'verify' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -95,7 +96,8 @@ export function AuthModal() {
     setLoading('send');
     setError(null);
     try {
-      await api.requestOtp(email.trim());
+      const r = await api.requestOtp(email.trim());
+      setDevCode(r.devCode || null);
       setSent(true);
       setCode('');
     } catch (err: any) {
@@ -161,6 +163,11 @@ export function AuthModal() {
                   <CheckCircle2 className="w-4 h-4" /> {t('We sent a 6-digit code to {email}. It expires in 10 minutes.', { email })}
                 </span>
               </Notice>
+              {devCode && (
+                <p className="text-xs text-amber-300">
+                  Development server, no email sent. Code: <strong data-testid="dev-code" className="font-mono">{devCode}</strong>
+                </p>
+              )}
               <label className="block">
                 <span className="block text-xs font-bold text-slate-300 mb-1">{t('6-digit code')}</span>
                 <input inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))} className={`${inputCls} font-mono tracking-[0.4em] text-center text-lg`} name="code" />

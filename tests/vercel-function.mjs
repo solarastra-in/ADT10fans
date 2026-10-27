@@ -18,6 +18,9 @@ process.chdir(func);
 process.env.VERCEL = '1';
 process.env.NODE_ENV = 'production';
 process.env.SCHEDULED_JOBS = 'off';
+// A throwaway local store: this checks that the function starts and serves, not the live database.
+process.env.STORE_BACKEND = 'file';
+process.env.DATA_DIR = fs.mkdtempSync(path.join(root, '.vercel/test-data-'));
 const mod = await import(path.join(func, cfg.handler));
 const handler = mod.default?.default || mod.default;
 let passed = 0;

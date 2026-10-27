@@ -6,7 +6,7 @@ What was built in this round, and the next ideas worth doing, roughly in order o
 
 **Play and win**
 
-- **Dream XI** (fantasy cricket):
+- **Pick XI** (fantasy cricket):
   - 100 credits, roles and team limits, captain/vice-captain.
   - Scored automatically from the scorecard.
   - Private leagues with join codes.
@@ -44,7 +44,7 @@ What was built in this round, and the next ideas worth doing, roughly in order o
 
 **Matchday**
 
-- **Live scores** from CricketData once a fixture is linked: score, toss, result, scorecard, top scorer, sixes. Completing a match scores Dream XI and sends the result.
+- **Live scores** from CricketData once a fixture is linked: score, toss, result, scorecard, top scorer, sixes. Completing a match scores Pick XI and sends the result.
 - **Fan Spaces:** watch parties with capacity, QR passes and phone-camera door check-in.
 
 **Reach**
@@ -53,10 +53,33 @@ What was built in this round, and the next ideas worth doing, roughly in order o
 - **Arabic, Hindi and Urdu**, with right-to-left layout.
 - **Team officials:** each franchise can run its own page, accounts, posts, polls, forum and fan notifications without touching anything else.
 
+**Added in the scale, SEO and fan engagement pass**
+
+- **Player cards:** tap any player for this season's real figures (from scorecards on the site) and verified links to ESPNcricinfo, Cricbuzz, Wikipedia and their own social accounts. These links also go into the page's `sameAs` structured data, which is how search engines tie the page to the player.
+- **Skill games**, all generated from the real squads and this season's figures, the same for every fan each day:
+  - *Squad Connections:* sixteen players, four hidden groups (team, role, batting or bowling style, signing). 60 points.
+  - *Cricket Grid:* a 3×3 grid of team × trait; rarer correct answers score more, as in the Immaculate Grid. 90 points.
+  - *Stat Wars:* 60 seconds of "who has more?" on this season's numbers, +3 / −1 with a time bonus.
+  - *Duels:* challenge a friend to the same Stat Wars questions; the higher score wins 15 points.
+- **Fan wall and Fan of the Day:** fans post photos and moments, react and report; the organisers approve photos and pick a Fan of the Day for points and a notification.
+
+## Game ideas (researched, not built yet)
+
+Skill and knowledge games that suit cricket fans, alone or against each other:
+
+1. **Ball-by-ball predictor (live, head-to-head):** before each delivery, pick dot / single / boundary / wicket; streaks score. Needs the ball-by-ball feed.
+2. **Over-par chase:** given a real match situation from this season (runs needed, balls left, batters in), pick the batting order and shot plan; scored against what actually happened.
+3. **Scorecard detective:** a real scorecard from this season with names hidden; work out the players from their figures.
+4. **Auction room:** a timed draft against friends from the real squad, with each player's real credits; best combined points over the next match wins.
+5. **Higher or lower streak:** like Stat Wars but endless, one stat at a time; daily leaderboard of the longest streak.
+6. **Team-of-the-week challenge:** after each match round, guess the official team of the week.
+7. **Captaincy calls:** in a live match, pick who bowls the next over; points if the over goes for fewer runs than the match rate.
+8. **Weekly league for duels:** a ladder where fans challenge the fan just above them.
+
 ## Next ideas
 
-1. **Live match centre during play:** ball-by-ball commentary and a win-probability bar from CricketData's ball-by-ball endpoint, with live Dream XI points updating as the match goes.
-2. **Dream XI contests with prizes per match:** a small prize for the best lineup of each match (using the existing prize catalogue), and head-to-head challenges between friends in a private league.
+1. **Live match centre during play:** ball-by-ball commentary and a win-probability bar from CricketData's ball-by-ball endpoint, with live Pick XI points updating as the match goes.
+2. **Pick XI contests with prizes per match:** a small prize for the best lineup of each match (using the existing prize catalogue), and head-to-head challenges between friends in a private league.
 3. **Prediction streaks and season-long picks:** champion, top run-scorer and most sixes, locked before match 1 and settled at the end of the season.
 4. **Matchday check-in at the stadium:** a code shown on the big screen or at Fan Spaces earns bonus points and a "was there" badge.
 5. **Weekly Fan Wars rewards:** the team with the most active fans that week unlocks a perk for all its fans (for example a draw only they can enter).

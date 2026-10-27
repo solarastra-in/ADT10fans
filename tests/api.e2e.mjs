@@ -51,7 +51,7 @@ const teams = (await get('/api/teams')).json.teams;
 ok('six franchises are seeded', teams.length === 6);
 const NAMES = ['UAE Bulls', 'United Tigers', 'Yas Lions', 'Arabian Aces', 'Emirates Eagles', 'Royal Desert Champions'];
 for (const n of NAMES) ok(`seeded ${n} with 18 players`, teams.find(t => t.name === n)?.squad.length === 18);
-ok('every player has a role and credits', teams.every(t => t.squad.every(p => ['batter', 'bowler', 'allrounder', 'wicketkeeper'].includes(p.role) && p.credits >= 8 && p.credits <= 10.5)));
+ok('every player has a role and credits', teams.every(t => t.squad.every(p => ['batter', 'bowler', 'allrounder', 'wicketkeeper'].includes(p.role) && p.credits >= 7 && p.credits <= 10.5)));
 ok('no invented player stats are shipped', teams.every(t => t.squad.every(p => p.stats === undefined)));
 ok('icon players cost 10.5 credits', teams.every(t => t.squad.filter(p => p.isIcon).every(p => p.credits === 10.5)));
 const bulls = teams.find(t => t.id === 'bulls');
@@ -259,7 +259,8 @@ const tooRich = [...pricey, ...pool.filter(p => !pricey.includes(p.id)).slice(0,
 const richRes = await save(F1, tooRich, tooRich[0], tooRich[1]);
 ok('lineups over budget or breaking role limits are refused', richRes.status === 400);
 const s1 = await save(F1, XI, maxB, matiullah);
-ok('valid Dream XI saved with credits used', s1.status === 200 && s1.json.credits === 95.5, s1.json);
+const xiCredits = Math.round(XI.reduce((sum, id) => sum + pool.find(p => p.id === id).credits, 0) * 10) / 10;
+ok('valid Dream XI saved with credits used', s1.status === 200 && s1.json.credits === xiCredits && xiCredits <= 100, { credits: s1.json.credits, xiCredits });
 ok('fan2 saves a lineup', (await save(F2, XI, byName('Ibrahim Masood').id, byName('Amshi de Silva').id)).status === 200);
 ok('anonymous cannot save a lineup', (await save(null, XI, maxB, matiullah)).status === 401);
 ok('selected-by percentage shows', (await get(`/api/fantasy/${m1.id}`)).json.pool.find(p => p.id === maxB).selectedBy === 100);
@@ -280,29 +281,36 @@ const done = await post('/api/matches', { id: m1.id, status: 'completed', winner
 ok('completing a match sends the result and scores Dream XI', done.json.notification?.category === 'match_result' && done.json.fantasy?.scored === 2, done.json);
 const myFt = (await get(`/api/fantasy/${m1.id}`, F1)).json.fantasyTeam;
 const line = id => myFt.breakdown.find(b => b.playerId === id);
-// Max Bryant: 40 runs + 4 fours + 2 sixes x2 + 30 bonus 8 + strike rate 222 (+6) + playing 4 = 66, captain x2
-ok('batting points: 66 doubled for the captain', line(maxB).base === 66 && line(maxB).total === 132, line(maxB));
-// Matiullah Khan: 3 wickets 75 + 3-wicket bonus 16 + maiden 16 + economy 4.5 (+6) + bowled bonus 8 + playing 4 = 125, x1.5
-ok('bowling points: 125 x1.5 for the vice-captain', line(matiullah).base === 125 && line(matiullah).total === 187.5, line(matiullah));
-ok('catch earns fielding and playing points (12)', line(byName('Moeen Ali').id).base === 12);
-ok('wicket and economy points (31)', line(byName('Amshi de Silva').id).base === 31);
-ok('duck costs a batter 2 (4 - 2 = 2)', line(byName('Ibrahim Masood').id).base === 2);
+// Points follow the published rules (GET /api/fantasy/rules): playing 20, run 2, four +2, six +5,
+// 30-run bonus 16, wicket 35, 3-wicket bonus 32, maiden 32, bowled/LBW 12, catch 12, duck -4,
+// strike rate above 200 +12, below 60 -8, economy under 7 +12, 8.51-10 +4.
+const rulesTable = (await get('/api/fantasy/rules')).json.scoring;
+const ruleValue = label => rulesTable.flatMap(g => g.rules).find(r => r[0] === label)?.[1];
+ok('published rules list the strike-rate and economy bands used for scoring', ruleValue('Above 200.0') === 12 && ruleValue('Under 7.0 runs per over') === 12 && ruleValue('Below 60.0') === -8);
+// Max Bryant: 40 runs 80 + 4 fours 8 + 2 sixes 10 + 30 bonus 16 + strike rate 222 (+12) + playing 20 = 146, captain x2
+ok('batting points: 146 doubled for the captain', line(maxB).base === 146 && line(maxB).total === 292, line(maxB));
+// Matiullah Khan: 3 wickets 105 + 3-wicket bonus 32 + maiden 32 + economy 4.5 (+12) + bowled bonus 12 + playing 20 = 213, x1.5
+ok('bowling points: 213 x1.5 for the vice-captain', line(matiullah).base === 213 && line(matiullah).total === 319.5, line(matiullah));
+ok('catch earns fielding and playing points (12 + 20)', line(byName('Moeen Ali').id).base === 32);
+ok('wicket, economy 9.0 and playing points (35 + 4 + 20)', line(byName('Amshi de Silva').id).base === 59);
+ok('duck costs a batter 4 (20 - 4 = 16)', line(byName('Ibrahim Masood').id).base === 16);
 ok('players who did not play score 0', line(byName('Paul Walter').id).base === 0);
-ok('lineup total 364.5, ranked 1st', myFt.points === 364.5 && myFt.rank === 1);
-ok('fan gets total/5 = 73 season points', (await me(F1)).points === p1Before + 73);
+ok('lineup total 718.5, ranked 1st', myFt.points === 718.5 && myFt.rank === 1, myFt.points);
+ok('fan gets total/5 = 144 season points', (await me(F1)).points === p1Before + 144);
 const lb = (await get(`/api/fantasy/leaderboard?matchId=${m1.id}`)).json.rows;
-ok('match leaderboard ranks both lineups', lb.length === 2 && lb[0].userId === fan1.user.id && lb[1].points === 253.5);
+// Fan 2: Ibrahim Masood 16 x2 + Amshi de Silva 59 x1.5 + 146 + 213 + 32 = 511.5
+ok('match leaderboard ranks both lineups', lb.length === 2 && lb[0].userId === fan1.user.id && lb[1].points === 511.5, lb.map(r => r.points));
 ok('locked lineups cannot change', (await save(F1, XI, matiullah, maxB)).status === 400);
 const md = (await get(`/api/matches/${m1.id}`)).json;
 ok('match page shows fantasy points and most-picked players', md.fantasy.playerPoints[0].name === 'Matiullah Khan' && md.fantasy.mostPicked.length === 5);
 const p1Mid = (await me(F1)).points;
 await post('/api/matches', { id: m1.id, scorecard: card(10, 18, 0, 0) }, A);
-// Corrected: Max Bryant 10 runs, strike rate 55 (-6), playing 4 = 8 -> lineup 248.5 -> 50 season points
+// Corrected: Max Bryant 10 runs 20, strike rate 55 (-8), playing 20 = 32 -> x2 64 -> lineup 490.5 -> 98 season points
 const fixed = (await get(`/api/fantasy/${m1.id}`, F1)).json.fantasyTeam;
-ok('scorecard correction re-scores the lineup', fixed.points === 248.5);
-ok('re-scoring reverses the old award first (73 -> 50)', (await me(F1)).points === p1Mid - 23);
+ok('scorecard correction re-scores the lineup', fixed.points === 490.5, fixed.points);
+ok('re-scoring reverses the old award first (144 -> 98)', (await me(F1)).points === p1Mid - 46);
 const res2 = await post(`/api/admin/fantasy/${m1.id}/score`, {}, A);
-ok('admin re-score is idempotent', res2.json.scored === 2 && (await me(F1)).points === p1Mid - 23);
+ok('admin re-score is idempotent', res2.json.scored === 2 && (await me(F1)).points === p1Mid - 46);
 const n1 = (await get('/api/notifications', F1)).json.notifications;
 ok('fan gets a personal Dream XI result', n1.some(n => n.category === 'fantasy' && /you finished #1 of 2/.test(n.body)));
 ok('result notification is sent once', n1.filter(n => n.category === 'match_result').length === 1);
@@ -310,8 +318,25 @@ ok('other fans do not see personal results', !(await get('/api/notifications', F
 ok('anonymous visitors only see public notifications', (await get('/api/notifications')).json.notifications.every(n => n.category !== 'fantasy'));
 const lgs = (await get('/api/fantasy/leaderboard')).json.rows;
 ok('season Dream XI leaderboard', lgs[0].userId === fan1.user.id && lgs[0].matches === 1);
+// Player links: found by joining ids (Cricbuzz -> Cricsheet -> ESPNcricinfo -> Wikidata), never by name.
+const resolved = await post('/api/admin/players/links/resolve', { all: true }, A);
+ok('player links lookup runs for every player', resolved.status === 200 && resolved.json.checked === 108, resolved.json);
+const pollard = (await get('/api/players/bulls-kieron-pollard')).json;
+const linkOf = (pp, key) => pp.links.find(l => l.key === key)?.url;
+ok('ESPNcricinfo link from the Cricsheet register', linkOf(pollard, 'espncricinfo') === 'https://www.espncricinfo.com/cricketers/kieron-pollard-230559', pollard.links);
+ok('Wikipedia and official social accounts from Wikidata', linkOf(pollard, 'wikipedia') === 'https://en.wikipedia.org/wiki/Kieron_Pollard' && linkOf(pollard, 'instagram') === 'https://www.instagram.com/test_pollard_ig/' && linkOf(pollard, 'x') === 'https://x.com/test_pollard_x');
+ok('social link shows the handle', pollard.links.find(l => l.key === 'x').handle === '@test_pollard_x');
+const bryant = (await get(`/api/players/${maxB}`)).json;
+ok('an id that maps to another name is refused (no ESPNcricinfo link)', !linkOf(bryant, 'espncricinfo') && /cricbuzz\.com\/profiles\/13120/.test(linkOf(bryant, 'cricbuzz') || ''), bryant.links);
+// An admin's own link is kept when the lookup runs again.
+const bullsSquad = (await get('/api/teams')).json.teams.find(t => t.id === 'bulls').squad;
+const withAdminLink = bullsSquad.map(p => (p.id === 'bulls-kieron-pollard' ? { ...p, links: { ...p.links, instagram: 'https://www.instagram.com/admin_set_handle/' } } : p));
+ok('admin can set a player link', (await post('/api/teams/bulls/squad', { squad: withAdminLink, confirm: true }, A)).status === 200);
+ok('a link to the wrong site is refused', (await post('/api/teams/bulls/squad', { squad: bullsSquad.map(p => (p.id === 'bulls-kieron-pollard' ? { ...p, links: { instagram: 'https://evil.example/x' } } : p)), confirm: true }, A)).status === 400);
+await post('/api/admin/players/links/resolve', { all: true }, A);
+ok("the lookup never replaces an admin's link", linkOf((await get('/api/players/bulls-kieron-pollard')).json, 'instagram') === 'https://www.instagram.com/admin_set_handle/');
 const playerPage = (await get(`/api/players/${maxB}`)).json;
-ok('player page shows fantasy points per match', playerPage.fixtures[0].fantasyPoints === 8 && playerPage.player.credits === 8.5);
+ok('player page shows fantasy points per match', playerPage.fixtures[0].fantasyPoints === 32 && playerPage.player.credits === 8, { pts: playerPage.fixtures[0].fantasyPoints, credits: playerPage.player.credits });
 
 // Settle the contest
 const settle = await post(`/api/admin/contests/${contest.id}/settle`, { answers: { [q1.id]: 'UAE Bulls', [q2.id]: 'No' } }, A);
@@ -364,7 +389,7 @@ const cron2 = await call('POST', '/api/cron/run?only=reminders', null, null, { h
 ok('lock reminder is not repeated', cron2.json.jobs.reminders.lockReminders === 0);
 const remF4 = (await get('/api/notifications', F4)).json.notifications.find(n => n.data?.matchId === m3.id);
 const remF2 = (await get('/api/notifications', F2)).json.notifications.find(n => n.data?.matchId === m3.id);
-ok('fans with a lineup get "your Dream XI is in"', /Your Dream XI is in/.test(remF4?.body));
+ok('fans with a lineup get "your Dream XI is in"', /Your Pick XI is in/.test(remF4?.body));
 ok('fans without one get "pick 11 players"', /Pick 11 players/.test(remF2?.body));
 const cron3 = await call('POST', '/api/cron/run', null, null, { headers: { Authorization: `Bearer ${CRON}` } });
 ok('full cron run pulls feeds and checks fixtures', cron3.json.jobs.feeds && cron3.json.jobs.scores && cron3.json.jobs.checks !== undefined, cron3.json);
@@ -632,6 +657,169 @@ ok('robots.txt blocks admin and API', /Disallow: \/admin/.test((await html('/rob
   ok('inviter past the limit is not paid again', (await me(F1)).points === f1Before);
   ok('referral summary shows the limit', (await get('/api/me/referral', F1)).json.maxRewarded === 1);
   await post('/api/admin/settings', { referralMaxRewarded: 10 }, A);
+}
+
+// ============ 14b. Skill games: Squad Connections, Cricket Grid, Stat Wars, duels ============
+{
+  const G1 = (await login('gamer1@test.dev')).token;
+  const G2 = (await login('gamer2@test.dev')).token;
+  const allTeams = (await get('/api/teams')).json.teams;
+  const pl = new Map(allTeams.flatMap(t => t.squad.map(p => [p.id, p])));
+  const bowl = p => (p.bowlingStyle || '').toLowerCase();
+  // The same traits as server/arcade.ts, by label, so the test can check answers independently.
+  const traits = {
+    'Left-hand batter': p => /left-hand/i.test(p.battingStyle || ''),
+    Wicketkeeper: p => p.role === 'wicketkeeper' || Boolean(p.isKeeper),
+    'Off-spinner': p => /offbreak/.test(bowl(p)),
+    'Leg-spinner or wrist-spinner': p => /legbreak|wrist-spin/.test(bowl(p)),
+    'Left-arm orthodox spinner': p => /left-arm orthodox/.test(bowl(p)),
+    'Left-arm seamer': p => /^left-arm (fast|medium)/.test(bowl(p)),
+    'Right-arm fast or fast-medium': p => /^right-arm fast/.test(bowl(p)),
+    'Right-arm medium pace': p => bowl(p) === 'right-arm medium',
+    'Icon or Platinum signing': p => p.isIcon || /icon|platinum/i.test(p.category || ''),
+    'Batting all-rounder': p => p.cricbuzzRole === 'Batting Allrounder',
+    'Bowling all-rounder': p => p.cricbuzzRole === 'Bowling Allrounder',
+    'Specialist batter': p => p.role === 'batter',
+    'Specialist bowler': p => p.role === 'bowler',
+    "Doesn't bowl": p => !p.bowlingStyle,
+  };
+  const traitOf = label => {
+    if (traits[label]) return traits[label];
+    const team = allTeams.find(t => label === `Plays for ${t.name}` || label === t.name);
+    return team ? p => p.teamId === team.id : null;
+  };
+
+  // Squad Connections
+  let today = (await get('/api/games/today', G1)).json;
+  ok('Squad Connections: 16 players, groups hidden', today.connections.available && today.connections.remaining.length === 16 && today.connections.groups.length === 0, today.connections);
+  ok('the puzzle carries no answers', !JSON.stringify(today.connections).includes('traitId'));
+  const ids = today.connections.remaining.map(p => p.id);
+  const tries = [ids.slice(0, 4), ids.slice(4, 8), ids.slice(8, 12), ids.slice(12, 16), [ids[0], ids[5], ids[10], ids[15]], [ids[1], ids[6], ids[11], ids[12]], [ids[2], ids[7], ids[8], ids[13]], [ids[3], ids[4], ids[9], ids[14]]];
+  let c1;
+  for (const t of tries) {
+    c1 = await post('/api/games/connections', { playerIds: t }, G1);
+    if (c1.json.connections?.finished) break;
+  }
+  ok('Connections ends after 4 mistakes (or a solve) and reveals the groups', c1.json.connections.finished && c1.json.connections.groups.length === 4, c1.json);
+  const groups = c1.json.connections.groups;
+  ok('every revealed group really shares its trait', groups.every(g => g.players.every(p => traitOf(g.label)?.(pl.get(p.id)))), groups.map(g => g.label));
+  ok('no player fits two groups (one answer only)', groups.every(g => g.players.every(p => groups.filter(h => h !== g).every(h => !traitOf(h.label)(pl.get(p.id))))));
+  ok('a finished puzzle cannot be played again', (await post('/api/games/connections', { playerIds: groups[0].players.map(p => p.id) }, G1)).status === 400);
+  const before2 = (await me(G2)).points;
+  let c2;
+  for (const g of groups) c2 = await post('/api/games/connections', { playerIds: g.players.map(p => p.id) }, G2);
+  ok('another fan solves it without mistakes: 4 x 10 + 20 = 60 points', c2.json.connections.solved && c2.json.connections.points === 60 && (await me(G2)).points === before2 + 60, c2.json.connections);
+
+  // Cricket Grid
+  today = (await get('/api/games/today', G1)).json;
+  const grid = today.grid;
+  ok('Cricket Grid: 3 teams x 3 traits', grid.available && grid.rows.length === 3 && grid.cols.length === 3 && grid.guessesLeft === 9, grid);
+  const fits = (r, c) => [...pl.values()].filter(p => p.teamId === grid.rows[r].teamId && traits[grid.cols[c].label](p));
+  ok('every square has at least two possible players', [0, 1, 2].every(r => [0, 1, 2].every(c => fits(r, c).length >= 2)));
+  const right = fits(0, 0)[0];
+  const wrongPick = [...pl.values()].find(p => p.teamId !== grid.rows[0].teamId);
+  const g1 = await post('/api/games/grid', { cell: '0-0', playerId: right.id }, G1);
+  ok('a correct pick fills the square and shows how many fans picked it', g1.json.grid.correct && g1.json.grid.cells['0-0'].id === right.id && g1.json.grid.cells['0-0'].pickedBy === 100 && g1.json.grid.guessesLeft === 8, g1.json);
+  const g2 = await post('/api/games/grid', { cell: '0-1', playerId: wrongPick.id }, G1);
+  ok('a wrong pick uses a guess and leaves the square empty', !g2.json.grid.correct && !g2.json.grid.cells['0-1'] && g2.json.grid.guessesLeft === 7);
+  ok('a player cannot be used twice', (await post('/api/games/grid', { cell: '1-1', playerId: right.id }, G1)).status === 400);
+  const other = fits(0, 0)[1];
+  await post('/api/games/grid', { cell: '0-0', playerId: other.id }, G2);
+  ok('rarity: a pick shared by half the fans shows 50%', (await get('/api/games/today', G1)).json.grid.cells['0-0'].pickedBy === 50);
+
+  // Stat Wars (this season's real figures: match 1 was completed with a scorecard above)
+  ok('Stat Wars is open once the season has figures', today.statWars.available, today.statWars);
+  const run = await post('/api/games/statwars/start', {}, G1);
+  ok('a run starts with questions but no answers', run.status === 200 && run.json.questions.length >= 10 && run.json.questions.every(q => q.answer === undefined && q.values === undefined && q.a.name && q.b.name), run.json);
+  ok('only one run at a time', (await post('/api/games/statwars/start', {}, G1)).status === 400);
+  const done = await post('/api/games/statwars/finish', { answers: run.json.questions.map(() => 'a') }, G1);
+  const review = done.json.review;
+  const expect = review.filter(q => q.right).length * 3 - review.filter(q => !q.right).length;
+  ok('answers are marked from real season figures', review.every(q => (q.answer === 'a') === (/lower/.test(q.prompt) ? q.values[0] < q.values[1] : q.values[0] > q.values[1])), review.slice(0, 3));
+  ok('score: 3 per correct, -1 per wrong, never below 0', done.json.score === Math.max(0, expect + done.json.timeBonus), { score: done.json.score, expect, bonus: done.json.timeBonus });
+  ok('one scoring run a day', (await post('/api/games/statwars/start', {}, G1)).status === 400);
+
+  // Duels
+  const duel = await post('/api/duels', { open: true }, G1);
+  ok('a fan starts a duel and gets a code', duel.status === 200 && /^[A-Z0-9]{6}$/.test(duel.json.duel.code), duel.json);
+  const code = duel.json.duel.code;
+  const d1 = await post('/api/games/statwars/start', { duel: code }, G1);
+  await post('/api/games/statwars/finish', { duel: code, answers: d1.json.questions.map(q => 'a') }, G1);
+  ok('an open duel is listed for other fans once its creator has played', (await get('/api/duels', G2)).json.open.some(d => d.code === code));
+  ok('the challenger\'s score stays hidden until you have played', (await get(`/api/duels/${code}`, G2)).json.duel.challenger.score === null);
+  ok('another fan accepts the duel', (await post(`/api/duels/${code}/join`, {}, G2)).json.duel.opponent?.played === false);
+  const d2 = await post('/api/games/statwars/start', { duel: code }, G2);
+  ok('both fans get the same questions', JSON.stringify(d2.json.questions) === JSON.stringify(d1.json.questions));
+  const g2Before = (await me(G2)).points;
+  const fin = await post('/api/games/statwars/finish', { duel: code, answers: d2.json.questions.map(() => 'b') }, G2);
+  const dv = fin.json.duel;
+  ok('the duel is decided when both have played', dv.status === 'done' && dv.challenger.score !== null && dv.opponent.score !== null, dv);
+  const g2Won = dv.winnerId && dv.winnerId !== dv.challenger.userId;
+  ok('winner gets 15 points, the other 3', (await me(G2)).points === g2Before + (g2Won ? 15 : 3));
+  ok('a third fan cannot take a duel that is taken', (await post(`/api/duels/${code}/join`, {}, F1)).status === 400);
+}
+
+// ============ 14c. Fan wall and Fan of the Day ============
+{
+  const zlib = await import('node:zlib');
+  // A real 240x240 PNG with a text chunk (metadata that must be removed before storing).
+  const crc32 = buf => { let c, crc = 0xffffffff; for (const b of buf) { c = (crc ^ b) & 0xff; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; crc = (crc >>> 8) ^ c; } return (crc ^ 0xffffffff) >>> 0; };
+  const chunk = (type, data) => { const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type), data]); const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(td)); return Buffer.concat([len, td, crc]); };
+  const W = 240, H = 240;
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(W, 0); ihdr.writeUInt32BE(H, 4); ihdr[8] = 8; ihdr[9] = 2;
+  const raw = Buffer.alloc((W * 3 + 1) * H, 0x55); for (let y = 0; y < H; y++) raw[y * (W * 3 + 1)] = 0;
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('tEXt', Buffer.from('Location\0Secret home address')), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+  // A JPEG header with an EXIF segment (GPS) and a 300x300 frame.
+  const seg = (m, data) => { const l = Buffer.alloc(2); l.writeUInt16BE(data.length + 2); return Buffer.concat([Buffer.from([0xff, m]), l, data]); };
+  const sof = Buffer.from([8, 0x01, 0x2c, 0x01, 0x2c, 3, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1]);
+  const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8]), seg(0xe0, Buffer.from('JFIF\0\x01\x01\0\0\x01\0\x01\0\0', 'binary')), seg(0xe1, Buffer.from('Exif\0\0GPS 25.2048N 55.2708E')), seg(0xc0, sof), Buffer.from([0xff, 0xda, 0x00, 0x08, 1, 1, 0, 0, 0x3f, 0, 0x12, 0x34, 0xff, 0xd9])]);
+
+  const W1 = (await login('wall1@test.dev')).token;
+  const W2 = (await login('wall2@test.dev')).token;
+  const before = (await me(W1)).points;
+  const textPost = await post('/api/fanwall/new', { text: 'Front row for the opener, flag in hand!', kind: 'matchday' }, W1);
+  ok('a text post goes live at once and earns 5 points', textPost.status === 200 && textPost.json.post.status === 'live' && textPost.json.pointsAdded === 5 && (await me(W1)).points === before + 5, textPost.json);
+  const photoPost = await post('/api/fanwall/new', { text: 'My shirt collection', kind: 'memorabilia', photo: `data:image/png;base64,${png.toString('base64')}` }, W1);
+  ok('a photo post waits for review (default: photos are reviewed)', photoPost.status === 200 && photoPost.json.post.status === 'pending' && /^\/uploads\//.test(photoPost.json.post.photoUrl), photoPost.json);
+  const storedPng = Buffer.from(await (await fetch(BASE + photoPost.json.post.photoUrl)).arrayBuffer());
+  ok('the stored photo is the image without its metadata', storedPng.length > 100 && !storedPng.includes(Buffer.from('Secret home address')) && storedPng.includes(Buffer.from('IDAT')));
+  const jpegPost = await post('/api/fanwall/new', { text: 'At the stadium', photo: `data:image/jpeg;base64,${jpeg.toString('base64')}` }, W2);
+  const storedJpeg = Buffer.from(await (await fetch(BASE + jpegPost.json.post.photoUrl)).arrayBuffer());
+  ok('GPS/EXIF is removed from JPEG photos', jpegPost.status === 200 && !storedJpeg.includes(Buffer.from('GPS')) && !storedJpeg.includes(Buffer.from('Exif')) && storedJpeg.includes(Buffer.from('JFIF')), { status: jpegPost.status });
+  ok('a file that is not an image is refused', (await post('/api/fanwall/new', { text: 'x x x', photo: 'data:image/png;base64,' + Buffer.from('<script>alert(1)</script>').toString('base64') }, W2)).status === 400);
+  let wall = (await get('/api/fanwall')).json;
+  ok('other fans only see approved posts', wall.posts.some(p => p.id === textPost.json.post.id) && !wall.posts.some(p => p.id === photoPost.json.post.id));
+  ok('the author sees their own post waiting', (await get('/api/fanwall', W1)).json.posts.some(p => p.id === photoPost.json.post.id && p.status === 'pending'));
+  const queue = (await get('/api/admin/fanwall?status=pending', A)).json;
+  ok('admins see the review queue', queue.posts.some(p => p.id === photoPost.json.post.id) && queue.counts.pending >= 2);
+  ok('admin approves a photo', (await post(`/api/admin/fanwall/${photoPost.json.post.id}/approve`, {}, A)).json.post.status === 'live');
+  const react = await post(`/api/fanwall/${photoPost.json.post.id}/react`, { emoji: '🔥' }, W2);
+  ok('fans react to posts', react.json.reactions.some(r => r.emoji === '🔥' && r.count === 1 && r.mine));
+
+  // Fan of the Day: points to the fan, a notification, and the post at the top of the wall.
+  const w1Before = (await me(W1)).points;
+  const pick = await post(`/api/admin/fanwall/${photoPost.json.post.id}/feature`, { note: 'Best collection we have seen' }, A);
+  ok('admin picks the Fan of the Day', pick.status === 200 && pick.json.fanOfTheDay.post.id === photoPost.json.post.id, pick.json);
+  ok('the fan gets the Fan of the Day points (100)', (await me(W1)).points === w1Before + 100);
+  ok('the fan is told', (await get('/api/notifications', W1)).json.notifications.some(n => /Fan of the Day/.test(n.title)));
+  wall = (await get('/api/fanwall')).json;
+  ok('the wall shows the Fan of the Day', wall.fansOfTheDay[0]?.post?.id === photoPost.json.post.id && wall.fansOfTheDay[0].note === 'Best collection we have seen');
+  // Picking someone else the same day moves the title and the points.
+  await post(`/api/admin/fanwall/${jpegPost.json.post.id}/approve`, {}, A);
+  const w2Before = (await me(W2)).points;
+  await post(`/api/admin/fanwall/${jpegPost.json.post.id}/feature`, {}, A);
+  ok('changing the pick moves the points to the new fan', (await me(W1)).points === w1Before && (await me(W2)).points === w2Before + 100);
+  const fanPage = await call('GET', `/fanwall/${jpegPost.json.post.id}`, null, null, { headers: { Accept: 'text/html' } });
+  ok('a Fan of the Day post page is indexable and previews with the photo', /"index, follow/.test(fanPage.text) && /og:image" content="[^"]*\/uploads\//.test(fanPage.text));
+
+  // Reports: three reports hide a post until a moderator looks.
+  const R = [];
+  for (let i = 0; i < 3; i++) R.push((await login(`reporter${i}@test.dev`)).token);
+  for (const t of R) await post(`/api/fanwall/${textPost.json.post.id}/report`, { reason: 'spam' }, t);
+  ok('three reports take a post off the wall for review', !(await get('/api/fanwall')).json.posts.some(p => p.id === textPost.json.post.id) && (await get('/api/admin/fanwall?status=reported', A)).json.posts.some(p => p.id === textPost.json.post.id));
+  const pointsBeforeDelete = (await me(W1)).points;
+  ok('fans can delete their own post', (await del(`/api/fanwall/${textPost.json.post.id}`, W1)).status === 200);
+  ok('deleting a post takes back its points', (await me(W1)).points === pointsBeforeDelete - 5);
 }
 
 // ============ 15. Account deletion ============

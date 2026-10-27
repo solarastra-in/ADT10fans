@@ -6,19 +6,19 @@ import { verifyPostLink } from './socialSources';
 
 type Result = { items: number; summary: string; status: AgentRun['status'] };
 
-function record(agent: string, startedAt: string, r: Result): Result {
-  const store = db.get();
-  store.agentRuns.unshift({
-    id: 'run-' + crypto.randomUUID().slice(0, 8),
-    agent,
-    startedAt,
-    finishedAt: new Date().toISOString(),
-    status: r.status,
-    summary: r.summary,
-    items: r.items,
+async function record(agent: string, startedAt: string, r: Result): Promise<Result> {
+  await db.mutate(store => {
+    store.agentRuns.unshift({
+      id: 'run-' + crypto.randomUUID().slice(0, 8),
+      agent,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      status: r.status,
+      summary: r.summary,
+      items: r.items,
+    });
+    store.agentRuns = store.agentRuns.slice(0, 100);
   });
-  store.agentRuns = store.agentRuns.slice(0, 100);
-  db.save();
   return r;
 }
 

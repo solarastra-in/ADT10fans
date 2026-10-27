@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { AppStore, GamePlay, Player, Team, User } from './db';
+import { AppStore, db, GamePlay, Player, Team, User } from './db';
 import { awardPoints } from './points';
 
 /**
@@ -15,23 +15,31 @@ import { awardPoints } from './points';
 
 export const dubaiDay = (d = new Date()) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Dubai' });
 
-function gameSecret(store: AppStore): string {
+export function gameSecret(store: AppStore): string {
   if (process.env.GAME_SECRET) return process.env.GAME_SECRET;
   if (!store.jobLog['game-secret']) store.jobLog['game-secret'] = crypto.randomBytes(24).toString('hex');
   return store.jobLog['game-secret'];
 }
 
+// Made when the store loads (and saved), so every server uses the same secret. Made lazily during a
+// page view, each server would invent its own and fans would get different puzzles from different servers.
+db.onLoad(store => {
+  if (process.env.GAME_SECRET || store.jobLog['game-secret']) return false;
+  gameSecret(store);
+  return true;
+});
+
 /** Deterministic number in [0, 1) for a key. */
-function roll(store: AppStore, key: string): number {
+export function roll(store: AppStore, key: string): number {
   const h = crypto.createHmac('sha256', gameSecret(store)).update(key).digest();
   return h.readUInt32BE(0) / 0x100000000;
 }
 
-function findPlay(store: AppStore, userId: string, game: GamePlay['game'], day: string) {
+export function findPlay(store: AppStore, userId: string, game: GamePlay['game'], day: string) {
   return store.gamePlays.find(p => p.userId === userId && p.game === game && p.day === day);
 }
 
-function startPlay(store: AppStore, userId: string, game: GamePlay['game'], day: string, state: any): GamePlay {
+export function startPlay(store: AppStore, userId: string, game: GamePlay['game'], day: string, state: any): GamePlay {
   const now = new Date().toISOString();
   const play: GamePlay = { userId, game, day, state, finished: false, points: 0, createdAt: now, updatedAt: now };
   store.gamePlays.push(play);
@@ -43,7 +51,7 @@ function startPlay(store: AppStore, userId: string, game: GamePlay['game'], day:
 // ---------- Guess the Player ----------
 const GUESS_MAX = 5;
 
-function allPlayers(store: AppStore): (Player & { teamName: string })[] {
+export function allPlayers(store: AppStore): (Player & { teamName: string })[] {
   return store.teams.flatMap(t => t.squad.map(p => ({ ...p, teamName: t.name })));
 }
 

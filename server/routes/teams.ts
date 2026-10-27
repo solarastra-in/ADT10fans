@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import { db, Player, SocialHandle, Team } from '../db';
 import { canManageTeam, getAuthUser, requireAdmin, teamScopeOf } from '../auth';
-import { bad, isColor, isHttpsUrl, num, optionalUrl, str, userOf, wrap, newId } from '../http';
+import { bad, isColor, isHttpsUrl, isoOrEmpty, num, optionalUrl, str, userOf, wrap, newId } from '../http';
+import { applyLinks, cleanLinks, handleOf, LINK_KEYS, LINK_LABELS, linksFor, lookUpPlayerLinks } from '../playerLinks';
+import { statsFor } from '../playerStats';
 import { handleKey, OFFICIAL_HANDLES, seedOfficialTeams } from '../seedOfficial';
 import { creditsFor } from '../fantasy';
 import { fetchAndPersistOfficialSquads, testCricketProviderConnection } from '../cricketProvider';
@@ -51,8 +53,58 @@ teamsRouter.get('/players/:id', (req, res) => {
         selectedBy: lineups.length ? Math.round((lineups.filter(f => f.playerIds.includes(player.id)).length / lineups.length) * 100) : null,
       };
     });
-  res.json({ player: { ...player, credits: creditsFor(player) }, team: publicTeam(team), fixtures });
+  const links = linksFor(player);
+  res.json({
+    player: { ...player, credits: creditsFor(player) },
+    team: publicTeam(team),
+    fixtures,
+    season: statsFor(store, player.id),
+    links: LINK_KEYS.filter(k => links[k]).map(k => ({ key: k, label: LINK_LABELS[k], url: links[k]!, handle: handleOf(k, links[k]!) })),
+  });
 });
+
+/**
+ * Admin: find each player's ESPNcricinfo, Wikipedia and official social links by joining ids
+ * (Cricbuzz → Cricsheet register → ESPNcricinfo → Wikidata). Network first, then one short write.
+ * `all` re-checks players already looked up; otherwise only new ones (or not checked for 14 days).
+ */
+teamsRouter.post('/admin/players/links/resolve', requireAdmin('teams'), wrap(async (req, res) => {
+  const scope = teamScopeOf(userOf(req));
+  const all = Boolean(req.body?.all);
+  const result = await resolvePlayerLinks({ all, teamId: scope || str(req.body?.teamId, 60) || undefined });
+  res.json({ success: true, ...result });
+}));
+
+export async function resolvePlayerLinks(opts: { all?: boolean; teamId?: string } = {}) {
+  const stale = Date.now() - 14 * 86_400_000;
+  const targets = db
+    .get()
+    .teams.filter(t => !opts.teamId || t.id === opts.teamId)
+    .flatMap(t => t.squad)
+    .filter(p => opts.all || !p.linksCheckedAt || +new Date(p.linksCheckedAt) < stale)
+    .map(p => ({ id: p.id, name: p.name, cricbuzzId: p.cricbuzzId, cricinfoId: p.cricinfoId }));
+  if (!targets.length) return { checked: 0, updated: 0, report: ['Every player was checked in the last 14 days.'] };
+  const { found, report } = await lookUpPlayerLinks(targets);
+  const updated = await db.mutate(store => {
+    let n = 0;
+    const now = new Date().toISOString();
+    const want = new Set(targets.map(t => t.id));
+    for (const t of store.teams) {
+      for (const p of t.squad) {
+        if (!want.has(p.id)) continue;
+        const r = found.get(p.id);
+        if (r) {
+          applyLinks(p, r, now);
+          n++;
+        } else {
+          p.linksCheckedAt = now;
+        }
+      }
+    }
+    return n;
+  });
+  return { checked: targets.length, updated, report };
+}
 
 teamsRouter.post('/admin/teams/seed-official', requireAdmin('teams'), (req, res) => {
   const user = userOf(req);
@@ -72,7 +124,8 @@ teamsRouter.post('/admin/cricket/fetch-squads', requireAdmin('teams'), wrap(asyn
   res.json(await fetchAndPersistOfficialSquads(req.body || {}));
 }));
 
-export function formatPlayerSquad(raw: any[], teamId: string): { squad: Player[]; error?: string } {
+export function formatPlayerSquad(raw: any[], teamId: string, previous: Player[] = []): { squad: Player[]; error?: string } {
+  const before = new Map(previous.map(p => [p.id, p]));
   const seen = new Set<string>();
   const squad: Player[] = [];
   for (const p of Array.isArray(raw) ? raw : []) {
@@ -88,6 +141,16 @@ export function formatPlayerSquad(raw: any[], teamId: string): { squad: Player[]
     const credits = p.credits === '' || p.credits === null || p.credits === undefined ? undefined : num(p.credits, NaN);
     if (credits !== undefined && (!Number.isFinite(credits) || credits < 4 || credits > 15)) return { squad: [], error: `${name}: credits must be between 4 and 15` };
     const category = str(p.category, 30) || undefined;
+    const { links, error: linkError } = cleanLinks(p.links);
+    if (linkError) return { squad: [], error: `${name}: ${linkError}` };
+    // A link that is new or different from the stored one was typed by an admin and is marked as
+    // theirs, so the automatic lookup keeps it. Unchanged links keep their stored source.
+    const old = before.get(id);
+    const linkSources: Player['linkSources'] = {};
+    for (const key of LINK_KEYS) {
+      if (!links[key]) continue;
+      linkSources[key] = old?.links?.[key] === links[key] && old?.linkSources?.[key] ? old.linkSources[key] : 'admin';
+    }
     squad.push({
       id,
       teamId,
@@ -107,6 +170,11 @@ export function formatPlayerSquad(raw: any[], teamId: string): { squad: Player[]
       isKeeper: Boolean(p.isKeeper) || p.role === 'wicketkeeper' || undefined,
       imageId: num(p.imageId, 0) || undefined,
       note: str(p.note, 200) || undefined,
+      cricinfoId: /^\d{1,10}$/.test(String(p.cricinfoId || '')) ? String(p.cricinfoId) : undefined,
+      wikidataId: /^Q\d{1,12}$/.test(String(p.wikidataId || '')) ? String(p.wikidataId) : undefined,
+      links: Object.keys(links).length ? links : undefined,
+      linkSources: Object.keys(linkSources).length ? linkSources : undefined,
+      linksCheckedAt: isoOrEmpty(p.linksCheckedAt) || undefined,
     });
   }
   return { squad };
@@ -118,7 +186,7 @@ const saveSquad = (req: any, res: any) => {
   if (!team) return bad(res, `Team "${req.params.id}" not found`, 404);
   if (!canManageTeam(userOf(req), team.id)) return bad(res, 'You can only manage your own team', 403);
   if (!Array.isArray(req.body?.squad)) return bad(res, 'Squad must be a list of players');
-  const { squad, error } = formatPlayerSquad(req.body.squad, team.id);
+  const { squad, error } = formatPlayerSquad(req.body.squad, team.id, team.squad);
   if (error) return bad(res, error);
   // Players with Pick XI picks for unplayed matches cannot be removed without warning.
   const removed = team.squad.filter(p => !squad.some(n => n.id === p.id));
@@ -156,7 +224,7 @@ teamsRouter.post('/teams', requireAdmin('teams'), (req, res) => {
   const now = new Date().toISOString();
   let squad = prev?.squad || [];
   if (Array.isArray(b.squad)) {
-    const r = formatPlayerSquad(b.squad, id);
+    const r = formatPlayerSquad(b.squad, id, prev?.squad || []);
     if (r.error) return bad(res, r.error);
     squad = r.squad;
   }

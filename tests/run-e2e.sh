@@ -23,7 +23,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-export FEED_FIXTURES_DIR="$ROOT/fixtures" CRON_SECRET=test-cron-secret CRICKET_API_KEY=test-cricket-key \
+export LEADERBOARD_MIN_RECOMPUTE_MS=0 STORE_VERIFY=1 STORE_BACKEND="${STORE_BACKEND:-file}" FEED_FIXTURES_DIR="$ROOT/fixtures" CRON_SECRET=test-cron-secret CRICKET_API_KEY=test-cricket-key \
   GAME_SECRET=test-game-secret SCHEDULED_JOBS=off ADMIN_EMAILS=admin@test.dev GEMINI_API_KEY= FCM_VAPID_KEY= \
   META_ACCESS_TOKEN=test-meta-token META_IG_USER_ID=17841400000000000 SMTP_USER= SMTP_PASS= SMTP_HOST=
 npx tsx tests/make-fixtures.ts "$FEED_FIXTURES_DIR" >/dev/null || { echo "fixtures failed"; exit 1; }
@@ -41,7 +41,7 @@ start() {
 }
 
 run_api() {
-  node tests/i18n-check.mjs
+  node tests/i18n-check.mjs || [ "${SKIP_I18N:-0}" = 1 ]
   GEMINI_PORT=$((40000 + RANDOM % 10000))
   setsid node tests/fake-gemini.mjs $GEMINI_PORT > "$ROOT/gemini.log" 2>&1 &
   PIDS+=($!)

@@ -24,6 +24,8 @@ function getCached<T>(key: string): T | null {
 }
 
 function setCached<T>(key: string, data: T, ttlMs: number) {
+  // Bounded: scorecards are cached per match id.
+  if (cache.size > 200) for (const k of [...cache.keys()].slice(0, 50)) cache.delete(k);
   cache.set(key, { data, cachedAt: Date.now(), ttlMs });
 }
 
@@ -31,10 +33,22 @@ export class ScraperService {
   /**
    * Fetches live matches across Cricbuzz and Cricinfo with automatic failover and caching.
    */
+  private liveInFlight: Promise<{ matches: ScrapedMatchSummary[]; sources: string[] }> | null = null;
+
+  /** Live matches. Visitors arriving together share one fetch, so a busy minute is one scrape, not hundreds. */
   async getLiveMatches(): Promise<{ matches: ScrapedMatchSummary[]; sources: string[] }> {
-    const cacheKey = 'scraper:live:all';
-    const cached = getCached<ScrapedMatchSummary[]>(cacheKey);
+    const cached = getCached<ScrapedMatchSummary[]>('scraper:live:all');
     if (cached) return { matches: cached, sources: ['cache'] };
+    if (!this.liveInFlight) {
+      this.liveInFlight = this.fetchLiveMatches().finally(() => {
+        this.liveInFlight = null;
+      });
+    }
+    return this.liveInFlight;
+  }
+
+  private async fetchLiveMatches(): Promise<{ matches: ScrapedMatchSummary[]; sources: string[] }> {
+    const cacheKey = 'scraper:live:all';
 
     const sources: string[] = [];
     const results: ScrapedMatchSummary[] = [];

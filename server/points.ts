@@ -31,6 +31,12 @@ export const SOURCE_LABEL: Record<PointsSource, string> = {
   prize: 'Prize claim',
   'prize-refund': 'Prize claim cancelled',
   admin: 'Adjustment by the organisers',
+  connections: 'Squad Connections',
+  grid: 'Cricket Grid',
+  statwars: 'Stat Wars',
+  duel: 'Stat Wars duel',
+  'fan-post': 'Fan wall post',
+  'fan-of-day': 'Fan of the Day',
 };
 
 export const balanceOf = (u: Pick<User, 'points' | 'pointsSpent'>) => Math.max(0, (u.points || 0) - (u.pointsSpent || 0));
@@ -39,7 +45,8 @@ function record(store: AppStore, entry: Omit<PointsEntry, 'id' | 'at'>) {
   const full: PointsEntry = { id: 'pl-' + crypto.randomBytes(6).toString('hex'), at: new Date().toISOString(), ...entry };
   if (!Array.isArray(store.pointsLedger)) store.pointsLedger = [];
   store.pointsLedger.push(full);
-  if (store.pointsLedger.length > MAX_LEDGER) store.pointsLedger.splice(0, store.pointsLedger.length - MAX_LEDGER);
+  // Trimmed in batches: removing entries rewrites the shards they are in, so not on every award.
+  if (store.pointsLedger.length > MAX_LEDGER + 5_000) store.pointsLedger.splice(0, store.pointsLedger.length - MAX_LEDGER);
   return full;
 }
 

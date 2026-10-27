@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import type { Express, NextFunction, Request, Response } from 'express';
 import { db, requestContext } from './db';
-import { ConflictError } from './storage';
+import { ConflictError, QuotaError } from './storage';
 
 const MAX_ATTEMPTS = 8;
 const READ_FRESHNESS_MS = 1000;
@@ -21,13 +21,31 @@ const READ_FRESHNESS_MS = 1000;
 export function installStoreSync(app: Express) {
   app.use((req: Request, res: Response, next: NextFunction) => {
     db.ready().then(() => {
-      if (!db.shared) return requestContext.run({ id: crypto.randomUUID() }, () => next());
+      if (!db.shared) return requestContext.run({ id: crypto.randomUUID(), readOnly: ['GET', 'HEAD', 'OPTIONS'].includes(req.method) }, () => next());
       if ((req as any).__storeSyncReplay) return requestContext.run({ id: crypto.randomUUID() }, () => next());
-      const mutating = !['GET', 'HEAD', 'OPTIONS'].includes(req.method) || req.path.startsWith('/api/cron/');
+      // Routes that wait on slow outside services make their own short writes (db.mutate runs as a
+      // transaction outside a request context), so they never hold this server's write lock while waiting.
+      if (SELF_MANAGED.some(p => req.path.startsWith(p))) return handleSelfManaged(req, res, next);
+      const mutating = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
       if (!mutating) return handleRead(req, res, next);
       db.exclusive(() => handleWrite(app, req, res, next)).catch(next);
     }, next);
   });
+}
+
+/**
+ * Paths whose handlers do their writes through db.mutate / db.transaction and wait on outside services
+ * (email, feeds, scheduled jobs). They run without a request context, so each write is its own transaction.
+ */
+const SELF_MANAGED = ['/api/cron/', '/api/auth/otp/request', '/api/feeds/pull', '/api/admin/feeds/sync', '/api/admin/feeds/harvest', '/api/admin/players/links/resolve', '/api/fanwall/new'];
+
+async function handleSelfManaged(req: Request, res: Response, next: NextFunction) {
+  try {
+    if (!db.busy) await db.refreshIfStale(READ_FRESHNESS_MS);
+  } catch (e) {
+    console.warn('[STORE] refresh failed:', (e as Error)?.message);
+  }
+  requestContext.exit(() => next());
 }
 
 async function handleRead(req: Request, res: Response, next: NextFunction) {
@@ -36,7 +54,7 @@ async function handleRead(req: Request, res: Response, next: NextFunction) {
   } catch (e) {
     console.warn('[STORE] refresh failed:', (e as Error)?.message);
   }
-  requestContext.run({ id: crypto.randomUUID() }, () => next());
+  requestContext.run({ id: crypto.randomUUID(), readOnly: true }, () => next());
 }
 
 function handleWrite(app: Express, req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -85,7 +103,15 @@ function handleWrite(app: Express, req: Request, res: Response, next: NextFuncti
             for (const h of res.getHeaderNames()) if (!headerSnapshot.has(h)) res.removeHeader(h);
             res.statusCode = 503;
             res.setHeader('Content-Type', 'application/json');
-            finish(JSON.stringify({ error: 'The site is busy saving other changes. Please try again.' }));
+            res.setHeader('Retry-After', err instanceof QuotaError ? '300' : '2');
+            finish(
+              JSON.stringify({
+                error:
+                  err instanceof QuotaError
+                    ? 'The site cannot save changes right now. Your change was not saved; please try again later.'
+                    : 'The site is busy saving other changes. Your change was not saved; please try again.',
+              }),
+            );
           },
         );
         return res;
