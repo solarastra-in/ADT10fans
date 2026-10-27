@@ -1036,4 +1036,8 @@ export const hi: Record<string, string> = {
   "Squads as published after the {season} player draft. Tap a player for their card: season figures, career stats and official accounts.": "{season} प्लेयर ड्राफ़्ट के बाद प्रकाशित स्क्वाड। किसी खिलाड़ी पर टैप करके उसका कार्ड देखें: सीज़न आँकड़े, करियर आँकड़े और आधिकारिक अकाउंट।",
   "Public Discussion — Sign in to participate": "सार्वजनिक चर्चा — भाग लेने के लिए साइन इन करें",
   "Forums are open for everyone to read. Sign in with your account to post replies, upvote strategies, and earn fan points.": "फ़ोरम सभी के पढ़ने के लिए खुले हैं। जवाब देने, रणनीतियों को अपवोट करने और फ़ैन अंक कमाने के लिए अपने अकाउंट से साइन इन करें।",
+  "Live feed: Cricbuzz Series 13307 · updated {when}": "लाइव फ़ीड: Cricbuzz सीरीज़ 13307 · अपडेट {when}",
+  "Cricbuzz Series 13307 Feed": "Cricbuzz सीरीज़ 13307 फ़ीड",
+  "Where live scores & scorecards are shown": "लाइव स्कोर और स्कोरकार्ड कहाँ दिखते हैं",
+  "Seeded from Cricbuzz Series 13307": "Cricbuzz सीरीज़ 13307 से लिया गया",
 };

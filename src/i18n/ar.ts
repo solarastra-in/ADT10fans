@@ -1036,4 +1036,8 @@ export const ar: Record<string, string> = {
   "Squads as published after the {season} player draft. Tap a player for their card: season figures, career stats and official accounts.": "التشكيلات كما نُشرت بعد مزاد لاعبي {season}. اضغط على لاعب لعرض بطاقته: أرقام الموسم وإحصاءات المسيرة والحسابات الرسمية.",
   "Public Discussion — Sign in to participate": "نقاش عام — سجّل الدخول للمشاركة",
   "Forums are open for everyone to read. Sign in with your account to post replies, upvote strategies, and earn fan points.": "المنتديات مفتوحة للقراءة للجميع. سجّل الدخول للرد والتصويت وكسب نقاط المشجعين.",
+  "Live feed: Cricbuzz Series 13307 · updated {when}": "بث مباشر: سلسلة Cricbuzz 13307 · آخر تحديث {when}",
+  "Cricbuzz Series 13307 Feed": "بث سلسلة Cricbuzz 13307",
+  "Where live scores & scorecards are shown": "أين تظهر النتائج المباشرة وبطاقات النتائج",
+  "Seeded from Cricbuzz Series 13307": "مأخوذة من سلسلة Cricbuzz 13307",
 };

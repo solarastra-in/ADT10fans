@@ -504,6 +504,17 @@ export class GcsBackend implements StorageBackend {
   }
 }
 
+/** Rejects after `ms`, so a blocked or unreachable Firestore fails fast instead of hanging a request. */
+function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  return Promise.race([
+    p.finally(() => clearTimeout(timer)),
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Firestore ${what} timed out after ${ms / 1000}s`)), ms);
+    }),
+  ]);
+}
+
 /**
  * Last resort when there is no service account: the browser Firebase SDK, signed out. It can only read
  * and write while the Firestore rules leave the store open to everyone, so the admin dashboard shows a
@@ -534,12 +545,12 @@ export class FirestoreSdkBackend implements StorageBackend {
   }
 
   async currentVersion(): Promise<string | null> {
-    const snap = await getDoc(doc(this.firestore, this.collectionName, 'meta'));
+    const snap = await withTimeout(getDoc(doc(this.firestore, this.collectionName, 'meta')), 4000, 'read');
     return snap.exists() ? String(snap.data()?.version || '') : null;
   }
 
   async load(): Promise<LoadResult> {
-    const metaSnap = await getDoc(doc(this.firestore, this.collectionName, 'meta'));
+    const metaSnap = await withTimeout(getDoc(doc(this.firestore, this.collectionName, 'meta')), 6000, 'read');
     if (!metaSnap.exists()) return { data: null, version: null };
     const meta = metaSnap.data();
     const count = Number(meta.chunks || 0);
@@ -547,7 +558,7 @@ export class FirestoreSdkBackend implements StorageBackend {
     if (count <= 0) return { data: null, version: null };
     const parts: string[] = [];
     for (let i = 0; i < count; i++) {
-      const snap = await getDoc(doc(this.firestore, this.collectionName, `c${String(i).padStart(4, '0')}`));
+      const snap = await withTimeout(getDoc(doc(this.firestore, this.collectionName, `c${String(i).padStart(4, '0')}`)), 6000, 'read');
       if (!snap.exists()) throw new Error(`Firestore chunk ${i} missing`);
       parts.push(snap.data()?.d || '');
     }
@@ -566,8 +577,11 @@ export class FirestoreSdkBackend implements StorageBackend {
     chunks.forEach((d, i) => batch.set(doc(this.firestore, this.collectionName, `c${String(i).padStart(4, '0')}`), { d, index: i }));
     for (let i = chunks.length; i < this.lastChunks; i++) batch.delete(doc(this.firestore, this.collectionName, `c${String(i).padStart(4, '0')}`));
     try {
-      await batch.commit();
+      await withTimeout(batch.commit(), 15000, 'write');
     } catch (err: any) {
+      if (err?.code === 'permission-denied' || /insufficient permissions|PERMISSION_DENIED/.test(String(err?.message))) {
+        throw new Error('Firestore refused the write: the rules are locked and no service account is set. Set FIREBASE_SERVICE_ACCOUNT for this project and redeploy.');
+      }
       if (err?.code === 'resource-exhausted' || String(err?.message).includes('RESOURCE_EXHAUSTED')) throw new QuotaError();
       throw err;
     }

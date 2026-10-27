@@ -303,6 +303,7 @@ export const api = {
   getScraperLiveMatches: () => pub<{ success: boolean; count: number; sources: string[]; matches: any[] }>('/api/scraper/live'),
   syncMatchFromScraper: (matchId: string, data: { provider: 'cricbuzz' | 'cricinfo'; externalId: string; slug?: string }) => post<{ success: boolean; message: string; match: any }>(`/api/scraper/sync/${matchId}`, data),
   testScraper: (target: { url?: string; matchId?: string }) => post<{ success: boolean; provider: string; matchId: string; summary: any; scorecard: any; inningsCount: number }>('/api/scraper/test', target),
+  seedScraperSeries: (data?: { seriesId?: string; seriesSlug?: string }) => post<{ success: boolean; message: string; seriesId: string; seriesUrl: string }>('/api/scraper/seed-series', data || {}),
 
   // ----- AI assistant -----
   chatGemini: (messages: { role: 'user' | 'model'; parts: { text: string }[] }[]) => post<{ text: string; source: string }>('/api/gemini/chat', { messages }),

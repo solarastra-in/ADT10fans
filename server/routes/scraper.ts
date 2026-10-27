@@ -103,3 +103,27 @@ scraperRouter.get('/scraper/squads', requireAdmin, wrap(async (req, res) => {
   const squads = await scraperService.getSeriesSquads(seriesId, seriesSlug);
   res.json({ success: true, count: squads.length, squads });
 }));
+
+/**
+ * Admin endpoint: Seed & link Cricbuzz Series 13307 into system fixtures and settings.
+ */
+scraperRouter.post('/scraper/seed-series', requireAdmin, wrap(async (req, res) => {
+  const store = db.get();
+  const seriesId = str(req.body?.seriesId, 30) || '13307';
+  const seriesSlug = str(req.body?.seriesSlug, 80) || 'abu-dhabi-t10-league-2026';
+  const seriesUrl = `https://www.cricbuzz.com/cricket-series/${seriesId}/${seriesSlug}`;
+
+  store.settings.cricbuzzSeriesId = seriesId;
+  store.settings.cricbuzzSeriesUrl = seriesUrl;
+
+  db.save();
+
+  res.json({
+    success: true,
+    message: `Cricbuzz series ${seriesId} (${seriesSlug}) successfully seeded as the live match authority.`,
+    seriesId,
+    seriesUrl,
+    matchesCount: store.matches.length,
+    teamsCount: store.teams.length,
+  });
+}));

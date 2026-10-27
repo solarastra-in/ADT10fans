@@ -32,6 +32,21 @@ export const FreeScraperSheet: React.FC<FreeScraperSheetProps> = ({
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<any | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
+  const [seeding, setSeeding] = useState(false);
+
+  const handleSeedSeries = async () => {
+    setSeeding(true);
+    setError(null);
+    try {
+      const res = await api.seedScraperSeries({ seriesId: '13307', seriesSlug: 'abu-dhabi-t10-league-2026' });
+      setSyncSuccess(res.message);
+      await onRefreshAll();
+    } catch (err: any) {
+      setError(err?.message || 'Failed to seed Cricbuzz series.');
+    } finally {
+      setSeeding(false);
+    }
+  };
 
   const fetchLiveFeeds = async () => {
     setLoading(true);
@@ -117,6 +132,25 @@ export const FreeScraperSheet: React.FC<FreeScraperSheetProps> = ({
             <Chip tone="blue">ESPNcricinfo RSS & JSON</Chip>
             <Chip tone="purple">Auto-Scoring & Pick XI</Chip>
             <Chip tone="amber">Local Python & TS Engine</Chip>
+          </div>
+          <div className="pt-2 border-t border-emerald-500/20 flex flex-wrap gap-2 items-center">
+            <Button
+              size="sm"
+              variant="primary"
+              icon={<Zap className="w-3.5 h-3.5" />}
+              loading={seeding}
+              onClick={handleSeedSeries}
+            >
+              Seed Cricbuzz Series 13307
+            </Button>
+            <a
+              href="https://www.cricbuzz.com/cricket-series/13307/abu-dhabi-t10-league-2026"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-emerald-300 font-bold hover:underline text-xs"
+            >
+              Open Series 13307 on Cricbuzz <ExternalLink className="w-3 h-3" />
+            </a>
           </div>
         </div>
 
@@ -242,6 +276,23 @@ export const FreeScraperSheet: React.FC<FreeScraperSheetProps> = ({
             <p className="text-xs text-slate-400">
               Paste any Cricbuzz match URL (e.g. <code>https://www.cricbuzz.com/live-cricket-scores/105423/...</code>) or Cricinfo URL to verify data extraction.
             </p>
+            <div className="flex flex-wrap gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setTestInput('https://www.cricbuzz.com/cricket-series/13307/abu-dhabi-t10-league-2026')}
+                className="text-[11px] font-bold text-amber-300 bg-amber-400/10 border border-amber-400/30 px-2 py-1 rounded-lg hover:bg-amber-400/20"
+              >
+                Use ADT10 Series 13307 URL
+              </button>
+              <a
+                href="https://www.cricbuzz.com/cricket-series/13307/abu-dhabi-t10-league-2026"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] font-bold text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 px-2 py-1 rounded-lg hover:bg-emerald-500/20 inline-flex items-center gap-1"
+              >
+                Open Cricbuzz ADT10 Series <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
           </div>
 
           <form onSubmit={handleTestScraper} className="flex gap-2">

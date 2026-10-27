@@ -254,9 +254,61 @@ export interface InningsScorecard {
   didNotBat?: string[];
   fallOfWickets?: FallOfWicketEntry[];
 }
+
+export interface BallEvent {
+  innings: 1 | 2;
+  over: number;
+  ball: number;
+  bowler: string;
+  batter: string;
+  nonStriker?: string;
+  runs: number;
+  isBoundary?: boolean;
+  isSix?: boolean;
+  isWicket?: boolean;
+  dismissal?: string;
+  extras?: 'wide' | 'no-ball' | 'bye' | 'leg-bye';
+  commentary?: string;
+}
+
+export interface PlayerMatchStats {
+  playerId: string;
+  name: string;
+  teamId: string;
+  runs: number;
+  balls: number;
+  fours: number;
+  sixes: number;
+  strikeRate: number;
+  overs: string;
+  maidens: number;
+  runsConceded: number;
+  wickets: number;
+  economy: number;
+  catches?: number;
+  runOuts?: number;
+  stumpings?: number;
+  fantasyPoints?: number;
+}
+
+export interface TeamMatchStats {
+  teamId: string;
+  runs: number;
+  wickets: number;
+  overs: string;
+  runRate: number;
+  powerplayRuns: number;
+  middleRuns: number;
+  deathRuns: number;
+  sixes: number;
+  fours: number;
+  dotBalls: number;
+}
+
 export interface MatchScorecard {
   innings1?: InningsScorecard;
   innings2?: InningsScorecard;
+  ballByBall?: BallEvent[];
 }
 
 export interface Match {
@@ -288,6 +340,9 @@ export interface Match {
   externalId?: string;
   scoreSource?: 'manual' | 'cricketdata' | 'scraper';
   liveSyncedAt?: string;
+  ballByBall?: BallEvent[];
+  playerStats?: Record<string, PlayerMatchStats>;
+  teamStats?: Record<string, TeamMatchStats>;
 }
 
 export interface MatchDetail {
@@ -759,6 +814,8 @@ export interface SystemSettings {
   fanOfTheDayPoints?: number;
   fanWallReview?: 'photos' | 'all' | 'none';
   smtp: { host: string; port: number; user: string; pass: string; from: string; enabled: boolean };
+  cricbuzzSeriesId?: string;
+  cricbuzzSeriesUrl?: string;
 }
 
 export interface PublicConfig {
