@@ -2,6 +2,7 @@ import { AppStore, Match, Player, Team } from './db';
 import { ogUrl } from './ogImage';
 import { LINK_KEYS, LINK_LABELS, linksFor } from './playerLinks';
 import { statsFor } from './playerStats';
+import { careerFor } from './careerStats';
 import { resolvePlayer } from './fantasy';
 
 /**
@@ -295,7 +296,7 @@ export function renderPage(rawPath: string, store: AppStore, base: string): Rend
           (seasonLine ? ` This season: ${seasonLine} in ${s!.matches} match(es).` : '') +
           `${p.battingStyle ? ` ${p.battingStyle}.` : ''}${p.bowlingStyle ? ` ${p.bowlingStyle}.` : ''} Player card, Pick XI points and career stats.`;
         const statRows = s?.matches
-          ? `<h2>${esc(season)} statistics</h2><table><tbody>` +
+          ? `<h2>T10 this season (${esc(season)})</h2><table><tbody>` +
             [
               ['Matches', s.matches],
               ...(s.innings ? [['Runs', s.runs], ['Highest score', `${s.highest}${s.highestNotOut ? '*' : ''}`], ['Strike rate', s.strikeRate ?? '—'], ['Average', s.average ?? '—'], ['Fours / sixes', `${s.fours} / ${s.sixes}`]] : []),
@@ -306,7 +307,14 @@ export function renderPage(rawPath: string, store: AppStore, base: string): Rend
               .join('') +
             `</tbody></table>`
           : `<p>${esc(p.name)} has not played a completed match this season yet.</p>`;
-        const fixtures = store.matches.filter(m => m.teamA === team.id || m.teamB === team.id).sort((a, b) => +new Date(a.startsAt) - +new Date(b.startsAt));
+        const career = careerFor(store, p.id);
+        const careerRows = career
+          ? `<h2>Career record</h2><table><thead><tr><th scope="col">Format</th><th scope="col">Matches</th><th scope="col">Runs</th><th scope="col">Highest</th><th scope="col">Strike rate</th><th scope="col">Wickets</th><th scope="col">Economy</th></tr></thead><tbody>` +
+            career.formats
+              .map(f => `<tr><th scope="row">${esc(f.label)}</th>${[f.batting?.m || f.bowling?.m, f.batting?.runs, f.batting?.hs, f.batting?.sr, f.bowling?.wkts, f.bowling?.econ].map(v => `<td>${esc(v || '—')}</td>`).join('')}</tr>`)
+              .join('') +
+            `</tbody></table><p>Career records from CricketData.org.</p>`
+          : '';
         return page({
           title: `${p.name}: ${team.name} ${role}, stats and profile`,
           description,
@@ -337,8 +345,8 @@ export function renderPage(rawPath: string, store: AppStore, base: string): Rend
             p.name,
             `${ROLE[p.role]} for ${team.name}${category ? `, ${category}` : ''}.${p.battingStyle ? ` ${p.battingStyle}.` : ''}${p.bowlingStyle ? ` ${p.bowlingStyle}.` : ''}`,
             statRows +
+              careerRows +
               (sameAs.length ? `<h2>Career stats and official accounts</h2><ul>${LINK_KEYS.filter(k => links[k]).map(k => `<li><a href="${esc(links[k])}" rel="noopener">${esc(LINK_LABELS[k])}</a></li>`).join('')}</ul>` : '') +
-              `<h2>${esc(team.name)} fixtures</h2><ul>${fixtures.map(m => matchLine(store, m)).join('') || '<li>Fixtures not published yet.</li>'}</ul>` +
               `<p><a href="${teamPath(team)}">${esc(team.name)} squad</a> · <a href="/players">All players</a></p>`,
           ),
         });

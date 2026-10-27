@@ -50,7 +50,9 @@ const inMinutes = m => new Date(Date.now() + m * 60_000).toISOString();
 const teams = (await get('/api/teams')).json.teams;
 ok('six franchises are seeded', teams.length === 6);
 const NAMES = ['UAE Bulls', 'United Tigers', 'Yas Lions', 'Arabian Aces', 'Emirates Eagles', 'Royal Desert Champions'];
-for (const n of NAMES) ok(`seeded ${n} with 18 players`, teams.find(t => t.name === n)?.squad.length === 18);
+// Emirates Eagles have two places for replacements not yet named in the official list; those are not players.
+for (const n of NAMES) ok(`seeded ${n} with its named players`, teams.find(t => t.name === n)?.squad.length === (n === 'Emirates Eagles' ? 16 : 18));
+ok('unnamed replacements are not listed as players', !teams.some(t => t.squad.some(p => /replacement|tbc/i.test(p.name))));
 ok('every player has a role and credits', teams.every(t => t.squad.every(p => ['batter', 'bowler', 'allrounder', 'wicketkeeper'].includes(p.role) && p.credits >= 7 && p.credits <= 10.5)));
 ok('no invented player stats are shipped', teams.every(t => t.squad.every(p => p.stats === undefined)));
 ok('icon players cost 10.5 credits', teams.every(t => t.squad.filter(p => p.isIcon).every(p => p.credits === 10.5)));
@@ -219,6 +221,25 @@ ok('stream link must be https', (await post('/api/matches', { teamA: 'bulls', te
 const m1 = (await post('/api/matches', { teamA: 'bulls', teamB: 'aces', startsAt: inMinutes(24 * 60), stage: 'Group stage' }, A)).json.targetMatch;
 ok('admin creates a fixture at the default venue', m1.venue.includes('Zayed') && m1.status === 'upcoming');
 
+// Games for a match open at midnight in Abu Dhabi on the day before match day.
+const later = (await post('/api/matches', { teamA: 'lions', teamB: 'tigers', startsAt: inMinutes(4 * 24 * 60) }, A)).json.targetMatch;
+const laterDay = new Date(later.startsAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Dubai' });
+const expectOpen = new Date(Date.parse(`${laterDay}T00:00:00+04:00`) - 86400000).toISOString();
+const hubNow = (await get('/api/fantasy')).json.matches;
+ok('a match four days away is not open yet, and says when it opens', hubNow.find(x => x.matchId === later.matchId || x.matchId === later.id)?.open === false && hubNow.find(x => x.matchId === later.id)?.opensAt === expectOpen, hubNow.find(x => x.matchId === later.id));
+ok('tomorrow\'s match is open', hubNow.find(x => x.matchId === m1.id)?.open === true);
+ok('no predictions for a match that is not open yet', !(await get('/api/contests')).json.contests.some(c => c.id === `auto-${later.id}`));
+const auto1 = (await get('/api/contests', F1)).json.contests.find(c => c.id === `auto-${m1.id}`);
+ok('every open match gets five match predictions, locking at the first ball', auto1?.questions.length === 5 && auto1.locksAt === m1.startsAt && auto1.auto === true, auto1);
+ok('match predictions hide their answers', auto1.questions.every(q => q.answer === undefined));
+const autoPicks = { winner: 'UAE Bulls', 'top-total': '110–129', sixes: '0–9', 'more-sixes': 'UAE Bulls', fifty: 'No' };
+const P8 = (await login('predict8@test.dev')).token;
+const P9 = (await login('predict9@test.dev')).token;
+ok('fan enters match predictions', (await post(`/api/contests/${auto1.id}/enter`, { answers: autoPicks }, P8)).status === 200);
+ok('another fan enters match predictions', (await post(`/api/contests/${auto1.id}/enter`, { answers: { ...autoPicks, winner: 'Arabian Aces', fifty: 'Yes' } }, P9)).status === 200);
+const p8PredBefore = (await me(P8)).points;
+const p9PredBefore = (await me(P9)).points;
+
 const contest = (await post('/api/admin/contests', { title: 'Match predictor', matchId: m1.id, prize: 'Signed bat', questions: [{ prompt: 'Who wins?', options: ['UAE Bulls', 'Arabian Aces'], points: 50 }, { prompt: 'Over 20 sixes?', options: ['Yes', 'No'], points: 25 }] }, A)).json.contest;
 ok('contest locks at the match start', contest.locksAt === m1.startsAt);
 const pubC = (await get('/api/contests', F1)).json.contests.find(c => c.id === contest.id);
@@ -246,8 +267,8 @@ ok('Dream XI rules: 11 players, 100 credits, max 7 per team', rules.size === 11 
 const pool = (await get(`/api/fantasy/${m1.id}`)).json.pool;
 ok('lineup pool is the two squads (36 players) with credits', pool.length === 36 && pool.every(p => p.credits > 0));
 const byName = n => pool.find(p => p.name === n);
-const XI = ['Max Bryant', 'Matiullah Khan', 'Aneurin Donald', 'Khushdil Shah', 'Mohammad Amir', 'Moeen Ali', 'Amshi de Silva', 'Ibrahim Masood', 'Muhammad Arfan', 'Sam Billings', 'Paul Walter'].map(n => byName(n).id);
-const [maxB, matiullah] = [byName('Max Bryant').id, byName('Matiullah Khan').id];
+const XI = ['Max Bryant', 'Muhammad Rohid', 'Aneurin Donald', 'Khushdil Shah', 'Muhammad Amir', 'Moeen Ali', 'Amshi de Silva', 'Ibrahim Masood', 'Muhammad Arfan', 'Sam Billings', 'Paul Walter'].map(n => byName(n).id);
+const [maxB, matiullah] = [byName('Max Bryant').id, byName('Muhammad Rohid').id];
 const save = (t, ids, c, vc, m = m1) => post(`/api/fantasy/${m.id}`, { playerIds: ids, captainId: c, viceCaptainId: vc }, t);
 ok('10 players refused', (await save(F1, XI.slice(0, 10), maxB, matiullah)).status === 400);
 ok('captain must be in the XI', (await save(F1, XI, byName('Kieron Pollard').id, matiullah)).status === 400);
@@ -274,11 +295,16 @@ ok('credit override is validated', (await post('/api/teams/aces/squad', { squad:
 // Complete the match with a scorecard; check points by hand.
 const card = (maxRuns, maxBalls, fours, sixes) => ({
   innings1: { teamId: 'bulls', totalRuns: 120, wickets: 4, overs: '10', batting: [{ batsman: 'Max Bryant', dismissal: 'c Moeen Ali b Amshi de Silva', runs: maxRuns, balls: maxBalls, fours, sixes }], bowling: [{ bowler: 'Amshi de Silva', overs: '2', maidens: 0, runs: 18, wickets: 1 }] },
-  innings2: { teamId: 'aces', totalRuns: 100, wickets: 7, overs: '10', batting: [{ batsman: 'Ibrahim Masood', dismissal: 'b Matiullah Khan', runs: 0, balls: 2 }], bowling: [{ bowler: 'Matiullah Khan', overs: '2', maidens: 1, runs: 9, wickets: 3 }] },
+  innings2: { teamId: 'aces', totalRuns: 100, wickets: 7, overs: '10', batting: [{ batsman: 'Ibrahim Masood', dismissal: 'b Muhammad Rohid', runs: 0, balls: 2 }], bowling: [{ bowler: 'Muhammad Rohid', overs: '2', maidens: 1, runs: 9, wickets: 3 }] },
 });
 const p1Before = (await me(F1)).points;
 const done = await post('/api/matches', { id: m1.id, status: 'completed', winner: 'bulls', result: 'UAE Bulls won by 20 runs', scoreA: '120/4', scoreB: '100/7', scorecard: card(40, 18, 4, 2) }, A);
 ok('completing a match sends the result and scores Dream XI', done.json.notification?.category === 'match_result' && done.json.fantasy?.scored === 2, done.json);
+ok('match predictions settle from the scorecard', done.json.predictions?.settled === true, done.json.predictions);
+const autoDone = (await get('/api/contests', P8)).json.contests.find(c => c.id === `auto-${m1.id}`);
+ok('settled predictions show the answers the scorecard gave', autoDone.status === 'settled' && autoDone.questions.map(q => q.answer).join('|') === 'UAE Bulls|110–129|0–9|UAE Bulls|No', autoDone.questions.map(q => q.answer));
+ok('all five right: 70 points', (await me(P8)).points - p8PredBefore === 70);
+ok('three right: 40 points', (await me(P9)).points - p9PredBefore === 40);
 const myFt = (await get(`/api/fantasy/${m1.id}`, F1)).json.fantasyTeam;
 const line = id => myFt.breakdown.find(b => b.playerId === id);
 // Points follow the published rules (GET /api/fantasy/rules): playing 20, run 2, four +2, six +5,
@@ -289,7 +315,7 @@ const ruleValue = label => rulesTable.flatMap(g => g.rules).find(r => r[0] === l
 ok('published rules list the strike-rate and economy bands used for scoring', ruleValue('Above 200.0') === 12 && ruleValue('Under 7.0 runs per over') === 12 && ruleValue('Below 60.0') === -8);
 // Max Bryant: 40 runs 80 + 4 fours 8 + 2 sixes 10 + 30 bonus 16 + strike rate 222 (+12) + playing 20 = 146, captain x2
 ok('batting points: 146 doubled for the captain', line(maxB).base === 146 && line(maxB).total === 292, line(maxB));
-// Matiullah Khan: 3 wickets 105 + 3-wicket bonus 32 + maiden 32 + economy 4.5 (+12) + bowled bonus 12 + playing 20 = 213, x1.5
+// Muhammad Rohid: 3 wickets 105 + 3-wicket bonus 32 + maiden 32 + economy 4.5 (+12) + bowled bonus 12 + playing 20 = 213, x1.5
 ok('bowling points: 213 x1.5 for the vice-captain', line(matiullah).base === 213 && line(matiullah).total === 319.5, line(matiullah));
 ok('catch earns fielding and playing points (12 + 20)', line(byName('Moeen Ali').id).base === 32);
 ok('wicket, economy 9.0 and playing points (35 + 4 + 20)', line(byName('Amshi de Silva').id).base === 59);
@@ -302,7 +328,7 @@ const lb = (await get(`/api/fantasy/leaderboard?matchId=${m1.id}`)).json.rows;
 ok('match leaderboard ranks both lineups', lb.length === 2 && lb[0].userId === fan1.user.id && lb[1].points === 511.5, lb.map(r => r.points));
 ok('locked lineups cannot change', (await save(F1, XI, matiullah, maxB)).status === 400);
 const md = (await get(`/api/matches/${m1.id}`)).json;
-ok('match page shows fantasy points and most-picked players', md.fantasy.playerPoints[0].name === 'Matiullah Khan' && md.fantasy.mostPicked.length === 5);
+ok('match page shows fantasy points and most-picked players', md.fantasy.playerPoints[0].name === 'Muhammad Rohid' && md.fantasy.mostPicked.length === 5);
 const p1Mid = (await me(F1)).points;
 await post('/api/matches', { id: m1.id, scorecard: card(10, 18, 0, 0) }, A);
 // Corrected: Max Bryant 10 runs 20, strike rate 55 (-8), playing 20 = 32 -> x2 64 -> lineup 490.5 -> 98 season points
@@ -320,12 +346,13 @@ const lgs = (await get('/api/fantasy/leaderboard')).json.rows;
 ok('season Dream XI leaderboard', lgs[0].userId === fan1.user.id && lgs[0].matches === 1);
 // Player links: found by joining ids (Cricbuzz -> Cricsheet -> ESPNcricinfo -> Wikidata), never by name.
 const resolved = await post('/api/admin/players/links/resolve', { all: true }, A);
-ok('player links lookup runs for every player', resolved.status === 200 && resolved.json.checked === 108, resolved.json);
+ok('player links lookup runs for every player', resolved.status === 200 && resolved.json.checked === 106, resolved.json);
 const pollard = (await get('/api/players/bulls-kieron-pollard')).json;
 const linkOf = (pp, key) => pp.links.find(l => l.key === key)?.url;
 ok('ESPNcricinfo link from the Cricsheet register', linkOf(pollard, 'espncricinfo') === 'https://www.espncricinfo.com/cricketers/kieron-pollard-230559', pollard.links);
 ok('Wikipedia and official social accounts from Wikidata', linkOf(pollard, 'wikipedia') === 'https://en.wikipedia.org/wiki/Kieron_Pollard' && linkOf(pollard, 'instagram') === 'https://www.instagram.com/test_pollard_ig/' && linkOf(pollard, 'x') === 'https://x.com/test_pollard_x');
 ok('social link shows the handle', pollard.links.find(l => l.key === 'x').handle === '@test_pollard_x');
+ok('TikTok and Threads accounts from Wikidata, with handles', linkOf(pollard, 'tiktok') === 'https://www.tiktok.com/@test_pollard_tt' && pollard.links.find(l => l.key === 'threads')?.handle === '@test_pollard_th', pollard.links);
 const bryant = (await get(`/api/players/${maxB}`)).json;
 ok('an id that maps to another name is refused (no ESPNcricinfo link)', !linkOf(bryant, 'espncricinfo') && /cricbuzz\.com\/profiles\/13120/.test(linkOf(bryant, 'cricbuzz') || ''), bryant.links);
 // An admin's own link is kept when the lookup runs again.
@@ -335,6 +362,18 @@ ok('admin can set a player link', (await post('/api/teams/bulls/squad', { squad:
 ok('a link to the wrong site is refused', (await post('/api/teams/bulls/squad', { squad: bullsSquad.map(p => (p.id === 'bulls-kieron-pollard' ? { ...p, links: { instagram: 'https://evil.example/x' } } : p)), confirm: true }, A)).status === 400);
 await post('/api/admin/players/links/resolve', { all: true }, A);
 ok("the lookup never replaces an admin's link", linkOf((await get('/api/players/bulls-kieron-pollard')).json, 'instagram') === 'https://www.instagram.com/admin_set_handle/');
+// Career records from CricketData.org: exact name (narrowed by country), padded values cleaned, unplayed formats dropped.
+const car = await post('/api/admin/players/career/refresh', { playerId: 'bulls-kieron-pollard' }, A);
+ok('career stats fetch for a player', car.status === 200 && car.json.found === 1, car.json);
+const pc = (await get('/api/players/bulls-kieron-pollard')).json.career;
+ok('career record lists T20I then IPL, without formats never played', pc?.formats.map(f => f.label).join(',') === 'T20I,IPL', pc);
+ok('career figures are cleaned', pc.formats[0].batting.runs === '1569' && pc.formats[0].batting.hs === '75*' && pc.formats[1].bowling.wkts === '69');
+const carB = await post('/api/admin/players/career/refresh', { playerId: maxB }, A);
+ok('two players with the same name and country give no record', carB.json.found === 0 && (await get(`/api/players/${maxB}`)).json.career === null, carB.json);
+ok('career refresh needs an admin', (await post('/api/admin/players/career/refresh', { playerId: maxB }, F1)).status === 403);
+const ssrPollard = await fetch(`${BASE}/players/bulls-kieron-pollard`).then(r => r.text());
+ok('player page renders the career record for search engines', /<h2>Career record<\/h2>[\s\S]*T20I[\s\S]*1569/.test(ssrPollard));
+ok('player page no longer lists fixtures', !/fixtures<\/h2>/i.test(ssrPollard.split('<body')[1] || ''));
 const playerPage = (await get(`/api/players/${maxB}`)).json;
 ok('player page shows fantasy points per match', playerPage.fixtures[0].fantasyPoints === 32 && playerPage.player.credits === 8, { pts: playerPage.fixtures[0].fantasyPoints, credits: playerPage.player.credits });
 
@@ -356,7 +395,7 @@ ok('leave league', (await post(`/api/fantasy-leagues/${lg.id}/leave`, {}, F2)).s
 // Live scores from CricketData (fixtures)
 const cands = await get('/api/admin/cricketdata/matches', A);
 ok('CricketData candidates list only this league\'s matches', cands.json.matches.length === 1 && cands.json.matches[0].id === FIX.cricketMatchId);
-const m2 = (await post('/api/matches', { teamA: 'bulls', teamB: 'aces', startsAt: inMinutes(48 * 60), externalId: FIX.cricketMatchId }, A)).json.targetMatch;
+const m2 = (await post('/api/matches', { teamA: 'bulls', teamB: 'aces', startsAt: inMinutes(23 * 60), externalId: FIX.cricketMatchId }, A)).json.targetMatch;
 ok('fan3 saves a lineup for the linked match', (await save(F3, XI, maxB, matiullah, m2)).status === 200);
 const live = await post(`/api/admin/matches/${m2.id}/live-sync`, {}, A);
 ok('live sync applies the result and scorecard', live.status === 200 && live.json.match.status === 'completed' && live.json.match.winner === 'bulls' && live.json.match.scoreA === '121/4' && live.json.match.scoreSource === 'cricketdata', live.json);
@@ -559,7 +598,7 @@ const st = await post('/api/admin/settings', { referralRewardPoints: 75, lockRem
 ok('referral reward and reminder time are configurable', st.json.settings.referralRewardPoints === 75 && st.json.settings.lockReminderMinutes === 45);
 ok('secrets are masked', (await get('/api/admin/settings', A)).json.settings.smtp.pass === '');
 const dash = (await get('/api/admin/dashboard', A)).json;
-ok('dashboard counts are real', dash.matchesCount === 3 && dash.fantasyLineups === 4 && dash.integrations.liveScores === true);
+ok('dashboard counts are real', dash.matchesCount === 4 && dash.fantasyLineups === 4 && dash.integrations.liveScores === true);
 
 // ============ 13b. Settings kept in the Admin console instead of environment variables ============
 const envList = (await get('/api/admin/env', A)).json.variables;

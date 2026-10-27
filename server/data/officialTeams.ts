@@ -13,6 +13,8 @@ export const OFFICIAL_2026_TEAMS: Team[] = [
     "color": "#E11D48",
     "secondaryColor": "#111827",
     "iconPlayer": "Moeen Ali",
+    "headCoach": "Lance Klusener",
+    "website": "https://www.arabianaces.ae",
     "logo": "/logos/aces.svg",
     "sort": 4,
     "skills": [

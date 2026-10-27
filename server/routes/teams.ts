@@ -1,3 +1,4 @@
+import { careerFor, refreshCareerStats } from '../careerStats';
 import { Router } from 'express';
 import { db, Player, SocialHandle, Team } from '../db';
 import { canManageTeam, getAuthUser, requireAdmin, teamScopeOf } from '../auth';
@@ -59,6 +60,7 @@ teamsRouter.get('/players/:id', (req, res) => {
     team: publicTeam(team),
     fixtures,
     season: statsFor(store, player.id),
+    career: careerFor(store, player.id),
     links: LINK_KEYS.filter(k => links[k]).map(k => ({ key: k, label: LINK_LABELS[k], url: links[k]!, handle: handleOf(k, links[k]!) })),
   });
 });
@@ -105,6 +107,13 @@ export async function resolvePlayerLinks(opts: { all?: boolean; teamId?: string 
   });
   return { checked: targets.length, updated, report };
 }
+
+/** Admin: fetch career records from CricketData.org now (within the daily budget). */
+teamsRouter.post('/admin/players/career/refresh', requireAdmin('teams'), wrap(async (req, res) => {
+  const playerId = str(req.body?.playerId, 80) || undefined;
+  const result = await refreshCareerStats({ all: Boolean(req.body?.all), playerId, max: playerId ? 1 : 15 });
+  res.json({ success: true, ...result });
+}));
 
 teamsRouter.post('/admin/teams/seed-official', requireAdmin('teams'), (req, res) => {
   const user = userOf(req);
@@ -175,6 +184,8 @@ export function formatPlayerSquad(raw: any[], teamId: string, previous: Player[]
       links: Object.keys(links).length ? links : undefined,
       linkSources: Object.keys(linkSources).length ? linkSources : undefined,
       linksCheckedAt: isoOrEmpty(p.linksCheckedAt) || undefined,
+      cricketdataId: /^[\w-]{6,60}$/.test(String(p.cricketdataId || '').trim()) ? String(p.cricketdataId).trim() : undefined,
+      skills: Array.isArray(p.skills) ? p.skills.map((x: any) => str(x, 40)).filter(Boolean).slice(0, 8) : old?.skills,
     });
   }
   return { squad };

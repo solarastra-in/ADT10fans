@@ -45,6 +45,7 @@ import {
   cx,
   ROLE_SHORT,
   ROLE_LABEL,
+  useFormat,
 } from '../components/ui';
 import { FantasySwingVisualizer } from '../components/FantasySwingVisualizer';
 import { SquadSkillRadar } from '../components/SquadSkillRadar';
@@ -113,6 +114,7 @@ const ROLE_INFO: Record<PlayerRole, {
 export default function FantasyMatchPage({ id }: { id: string }) {
   const { user, teamById, openAuth, toast, setUser, config } = useApp();
   const t = useT();
+  const fmt = useFormat();
   const { data, error, loading, reload } = useLoad(() => api.getFantasy(id), [id, user?.id]);
   const [picked, setPicked] = useState<string[]>([]);
   const [captain, setCaptain] = useState('');
@@ -334,6 +336,20 @@ export default function FantasyMatchPage({ id }: { id: string }) {
       </span>
     </Card>
   );
+
+  // Not open yet: games for a match open at midnight in Abu Dhabi on the day before match day.
+  if (!data.locked && data.open === false) {
+    return (
+      <div className="space-y-5" data-testid="fantasy-not-open">
+        <Link to="/fantasy" className="text-xs text-slate-500 hover:text-white inline-flex items-center gap-1">
+          <ChevronLeft className="w-4 h-4 rtl-flip" /> {t('Pick XI')}
+        </Link>
+        {header}
+        <Notice>{t('Pick XI for this match opens on {date}, the day before match day. Every match that day opens at the same time.', { date: fmt.dateTime(data.opensAt) })}</Notice>
+        <Link to="/players" className="inline-block text-sm font-bold text-amber-400">{t('Study the players')} →</Link>
+      </div>
+    );
+  }
 
   // Locked: show the lineup (and its points once scored).
   if (data.locked) {

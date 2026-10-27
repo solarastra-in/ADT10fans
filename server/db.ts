@@ -130,10 +130,32 @@ export interface Player {
   /** Wikidata entry (Q…), matched by ESPNcricinfo id. */
   wikidataId?: string;
   /** Career-stats, Wikipedia and official social links (see playerLinks.ts). */
-  links?: Partial<Record<'espncricinfo' | 'cricbuzz' | 'wikipedia' | 'instagram' | 'x' | 'facebook' | 'youtube', string>>;
+  links?: Partial<Record<'espncricinfo' | 'cricbuzz' | 'wikipedia' | 'instagram' | 'x' | 'facebook' | 'youtube' | 'tiktok' | 'threads', string>>;
   /** Where each link came from; an admin's link is never replaced by the lookup. */
-  linkSources?: Partial<Record<'espncricinfo' | 'cricbuzz' | 'wikipedia' | 'instagram' | 'x' | 'facebook' | 'youtube', 'admin' | 'cricsheet' | 'wikidata' | 'squad'>>;
+  linkSources?: Partial<Record<'espncricinfo' | 'cricbuzz' | 'wikipedia' | 'instagram' | 'x' | 'facebook' | 'youtube' | 'tiktok' | 'threads', 'admin' | 'cricsheet' | 'wikidata' | 'squad'>>;
   linksCheckedAt?: string;
+  /** CricketData.org player id, for career records (set by the lookup, or by an admin to correct it). */
+  cricketdataId?: string;
+}
+
+/** One format of a player's career record (CricketData.org players_info; values as published). */
+export interface CareerFormat {
+  /** CricketData's match type: t20 (T20 internationals), ipl, odi, test… */
+  key: string;
+  label: string;
+  /** m, inn, no, runs, hs, avg, bf, sr, 100s, 50s, 4s, 6s… */
+  batting?: Record<string, string>;
+  /** m, inn, b, runs, wkts, bbi, econ, avg, sr, 5w… */
+  bowling?: Record<string, string>;
+}
+
+export interface PlayerCareer {
+  playerId: string;
+  cricketdataId?: string;
+  status: 'found' | 'no-match' | 'ambiguous' | 'error';
+  note?: string;
+  checkedAt: string;
+  formats: CareerFormat[];
 }
 
 export interface Team {
@@ -355,6 +377,8 @@ export interface Contest {
   prize: string;
   questions: ContestQuestion[];
   instant?: boolean;
+  /** Created and settled by the site (one prediction set per match; see predictions.ts). */
+  auto?: boolean;
   createdAt: string;
 }
 
@@ -504,6 +528,8 @@ export interface SystemSettings {
   lockReminderMinutes: number;
   /** Points for the fan whose post the admins pick as Fan of the Day. */
   fanOfTheDayPoints: number;
+  /** CricketData.org requests a day for career stats (the free plan has 100 for everything). */
+  careerStatsDailyCalls?: number;
   /** Which fan wall posts wait for an admin before fans see them. */
   fanWallReview: 'photos' | 'all' | 'none';
   smtp: { host: string; port: number; user: string; pass: string; from: string; enabled: boolean };
@@ -853,6 +879,7 @@ export interface AppStore {
   duels: Duel[];
   fanPosts: FanPost[];
   fansOfTheDay: FanOfTheDay[];
+  playerCareer: PlayerCareer[];
   sessions: Session[];
   passportInterest: PassportInterest[];
   claimedBadges: Record<string, boolean>;
@@ -972,6 +999,7 @@ export function emptyStore(): AppStore {
     duels: [],
     fanPosts: [],
     fansOfTheDay: [],
+    playerCareer: [],
     sessions: [],
     passportInterest: [],
     claimedBadges: {},

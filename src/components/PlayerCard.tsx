@@ -4,7 +4,7 @@ import { api } from '../api';
 import { useApp } from '../state';
 import { useT } from '../i18n';
 import { Link, navigate } from '../router';
-import type { PlayerDetail, SeasonStats } from '../types';
+import type { CareerFormat, PlayerDetail, SeasonStats } from '../types';
 import { Avatar, cx, Pill, ROLE_LABEL, Spinner, TeamBadge, useFormat } from './ui';
 import { PlatformIcon } from './social';
 
@@ -60,7 +60,7 @@ export function playerLinkProps(id: string) {
   };
 }
 
-const SOCIAL_PLATFORM: Record<string, string> = { instagram: 'Instagram', x: 'X', facebook: 'Facebook', youtube: 'YouTube' };
+const SOCIAL_PLATFORM: Record<string, string> = { instagram: 'Instagram', x: 'X', facebook: 'Facebook', youtube: 'YouTube', tiktok: 'TikTok', threads: 'Threads' };
 
 /** Mounted once in the app shell. */
 export function PlayerCardHost() {
@@ -133,7 +133,7 @@ export function PlayerCardBody({ data, onClose, onPage }: { data: PlayerDetail; 
   const t = useT();
   const f = useFormat();
   const { teamById, toast } = useApp();
-  const { player: p, season, links, fixtures } = data;
+  const { player: p, season, links, fixtures, career } = data;
   const team = teamById(data.team.id) || data.team;
   const scored = fixtures.filter(x => x.fantasyPoints !== null);
   const avg = scored.length ? Math.round((scored.reduce((s, x) => s + (x.fantasyPoints || 0), 0) / scored.length) * 10) / 10 : null;
@@ -198,7 +198,7 @@ export function PlayerCardBody({ data, onClose, onPage }: { data: PlayerDetail; 
       <div className="p-5 space-y-5">
         {/* This season */}
         <section>
-          <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 mb-2">{t('This season')}</h3>
+          <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 mb-2">{t('T10 this season')}</h3>
           {season && season.matches > 0 ? (
             <SeasonGrid s={season} />
           ) : (
@@ -207,6 +207,9 @@ export function PlayerCardBody({ data, onClose, onPage }: { data: PlayerDetail; 
             </p>
           )}
         </section>
+
+        {/* Career record (CricketData.org) */}
+        {career && career.formats.length > 0 && <CareerRecord formats={career.formats} checkedAt={career.checkedAt} />}
 
         {/* Pick XI */}
         <section>
@@ -255,7 +258,10 @@ export function PlayerCardBody({ data, onClose, onPage }: { data: PlayerDetail; 
                   aria-label={t('{name} on {site}', { name: p.name, site: l.label })}
                 >
                   <PlatformIcon platform={SOCIAL_PLATFORM[l.key]} className="w-4 h-4" />
-                  <span>{l.handle || l.label}</span>
+                  <span className="flex flex-col leading-tight text-start">
+                    <span>{l.handle || l.label}</span>
+                    {l.handle && <span className="text-[10px] font-semibold text-slate-400">{l.label}</span>}
+                  </span>
                 </a>
               ))}
             </div>
@@ -281,9 +287,64 @@ export function PlayerCardBody({ data, onClose, onPage }: { data: PlayerDetail; 
             <Share2 className="w-4 h-4" /> {t('Share')}
           </button>
         </div>
-        <p className="text-[11px] leading-relaxed text-slate-500">{t('Season figures come from this season\'s scorecards on this site. Career figures open on the sites linked above.')}</p>
+        <p className="text-[11px] leading-relaxed text-slate-500">
+          {t('Season figures come from this season\'s scorecards on this site. Career figures open on the sites linked above.')}
+          {career ? ` ${t('Career records: CricketData.org, checked {date}.', { date: f.date(career.checkedAt) })}` : ''}
+        </p>
       </div>
     </article>
+  );
+}
+
+/** Career batting and bowling for each format CricketData.org publishes (T20I and IPL first). */
+function CareerRecord({ formats, checkedAt }: { formats: CareerFormat[]; checkedAt: string }) {
+  const t = useT();
+  const [key, setKey] = useState(formats[0].key);
+  const fmt = formats.find(x => x.key === key) || formats[0];
+  const bat = fmt.batting;
+  const bowl = fmt.bowling;
+  const v = (x?: string) => (x && x !== '-' && x !== '' ? x : '—');
+  const bowled = bowl && Number(bowl.b || bowl.balls || 0) > 0;
+  return (
+    <section data-testid="career-record" data-checked={checkedAt}>
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <h3 className="text-xs font-black uppercase tracking-wider text-slate-400">{t('Career record')}</h3>
+        {formats.length > 1 && (
+          <div className="flex gap-1" role="tablist" aria-label={t('Format')}>
+            {formats.map(x => (
+              <button
+                key={x.key}
+                type="button"
+                role="tab"
+                aria-selected={x.key === fmt.key}
+                onClick={() => setKey(x.key)}
+                className={cx('px-2.5 py-1 rounded-lg text-[11px] font-black border', x.key === fmt.key ? 'border-amber-400 bg-amber-400/15 text-white' : 'border-slate-700 text-slate-400 hover:text-white')}
+              >
+                {x.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="grid grid-cols-4 gap-2">
+        <Stat label={t('Matches')} value={v(bat?.m || bowl?.m)} />
+        <Stat label={t('Runs')} value={v(bat?.runs)} accent />
+        <Stat label={t('Wickets')} value={bowled ? v(bowl?.wkts) : '—'} accent={Boolean(bowled)} />
+        <Stat label={t('Highest')} value={v(bat?.hs)} />
+      </div>
+      <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 rounded-xl bg-slate-950/50 border border-slate-800 px-3 py-2.5 text-xs">
+        <Row k={t('Strike rate')} v={v(bat?.sr)} />
+        <Row k={t('Average')} v={v(bat?.avg)} />
+        <Row k={t('50s / 100s')} v={`${v(bat?.['50s'])} / ${v(bat?.['100s'])}`} />
+        <Row k={t('4s / 6s')} v={`${v(bat?.['4s'])} / ${v(bat?.['6s'])}`} />
+        {bowled && (
+          <>
+            <Row k={t('Economy')} v={v(bowl?.econ)} />
+            <Row k={t('Best bowling')} v={v(bowl?.bbi)} />
+          </>
+        )}
+      </dl>
+    </section>
   );
 }
 
