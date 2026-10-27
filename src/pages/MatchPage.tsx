@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { ExternalLink, MapPin, MessageSquarePlus, Trophy, Target, Users } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ExternalLink, Globe, MapPin, MessageSquarePlus, Trophy, Target, Users } from 'lucide-react';
 import { api } from '../api';
 import { useApp, useLoad } from '../state';
 import { useT } from '../i18n';
@@ -85,6 +85,50 @@ export default function MatchPage({ id }: { id: string }) {
   const a = teamById(m?.teamA);
   const b = teamById(m?.teamB);
   usePageMeta(m ? `${a?.name} vs ${b?.name}, ${t('Match {n}', { n: m.matchNo })}` : null, m ? `${f.dateTime(m.startsAt)} · ${m.venue}${m.result ? ` · ${m.result}` : ''}` : undefined, config?.brandName);
+
+  // SEO: Embed Schema.org SportsEvent LD+JSON for Google Search rich match snippet
+  useEffect(() => {
+    if (!m || !a || !b) return;
+    const scriptId = `schema-match-${m.id}`;
+    let script = document.getElementById(scriptId) as HTMLScriptElement | null;
+    if (!script) {
+      script = document.createElement('script');
+      script.id = scriptId;
+      script.type = 'application/ld+json';
+      document.head.appendChild(script);
+    }
+    const schemaData = {
+      '@context': 'https://schema.org',
+      '@type': 'SportsEvent',
+      name: `${a.name} vs ${b.name} - Abu Dhabi T10 2026 (Match #${m.matchNo})`,
+      sport: 'Cricket',
+      startDate: m.startsAt,
+      eventStatus: m.status === 'live' ? 'https://schema.org/EventLive' : m.status === 'completed' ? 'https://schema.org/EventMovedOnline' : 'https://schema.org/EventScheduled',
+      location: {
+        '@type': 'Place',
+        name: m.venue || 'Zayed Cricket Stadium',
+        address: {
+          '@type': 'PostalAddress',
+          addressLocality: 'Abu Dhabi',
+          addressCountry: 'UAE',
+        },
+      },
+      competitor: [
+        { '@type': 'SportsTeam', name: a.name, sport: 'Cricket' },
+        { '@type': 'SportsTeam', name: b.name, sport: 'Cricket' },
+      ],
+      sameAs: [
+        'https://www.cricbuzz.com/cricket-series/13307/abu-dhabi-t10-league-2026',
+        ...(m.externalId ? [`https://www.cricbuzz.com/live-cricket-scores/${m.externalId}`] : []),
+      ],
+    };
+    script.textContent = JSON.stringify(schemaData);
+
+    return () => {
+      const el = document.getElementById(scriptId);
+      if (el) el.remove();
+    };
+  }, [m?.id, m?.startsAt, m?.status, m?.venue, m?.externalId, a?.name, b?.name]);
   const innings = useMemo(() => [m?.scorecard?.innings1, m?.scorecard?.innings2].filter(Boolean) as InningsScorecard[], [m]);
   const [tab, setTab] = useState('0');
 
@@ -154,6 +198,14 @@ export default function MatchPage({ id }: { id: string }) {
               {t('Watch')} <ExternalLink className="w-4 h-4" />
             </ButtonLink>
           )}
+          <ButtonLink
+            to={m.externalId ? `https://www.cricbuzz.com/live-cricket-scores/${m.externalId}` : 'https://www.cricbuzz.com/cricket-series/13307/abu-dhabi-t10-league-2026'}
+            external
+            variant="secondary"
+            className="text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/10 font-bold"
+          >
+            <Globe className="w-4 h-4 text-emerald-400" /> {t('Cricbuzz Series 13307 Feed')} <ExternalLink className="w-3.5 h-3.5" />
+          </ButtonLink>
         </div>
       </Card>
 

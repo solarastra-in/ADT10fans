@@ -24,6 +24,13 @@ export function ScoreSourceLabel({ m }: { m: Match }) {
   const t = useT();
   const f = useFormat();
   if (m.status === 'upcoming') return null;
+  if (m.scoreSource === 'scraper') {
+    return (
+      <span className="text-[11px] text-emerald-400/90 inline-flex items-center gap-1">
+        <span>{t('Live feed: Cricbuzz Series 13307 · updated {when}', { when: f.ago(m.liveSyncedAt || m.updatedAt) })}</span>
+      </span>
+    );
+  }
   if (m.scoreSource === 'cricketdata') return <span className="text-[11px] text-slate-500">{t('Live data: CricketData.org · updated {when}', { when: f.ago(m.liveSyncedAt || m.updatedAt) })}</span>;
   if (m.scoreA || m.scoreB) return <span className="text-[11px] text-slate-500">{t('Score entered by the match centre · {when}', { when: f.ago(m.updatedAt) })}</span>;
   return null;

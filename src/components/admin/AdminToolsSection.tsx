@@ -11,8 +11,8 @@ import { Actions, Button, Card, Checkbox, Chip, Field, Notice, SectionHeader, Se
  */
 export const AdminToolsSection: React.FC<{ teams: Team[]; onRefreshAll: () => Promise<void>; goToSection?: (sectionId: any) => void }> = ({ teams = [], onRefreshAll }) => {
   const { busy, notice, setNotice, run } = useRunner();
-  const [provider, setProvider] = useState<'cricbuzz' | 'cricketdata' | 'custom'>('cricketdata');
-  const [seriesId, setSeriesId] = useState('');
+  const [provider, setProvider] = useState<'cricbuzz' | 'cricketdata' | 'custom'>('cricbuzz');
+  const [seriesId, setSeriesId] = useState('13307');
   const [apiUrl, setApiUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [teamId, setTeamId] = useState('');

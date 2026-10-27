@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CalendarDays } from 'lucide-react';
+import { CalendarDays, ExternalLink, Globe, Activity, ShieldCheck } from 'lucide-react';
 import { useApp } from '../state';
 import { useT } from '../i18n';
 import { usePageMeta } from '../router';
@@ -32,9 +32,47 @@ export default function MatchesPage() {
             </h1>
           </div>
         </div>
-        <p className="text-xs text-slate-400 max-w-sm">
-          {t('Times are shown in your local time zone. Scores update automatically during play.')}
-        </p>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          <p className="text-xs text-slate-400 max-w-sm">
+            {t('Times are shown in your local time zone. Scores update automatically during play.')}
+          </p>
+          <a
+            href="https://www.cricbuzz.com/cricket-series/13307/abu-dhabi-t10-league-2026"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20 text-xs font-bold transition-colors shrink-0"
+          >
+            <Globe className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Cricbuzz Series 13307</span>
+            <ExternalLink className="w-3 h-3 text-emerald-400" />
+          </a>
+        </div>
+      </div>
+
+      {/* Where Scores Are Shown Guide */}
+      <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-slate-950 border border-slate-800 shadow-md mb-5 text-xs text-slate-300 space-y-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <span className="font-extrabold text-white text-sm flex items-center gap-2">
+            <Activity className="w-4 h-4 text-amber-400" /> {t('Where live scores & scorecards are shown')}
+          </span>
+          <span className="text-[11px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+            {t('Seeded from Cricbuzz Series 13307')}
+          </span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+          <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800/80">
+            <span className="font-bold text-amber-300 block mb-0.5">1. Match Cards</span>
+            <span className="text-slate-400 text-[11px]">Real-time runs, wickets, and overs with pulse LIVE badge for active matches.</span>
+          </div>
+          <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800/80">
+            <span className="font-bold text-emerald-300 block mb-0.5">2. Full Scorecard</span>
+            <span className="text-slate-400 text-[11px]">Click any match to see both innings: batters (runs, balls, SR) and bowlers (overs, maidens, econ).</span>
+          </div>
+          <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800/80">
+            <span className="font-bold text-sky-300 block mb-0.5">3. Pick XI Fantasy</span>
+            <span className="text-slate-400 text-[11px]">Player fantasy points recalculate dynamically as match events unfold.</span>
+          </div>
+        </div>
       </div>
       <Tabs value={team} onChange={setTeam} className="mb-5" items={[{ id: 'all', label: t('All teams') }, ...teams.map(x => ({ id: x.id, label: x.short }))]} />
       {matches.length === 0 ? (

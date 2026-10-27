@@ -30,7 +30,7 @@ function loadLocalBackup(): string | null {
   return null;
 }
 
-let globalWriteQuotaExceededUntil = Date.now() + 24 * 60 * 60 * 1000;
+let globalWriteQuotaExceededUntil = 0;
 export const isWriteQuotaExceeded = () => Date.now() < globalWriteQuotaExceededUntil;
 
 export class FirestoreSdkBackend implements StorageBackend {
