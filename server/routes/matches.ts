@@ -20,6 +20,25 @@ matchesRouter.get('/matches', (req, res) => {
   res.json({ matches: list });
 });
 
+matchesRouter.get('/matches/live', (req, res) => {
+  const store = db.get();
+  const list = [...store.matches].sort(sortByStart);
+  const liveMatch = list.find(m => m.status === 'live') || null;
+  const upcoming = list.filter(m => m.status === 'upcoming');
+  const completed = list.filter(m => m.status === 'completed');
+  const nextMatch = upcoming[0] || null;
+  const recentMatch = completed[completed.length - 1] || null;
+
+  res.json({
+    hasLive: Boolean(liveMatch),
+    match: liveMatch,
+    nextMatch,
+    recentMatch,
+    teams: store.teams,
+    serverTime: new Date().toISOString(),
+  });
+});
+
 matchesRouter.get('/matches/:id', (req, res) => {
   const store = db.get();
   const m = store.matches.find(x => x.id === req.params.id);

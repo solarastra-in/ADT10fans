@@ -9,6 +9,7 @@ import { FanOfTheDayHero } from '../components/fanwall';
 import { MatchCard, sortMatches } from '../components/matches';
 import { FeedCard } from '../components/social';
 import { InviteCard } from '../components/InviteCard';
+import { LiveMatchScore } from '../components/LiveMatchScore';
 
 export default function HomePage() {
   const { config, user, teams, matches, teamById, openAuth, openTeamPicker, setUser, toast } = useApp();
@@ -142,6 +143,9 @@ export default function HomePage() {
           <InviteCard compact />
         </div>
       )}
+
+      {/* Live Match Scoreboard & Real-time Updates */}
+      <LiveMatchScore />
 
       <section>
         <SectionTitle title={live.length ? t('Live now') : t('Next matches')} action={<Link to="/matches" className="text-sm font-bold text-amber-400 inline-flex items-center gap-1">{t('All matches')} <ArrowRight className="w-4 h-4 rtl-flip" /></Link>} />
