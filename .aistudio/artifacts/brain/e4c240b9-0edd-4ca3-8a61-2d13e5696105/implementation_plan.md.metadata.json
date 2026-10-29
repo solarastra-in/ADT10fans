@@ -1,0 +1,6 @@
+{
+  "summary":  "Revised implementation plan incorporating global & Hyderabad, India fan club locations seeded and managed by Super Admin, configurable Twitter/X follow requirement (disabled by default and toggleable in Super Admin settings), QR check-in scanning, and venue-specific single-use offers.",
+  "updatedAt":  "2026-10-29T12:13:51.172759149Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

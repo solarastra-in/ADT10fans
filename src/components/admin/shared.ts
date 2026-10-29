@@ -23,6 +23,7 @@ export type AdminSectionId =
   | 'growth'
   | 'approvals'
   | 'marketing'
+  | 'fanclubs'
   | 'settings'
   | 'proposal';
 
@@ -45,6 +46,7 @@ export const ADMIN_SECTIONS: { id: AdminSectionId; label: string }[] = [
   { id: 'fanwall', label: 'Fan wall' },
   { id: 'notifications', label: 'Notifications' },
   { id: 'fanspaces', label: 'Fan Spaces' },
+  { id: 'fanclubs', label: 'Fan Clubs & Hubs' },
   { id: 'checkin', label: 'Door check-in' },
   { id: 'growth', label: 'Growth' },
   { id: 'approvals', label: 'Approvals' },

@@ -87,6 +87,20 @@ export interface User {
   referralRewardedAt?: string | null;
   /** Set when this friend joined after the inviter reached the invite-reward limit. */
   referralInviterUnpaid?: boolean;
+  fanClubCode?: string;
+  instagramFollowed?: boolean;
+  instagramHandle?: string;
+  xFollowed?: boolean;
+  xHandle?: string;
+  claimedVenueOfferIds?: string[];
+  fanClubCheckIns?: {
+    matchId: string;
+    matchNo: number;
+    fanClubId: string;
+    fanClubName: string;
+    checkedInAt: string;
+    pointsAwarded: number;
+  }[];
   createdAt: string;
   lastActiveAt?: string;
   stats?: any;
@@ -130,10 +144,23 @@ export interface Player {
   /** Wikidata entry (Q…), matched by ESPNcricinfo id. */
   wikidataId?: string;
   /** Career-stats, Wikipedia and official social links (see playerLinks.ts). */
-  links?: Partial<Record<'espncricinfo' | 'cricbuzz' | 'wikipedia' | 'instagram' | 'x' | 'facebook' | 'youtube', string>>;
+  links?: Partial<Record<'espncricinfo' | 'cricbuzz' | 'wikipedia' | 'instagram' | 'x' | 'facebook' | 'youtube' | 'tiktok' | 'threads', string>>;
   /** Where each link came from; an admin's link is never replaced by the lookup. */
-  linkSources?: Partial<Record<'espncricinfo' | 'cricbuzz' | 'wikipedia' | 'instagram' | 'x' | 'facebook' | 'youtube', 'admin' | 'cricsheet' | 'wikidata' | 'squad'>>;
+  linkSources?: Partial<Record<'espncricinfo' | 'cricbuzz' | 'wikipedia' | 'instagram' | 'x' | 'facebook' | 'youtube' | 'tiktok' | 'threads', 'admin' | 'cricsheet' | 'wikidata' | 'squad'>>;
   linksCheckedAt?: string;
+  socials?: {
+    instagram?: string;
+    x?: string;
+    youtube?: string;
+    facebook?: string;
+    tiktok?: string;
+    threads?: string;
+  };
+  stats?: {
+    t10?: any;
+    t20_2025_2026?: any;
+    t20_career?: any;
+  };
 }
 
 export interface Team {
@@ -509,6 +536,11 @@ export interface SystemSettings {
   smtp: { host: string; port: number; user: string; pass: string; from: string; enabled: boolean };
   cricbuzzSeriesId?: string;
   cricbuzzSeriesUrl?: string;
+  requireInstagramFollow?: boolean;
+  instagramTargetHandle?: string;
+  requireTwitterFollow?: boolean;
+  twitterTargetHandle?: string;
+  fanClubCheckInPoints?: number;
 }
 
 export type ReactionEmoji = '👏' | '🔥' | '😂' | '😮' | '💯';
@@ -518,7 +550,8 @@ export type PointsSource =
   | 'checkin' | 'guess' | 'superover' | 'dream-xi' | 'prediction' | 'quiz'
   | 'forum-thread' | 'forum-reply' | 'forum-removed' | 'badge' | 'referral'
   | 'prize' | 'prize-refund' | 'admin'
-  | 'connections' | 'grid' | 'statwars' | 'duel' | 'fan-post' | 'fan-of-day';
+  | 'connections' | 'grid' | 'statwars' | 'duel' | 'fan-post' | 'fan-of-day'
+  | 'fanclub-checkin' | 'social-follow';
 
 /** One change to a fan's points (see server/points.ts). */
 export interface PointsEntry {
@@ -682,6 +715,47 @@ export interface FanSpaceBooking {
   checkedInAt?: string | null;
   checkedInBy?: string | null;
   cancelledAt?: string | null;
+}
+
+export interface VenueOffer {
+  id: string;
+  fanClubId: string;
+  title: string;
+  description: string;
+  badge?: string;
+  perk: string;
+  expiresAt?: string;
+  active: boolean;
+}
+
+export interface FanClub {
+  id: string;
+  name: string;
+  city: string;
+  country: string;
+  address: string;
+  region: 'hyderabad' | 'uae' | 'international';
+  capacity?: number;
+  contactPerson?: string;
+  active: boolean;
+  offers: VenueOffer[];
+  createdAt?: string;
+}
+
+export interface FanClubCheckInRecord {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatar?: string;
+  userTeamId?: string | null;
+  fanClubId: string;
+  fanClubName: string;
+  matchId: string;
+  matchNo: number;
+  adminId: string;
+  adminName?: string;
+  pointsAwarded: number;
+  checkedInAt: string;
 }
 
 export interface YouthCupSchool {
@@ -891,6 +965,8 @@ export interface AppStore {
   passportTiers: SuperfanPassportTier[];
   proposalSettings: ProposalSettings;
   adminUsers: AdminUserRecord[];
+  fanClubs: FanClub[];
+  fanClubCheckIns: FanClubCheckInRecord[];
 }
 
 export const SCHEMA_VERSION = 5;
@@ -940,6 +1016,11 @@ export function defaultSettings(): SystemSettings {
     },
     cricbuzzSeriesId: '13307',
     cricbuzzSeriesUrl: 'https://www.cricbuzz.com/cricket-series/13307/abu-dhabi-t10-league-2026',
+    requireInstagramFollow: true,
+    instagramTargetHandle: '@ArabianAcesofficial',
+    requireTwitterFollow: false,
+    twitterTargetHandle: '@arabianacesT10',
+    fanClubCheckInPoints: 100,
   };
 }
 
@@ -1009,6 +1090,8 @@ export function emptyStore(): AppStore {
     passportTiers: [],
     proposalSettings: generateInitialProposalSettings(),
     adminUsers: [superAdminRecord()],
+    fanClubs: [],
+    fanClubCheckIns: [],
   };
 }
 

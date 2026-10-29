@@ -4,7 +4,7 @@ import React, { useEffect, useSyncExternalStore } from 'react';
 export type RouteName =
   | 'home' | 'matches' | 'match' | 'teams' | 'team' | 'players' | 'player' | 'social' | 'videos' | 'news'
   | 'play' | 'fantasy' | 'fantasyMatch' | 'games' | 'duel' | 'fanwall' | 'fanPost' | 'contests' | 'prizes' | 'leaderboard' | 'fans'
-  | 'forum' | 'thread' | 'fanspaces' | 'growth' | 'profile' | 'rules' | 'privacy' | 'terms' | 'admin' | 'proposal' | 'notFound';
+  | 'forum' | 'thread' | 'fanspaces' | 'growth' | 'profile' | 'rules' | 'privacy' | 'terms' | 'admin' | 'adminFanclub' | 'proposal' | 'notFound';
 
 export interface Route {
   name: RouteName;
@@ -43,6 +43,7 @@ const TABLE: [RegExp, RouteName, string[]][] = [
   [/^\/rules$/, 'rules', []],
   [/^\/privacy$/, 'privacy', []],
   [/^\/terms$/, 'terms', []],
+  [/^\/admin\/fanclub$/, 'adminFanclub', []],
   [/^\/admin(?:\/([a-z-]+))?$/, 'admin', ['section']],
   [/^\/proposal$/, 'proposal', []],
 ];

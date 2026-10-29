@@ -212,7 +212,7 @@ export default function PrizesPage() {
                 onClick={() => setCategory('bats')}
                 className={cx('flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer', category === 'bats' ? 'bg-amber-400 text-slate-950' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800')}
               >
-                🏏 Bats ({batsCount})
+                <span className="text-sm">🏏</span> Miniature Signed Bats ({batsCount})
               </button>
             )}
           </div>

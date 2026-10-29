@@ -29,6 +29,8 @@ teamsRouter.get('/teams', (_req, res) => {
   res.json({ teams: [...db.get().teams].sort((a, b) => a.sort - b.sort).map(t => publicTeam(t, counts.get(t.id) || 0)) });
 });
 
+import { getPlayerComprehensiveStats, getPlayerSocialHandles } from '../data/playerCareerData';
+
 teamsRouter.get('/players/:id', (req, res) => {
   const store = db.get();
   const team = store.teams.find(t => t.squad.some(p => p.id === req.params.id));
@@ -53,13 +55,20 @@ teamsRouter.get('/players/:id', (req, res) => {
         selectedBy: lineups.length ? Math.round((lineups.filter(f => f.playerIds.includes(player.id)).length / lineups.length) * 100) : null,
       };
     });
+  const comprehensiveStats = getPlayerComprehensiveStats(player);
+  const socials = getPlayerSocialHandles(player);
   const links = linksFor(player);
+  for (const [k, url] of Object.entries(socials)) {
+    if (!(links as any)[k] && url) (links as any)[k] = url;
+  }
   res.json({
-    player: { ...player, credits: creditsFor(player) },
+    player: { ...player, credits: creditsFor(player), socials, stats: comprehensiveStats },
     team: publicTeam(team),
     fixtures,
     season: statsFor(store, player.id),
     links: LINK_KEYS.filter(k => links[k]).map(k => ({ key: k, label: LINK_LABELS[k], url: links[k]!, handle: handleOf(k, links[k]!) })),
+    socials,
+    stats: comprehensiveStats,
   });
 });
 

@@ -60,7 +60,14 @@ export function playerLinkProps(id: string) {
   };
 }
 
-const SOCIAL_PLATFORM: Record<string, string> = { instagram: 'Instagram', x: 'X', facebook: 'Facebook', youtube: 'YouTube' };
+const SOCIAL_PLATFORM: Record<string, string> = {
+  instagram: 'Instagram',
+  x: 'X',
+  facebook: 'Facebook',
+  youtube: 'YouTube',
+  tiktok: 'TikTok',
+  threads: 'Threads',
+};
 
 /** Mounted once in the app shell. */
 export function PlayerCardHost() {
@@ -218,6 +225,9 @@ export function PlayerCardBody({ data, onClose, onPage }: { data: PlayerDetail; 
           </div>
         </section>
 
+        {/* Tournament & Format Stats: T10, T20 2025/26, Lifetime */}
+        <FormatStatsBlock stats={data.stats || p.stats} />
+
         {/* Career stats and reading */}
         {statsLinks.length > 0 && (
           <section>
@@ -338,3 +348,57 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
     </div>
   );
 }
+
+export function FormatStatsBlock({ stats }: { stats?: PlayerDetail['stats'] }) {
+  const t = useT();
+  const [format, setFormat] = useState<'t10' | 't20_2025_2026' | 't20_career'>('t10');
+  if (!stats) return null;
+  const current = stats[format];
+  if (!current) return null;
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-xs font-black uppercase tracking-wider text-slate-400">{t('Career & Format Stats')}</h3>
+        <div className="inline-flex rounded-lg bg-slate-950 p-0.5 border border-slate-800 text-[11px] font-bold">
+          <button
+            type="button"
+            onClick={() => setFormat('t10')}
+            className={cx('px-2.5 py-1 rounded-md transition-colors', format === 't10' ? 'bg-amber-400 text-slate-950' : 'text-slate-400 hover:text-white')}
+          >
+            T10
+          </button>
+          <button
+            type="button"
+            onClick={() => setFormat('t20_2025_2026')}
+            className={cx('px-2.5 py-1 rounded-md transition-colors', format === 't20_2025_2026' ? 'bg-amber-400 text-slate-950' : 'text-slate-400 hover:text-white')}
+          >
+            2025/26
+          </button>
+          <button
+            type="button"
+            onClick={() => setFormat('t20_career')}
+            className={cx('px-2.5 py-1 rounded-md transition-colors', format === 't20_career' ? 'bg-amber-400 text-slate-950' : 'text-slate-400 hover:text-white')}
+          >
+            T20 Career
+          </button>
+        </div>
+      </div>
+      <div className="grid grid-cols-4 gap-1.5 mb-2">
+        <Stat label={t('Matches')} value={current.matches} />
+        <Stat label={t('Runs')} value={current.runs} accent />
+        <Stat label={t('Str Rate')} value={current.strikeRate} />
+        <Stat label={t('Wickets')} value={current.wickets ?? 0} accent={Boolean(current.wickets)} />
+      </div>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-xl bg-slate-950/50 border border-slate-800 px-3 py-2.5 text-xs">
+        <Row k={t('Highest score')} v={current.highestScore} />
+        <Row k={t('Average')} v={current.average} />
+        <Row k={t('4s / 6s')} v={`${current.fours || 0} / ${current.sixes || 0}`} />
+        <Row k={t('Economy')} v={current.economy ? `${current.economy}` : '—'} />
+        {current.bestBowling && current.bestBowling !== '—' && <Row k={t('Best bowling')} v={current.bestBowling} />}
+        {current.fifties !== undefined && <Row k={t('50s / 100s')} v={`${current.fifties} / ${current.hundreds || 0}`} />}
+      </dl>
+    </section>
+  );
+}
+

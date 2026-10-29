@@ -31,6 +31,11 @@ type Draft = {
   smtpUser: string;
   smtpFrom: string;
   smtpEnabled: boolean;
+  requireInstagramFollow: boolean;
+  instagramTargetHandle: string;
+  requireTwitterFollow: boolean;
+  twitterTargetHandle: string;
+  fanClubCheckInPoints: string;
 };
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -62,6 +67,11 @@ const toDraft = (s: Partial<SystemSettings> | null | undefined): Draft => ({
   smtpUser: s?.smtp?.user || '',
   smtpFrom: s?.smtp?.from || '',
   smtpEnabled: !!s?.smtp?.enabled,
+  requireInstagramFollow: s?.requireInstagramFollow !== false,
+  instagramTargetHandle: s?.instagramTargetHandle || '@ArabianAcesofficial',
+  requireTwitterFollow: !!s?.requireTwitterFollow,
+  twitterTargetHandle: s?.twitterTargetHandle || '@ArabianAces',
+  fanClubCheckInPoints: String(s?.fanClubCheckInPoints ?? 100),
 });
 
 export const SettingsSection: React.FC<{ settings: SystemSettings; onRefreshAll: () => Promise<void> }> = ({ settings, onRefreshAll }) => {
@@ -183,6 +193,11 @@ export const SettingsSection: React.FC<{ settings: SystemSettings; onRefreshAll:
         .filter(Boolean)
         .join('\n'),
       smtp: smtp as SystemSettings['smtp'],
+      requireInstagramFollow: draft.requireInstagramFollow,
+      instagramTargetHandle: draft.instagramTargetHandle.trim() || '@ArabianAcesofficial',
+      requireTwitterFollow: draft.requireTwitterFollow,
+      twitterTargetHandle: draft.twitterTargetHandle.trim() || '@ArabianAces',
+      fanClubCheckInPoints: toNumber(draft.fanClubCheckInPoints, 100),
     };
 
     const res = await run('save', () => api.saveSettings(payload), 'Settings saved.');
@@ -317,6 +332,63 @@ export const SettingsSection: React.FC<{ settings: SystemSettings; onRefreshAll:
         >
           <TextArea rows={2} value={draft.adminEmails} onChange={e => set({ adminEmails: e.target.value })} error={!!errors.adminEmails} autoCapitalize="none" autoCorrect="off" spellCheck={false} />
         </Field>
+      </Card>
+
+      <Card className="space-y-4">
+        <div>
+          <h3 className="font-extrabold text-white text-base">Social Follow Gateways & Fan Club Policy</h3>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Configure mandatory Instagram follow gate upon site arrival, optional X (Twitter) toggle, and matchday check-in points.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+            <Checkbox
+              label="Enable Instagram Follow Gateway"
+              hint="Prompt visitors to follow @ArabianAcesofficial"
+              checked={draft.requireInstagramFollow}
+              onChange={c => set({ requireInstagramFollow: c })}
+            />
+            <Field label="Target Instagram Account">
+              <TextInput
+                value={draft.instagramTargetHandle}
+                onChange={e => set({ instagramTargetHandle: e.target.value })}
+                placeholder="@ArabianAcesofficial"
+              />
+            </Field>
+          </div>
+
+          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+            <Checkbox
+              label="Enable X (Twitter) Follow Gate"
+              hint="Optional follow requirement controlled by Super Admin"
+              checked={draft.requireTwitterFollow}
+              onChange={c => set({ requireTwitterFollow: c })}
+            />
+            <Field label="Target X Account">
+              <TextInput
+                value={draft.twitterTargetHandle}
+                onChange={e => set({ twitterTargetHandle: e.target.value })}
+                placeholder="@ArabianAces"
+              />
+            </Field>
+          </div>
+
+          <div className="sm:col-span-2 p-4 rounded-xl bg-slate-950 border border-slate-800">
+            <Field
+              label="Matchday Fan Club Check-In Points"
+              hint="Points awarded to each fan when venue admin scans their matchday QR code at an official fan club (60–90 min pre-match window)."
+            >
+              <TextInput
+                type="number"
+                value={draft.fanClubCheckInPoints}
+                onChange={e => set({ fanClubCheckInPoints: e.target.value })}
+                placeholder="100"
+              />
+            </Field>
+          </div>
+        </div>
       </Card>
 
       <Card className="space-y-4">

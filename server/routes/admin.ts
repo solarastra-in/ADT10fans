@@ -152,6 +152,11 @@ adminRouter.post('/admin/settings', requireAdmin('settings'), (req, res) => {
   if (b.fanOfTheDayPoints !== undefined) s.fanOfTheDayPoints = Math.min(1000, Math.max(0, Math.round(num(b.fanOfTheDayPoints, 100))));
   if (b.fanWallReview !== undefined && ['photos', 'all', 'none'].includes(b.fanWallReview)) s.fanWallReview = b.fanWallReview;
   if (b.curatorApiKey !== undefined && b.curatorApiKey !== '********') s.curatorApiKey = str(b.curatorApiKey, 200);
+  if (b.requireInstagramFollow !== undefined) s.requireInstagramFollow = Boolean(b.requireInstagramFollow);
+  if (b.instagramTargetHandle !== undefined) s.instagramTargetHandle = str(b.instagramTargetHandle, 80);
+  if (b.requireTwitterFollow !== undefined) s.requireTwitterFollow = Boolean(b.requireTwitterFollow);
+  if (b.twitterTargetHandle !== undefined) s.twitterTargetHandle = str(b.twitterTargetHandle, 80);
+  if (b.fanClubCheckInPoints !== undefined) s.fanClubCheckInPoints = Math.max(10, Math.min(1000, Math.round(num(b.fanClubCheckInPoints, 100))));
   if (b.adminEmails !== undefined) {
     if (!isSuperAdmin(userOf(req))) return bad(res, 'Only a super admin can change who is an admin', 403);
     const list = (Array.isArray(b.adminEmails) ? b.adminEmails : String(b.adminEmails).split(','))
@@ -173,6 +178,72 @@ adminRouter.post('/admin/settings', requireAdmin('settings'), (req, res) => {
   }
   db.save();
   res.json({ success: true, settings: maskedSettings() });
+});
+
+// ---------- Fan Club Super Admin Management ----------
+import { OFFICIAL_FAN_CLUBS } from '../data/officialVenues';
+
+adminRouter.get('/admin/fanclubs', requireAdmin('settings'), (_req, res) => {
+  const store = db.get();
+  if (!store.fanClubs || store.fanClubs.length === 0) {
+    store.fanClubs = OFFICIAL_FAN_CLUBS.map(c => ({ ...c }));
+    db.save();
+  }
+  res.json({ fanClubs: store.fanClubs });
+});
+
+adminRouter.post('/admin/fanclubs', requireAdmin('settings'), (req, res) => {
+  const b = req.body || {};
+  const store = db.get();
+  if (!store.fanClubs) store.fanClubs = [];
+
+  const name = str(b.name, 120);
+  const city = str(b.city, 60);
+  const country = str(b.country, 60) || 'India';
+  const address = str(b.address, 200);
+  const region = (['hyderabad', 'uae', 'international'].includes(b.region) ? b.region : 'hyderabad') as any;
+
+  if (!name || !city || !address) return bad(res, 'Name, city, and address are required');
+
+  const id = str(b.id, 60) || `fc-${city.toLowerCase().replace(/[^a-z0-9]/g, '')}-${crypto.randomUUID().slice(0, 6)}`;
+  const idx = store.fanClubs.findIndex(c => c.id === id);
+
+  const existing = idx >= 0 ? store.fanClubs[idx] : null;
+  const club = {
+    id,
+    name,
+    city,
+    country,
+    address,
+    region,
+    capacity: Math.max(10, Math.round(num(b.capacity, 250))),
+    contactPerson: str(b.contactPerson, 100) || undefined,
+    active: b.active !== undefined ? Boolean(b.active) : true,
+    offers: Array.isArray(b.offers) ? b.offers : (existing?.offers || []),
+    createdAt: existing?.createdAt || new Date().toISOString(),
+  };
+
+  if (idx >= 0) store.fanClubs[idx] = club;
+  else store.fanClubs.push(club);
+
+  db.save();
+  res.json({ success: true, fanClub: club });
+});
+
+adminRouter.delete('/admin/fanclubs/:id', requireAdmin('settings'), (req, res) => {
+  const store = db.get();
+  const id = req.params.id;
+  const before = store.fanClubs?.length || 0;
+  store.fanClubs = (store.fanClubs || []).filter(c => c.id !== id);
+  db.save();
+  res.json({ success: true, removed: before - store.fanClubs.length });
+});
+
+adminRouter.post('/admin/fanclubs/seed', requireAdmin('settings'), (_req, res) => {
+  const store = db.get();
+  store.fanClubs = OFFICIAL_FAN_CLUBS.map(c => ({ ...c }));
+  db.save();
+  res.json({ success: true, fanClubs: store.fanClubs, message: 'Global and Hyderabad fan clubs reset to official seed list.' });
 });
 
 adminRouter.post('/admin/smtp/test', requireAdmin, wrap(async (req, res) => {

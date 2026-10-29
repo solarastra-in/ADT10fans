@@ -19,6 +19,7 @@ import { fanSpacesRouter } from './routes/fanspaces';
 import { adminRouter } from './routes/admin';
 import { scraperRouter } from './routes/scraper';
 import { fanWallRouter, serveLocalPhoto } from './routes/fanwall';
+import { fanclubRouter } from './routes/fanclub';
 import { injectIntoTemplate, renderPage, robotsTxt, sitemapXml } from './seo';
 import { ogPng, type OgKind } from './ogImage';
 
@@ -77,7 +78,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use('/api', referralCheckMiddleware);
-for (const r of [coreRouter, teamsRouter, feedsRouter, matchesRouter, playRouter, prizesRouter, communityRouter, notificationsRouter, fanSpacesRouter, adminRouter, scraperRouter, fanWallRouter]) app.use('/api', r);
+for (const r of [coreRouter, teamsRouter, feedsRouter, matchesRouter, playRouter, prizesRouter, communityRouter, notificationsRouter, fanSpacesRouter, adminRouter, scraperRouter, fanWallRouter, fanclubRouter]) app.use('/api', r);
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
 
 function baseUrl(req: Request) {

@@ -138,9 +138,38 @@ export default function FantasyPage() {
         ) : (
           <div className="space-y-6">
             {open.length > 0 && (
-              <section>
-                <SectionTitle title={t('Open for picks')} />
-                <div className="space-y-2">{open.map(matchRow)}</div>
+              <section className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <SectionTitle title={t('Open for Picks (Play All Matches of the Day)')} />
+                  <span className="text-xs text-amber-400 font-bold">
+                    {t('{n} open matches · 2-3 matches daily', { n: open.length })}
+                  </span>
+                </div>
+                {/* Group matches by date */}
+                {(() => {
+                  const groups: Record<string, typeof open> = {};
+                  for (const m of open) {
+                    const key = m.startsAt.slice(0, 10);
+                    if (!groups[key]) groups[key] = [];
+                    groups[key].push(m);
+                  }
+                  return Object.entries(groups).map(([dateKey, dayList]) => (
+                    <div key={dateKey} className="space-y-2 p-3.5 rounded-2xl bg-slate-900/60 border border-slate-800">
+                      <div className="flex items-center justify-between text-xs pb-1 border-b border-slate-800/80">
+                        <span className="font-black text-amber-400 flex items-center gap-1.5 uppercase tracking-wider">
+                          📅 {f.date(dayList[0].startsAt, { weekday: 'short', month: 'short', day: 'numeric' })}
+                          <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-bold normal-case">
+                            {dayList.length === 3 ? t('Triple-Header (3 matches)') : t('Double-Header (2 matches)')}
+                          </span>
+                        </span>
+                        <span className="text-[11px] text-slate-400">
+                          {t('Available simultaneously 24h prior')}
+                        </span>
+                      </div>
+                      <div className="space-y-2 pt-1">{dayList.map(matchRow)}</div>
+                    </div>
+                  ));
+                })()}
               </section>
             )}
             {closed.length > 0 && (

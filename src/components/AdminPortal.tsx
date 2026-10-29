@@ -26,6 +26,7 @@ import { ProposalSection } from './admin/ProposalSection';
 import { AdminToolsSection } from './admin/AdminToolsSection';
 import { EnvVariablesSection } from './admin/EnvVariablesSection';
 import { SquadEditorSection } from './admin/SquadEditorSection';
+import { FanClubsSection } from './admin/FanClubsSection';
 
 export type { AdminSectionId } from './admin/shared';
 
@@ -147,6 +148,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = props => {
         {section === 'fanwall' && <FanWallSection teams={scopedTeams} />}
         {section === 'notifications' && <NotificationsSection notifications={notifications} teams={scopedTeams} matches={matches} contests={contests} isTeamOfficial={isTeamOfficial} />}
         {section === 'fanspaces' && <FanSpacesSection />}
+        {section === 'fanclubs' && <FanClubsSection />}
         {section === 'checkin' && <FanCheckInPanel />}
         {section === 'growth' && <GrowthSection />}
         {section === 'approvals' && <ApprovalsSection approvals={approvals} onRefreshAll={onRefreshAll} />}

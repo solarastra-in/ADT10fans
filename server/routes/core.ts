@@ -39,6 +39,11 @@ coreRouter.get('/config', (req, res) => {
       maxSocialPerPlatform: st.maxSocialPerPlatform || 6,
       referralRewardPoints: st.referralRewardPoints || 0,
       referralMaxRewarded: st.referralMaxRewarded ?? 10,
+      requireInstagramFollow: st.requireInstagramFollow !== false,
+      instagramTargetHandle: st.instagramTargetHandle || '@ArabianAcesofficial',
+      requireTwitterFollow: Boolean(st.requireTwitterFollow),
+      twitterTargetHandle: st.twitterTargetHandle || '@arabianacesT10',
+      fanClubCheckInPoints: st.fanClubCheckInPoints || 100,
       features: {
         googleSignIn: Boolean(firebaseProjectId()),
         emailOtp: emailOtpAvailable(),

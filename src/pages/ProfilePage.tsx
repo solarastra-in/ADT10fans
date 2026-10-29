@@ -7,6 +7,7 @@ import { Link, navigate, usePageMeta } from '../router';
 import { Avatar, Button, Card, EmptyState, ErrorBox, Field, PageHeader, Pill, SectionTitle, Spinner, StatTile, TeamBadge, cx, inputCls, useFormat } from '../components/ui';
 import { InviteCard } from '../components/InviteCard';
 import { PointsHistory } from '../components/PointsHistory';
+import { FanClubCheckInCard } from '../components/FanClubCheckInCard';
 
 const ICONS: Record<string, React.FC<{ className?: string }>> = { Target, Award, Users, CalendarCheck, Trophy, Gamepad2, Search, Flame, MessageSquare, MessagesSquare, UserPlus, Zap, Crown, Gift };
 
@@ -161,6 +162,8 @@ export default function ProfilePage() {
         <StatTile label={t('Check-in streak')} value={t('{n} days', { n: user.streak || 0 })} />
         <StatTile label={t('Badges unlocked')} value={`${data.stats.totalBadgesUnlocked}/${data.badges.length}`} />
       </div>
+
+      <FanClubCheckInCard />
 
       <section id="badges" className="scroll-mt-24 space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">

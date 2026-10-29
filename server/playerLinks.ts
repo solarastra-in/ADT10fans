@@ -16,7 +16,7 @@ import { normName } from './fantasy';
  * an admin's link is never overwritten by the lookup.
  */
 
-export const LINK_KEYS = ['espncricinfo', 'cricbuzz', 'wikipedia', 'instagram', 'x', 'facebook', 'youtube'] as const;
+export const LINK_KEYS = ['espncricinfo', 'cricbuzz', 'wikipedia', 'instagram', 'x', 'facebook', 'youtube', 'tiktok', 'threads'] as const;
 export type LinkKey = (typeof LINK_KEYS)[number];
 export type PlayerLinks = Partial<Record<LinkKey, string>>;
 export type LinkSource = 'admin' | 'cricsheet' | 'wikidata' | 'squad';
@@ -29,6 +29,8 @@ export const LINK_LABELS: Record<LinkKey, string> = {
   x: 'X',
   facebook: 'Facebook',
   youtube: 'YouTube',
+  tiktok: 'TikTok',
+  threads: 'Threads',
 };
 
 /** Each link must point at its own site (an admin cannot put an arbitrary site under "Instagram"). */
@@ -40,6 +42,8 @@ export const LINK_PATTERNS: Record<LinkKey, RegExp> = {
   x: /^https:\/\/(www\.)?(x|twitter)\.com\/[A-Za-z0-9_]{1,15}\/?$/i,
   facebook: /^https:\/\/(www\.)?facebook\.com\/[\w.\-/]+\/?$/i,
   youtube: /^https:\/\/(www\.)?youtube\.com\/(channel\/UC[\w-]{22}|@[\w.\-]{3,30})\/?$/i,
+  tiktok: /^https:\/\/(www\.)?tiktok\.com\/@?[A-Za-z0-9._]{1,30}\/?$/i,
+  threads: /^https:\/\/(www\.)?(threads\.net|threads\.com)\/@[A-Za-z0-9._]{1,30}\/?$/i,
 };
 
 /** Validates links from the admin console. Returns the clean links, or an error message. */
@@ -80,9 +84,17 @@ export function linksFor(p: Player): PlayerLinks {
 
 /** Handle shown next to a social link (e.g. "@kieron.pollard55"). */
 export function handleOf(key: LinkKey, url: string): string | null {
-  if (key === 'instagram' || key === 'x') {
-    const m = url.match(/\.com\/([^/?#]+)/);
-    return m ? `@${m[1]}` : null;
+  if (key === 'instagram' || key === 'x' || key === 'threads') {
+    const m = url.match(/(?:\.com|\.net)\/([^/?#]+)/);
+    return m ? (m[1].startsWith('@') ? m[1] : `@${m[1]}`) : null;
+  }
+  if (key === 'tiktok') {
+    const m = url.match(/tiktok\.com\/(@?[^/?#]+)/);
+    return m ? (m[1].startsWith('@') ? m[1] : `@${m[1]}`) : null;
+  }
+  if (key === 'youtube') {
+    const m = url.match(/youtube\.com\/(@[^/?#]+)/);
+    return m ? m[1] : null;
   }
   return null;
 }

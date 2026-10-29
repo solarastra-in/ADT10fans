@@ -7,6 +7,7 @@ import type {
   YouthCupSchool, CreatorPartner, CommentaryAudioFeed, SuperfanPassportTier,
   AdminFanPoints, PointsHistory, PointsEntry, PlayerWithForm, LineupPreset, MatchSwingInsights, PlayerDetail,
   ConnectionsState, GridState, StatQuestion, StatWarsResult, DuelView, FanPostView, FanPostKind, FanWallResponse, FanOfTheDayView,
+  FanClub, FanClubCheckInRecord, FanClubStatusResponse, VenueOffer,
 } from './types';
 
 const TOKEN_KEY = 't10_auth_token';
@@ -270,6 +271,18 @@ export const api = {
   checkInFanSpace: (code: string, anyDate = false) => post<Ok & { booking: FanSpaceBooking }>('/api/admin/fanspaces/checkin', { code, anyDate }),
   saveFanSpace: (space: Partial<FanSpace>) => post<Ok & { spaces: FanSpace[] }>('/api/admin/fanspaces', space),
   deleteFanSpace: (id: string) => del<Ok & { spaces: FanSpace[] }>(`/api/admin/fanspaces/${id}`),
+
+  // ----- fan clubs & check-in -----
+  getFanClubs: () => pub<{ clubs: FanClub[] }>('/api/fanclub/clubs'),
+  getFanClubStatus: () => req<FanClubStatusResponse>('/api/fanclub/my-status'),
+  verifySocialFollow: (platform: 'instagram' | 'twitter', handle: string) => post<Ok & { pointsAwarded: number; user: User }>('/api/fanclub/social-verify', { platform, handle }),
+  fanClubAdminCheckIn: (data: { qrPayload?: string; code?: string; fanClubId: string; matchId?: string }) => post<Ok & { pointsAwarded: number; fan: any; fanClub: FanClub; match: Match; checkInRecord: FanClubCheckInRecord }>('/api/fanclub/admin/checkin', data),
+  fanClubAdminRedeemOffer: (data: { userId: string; offerId: string; fanClubId: string }) => post<Ok & { message: string; offer: VenueOffer; fan: User }>('/api/fanclub/admin/redeem-offer', data),
+  getFanClubAdminStats: (fanClubId?: string) => req<{ totalCheckIns: number; todayCheckIns: number; recentCheckIns: FanClubCheckInRecord[] }>(`/api/fanclub/admin/stats${qs({ fanClubId })}`),
+  getAdminFanClubs: () => req<{ fanClubs: FanClub[] }>('/api/admin/fanclubs'),
+  saveAdminFanClub: (club: Partial<FanClub>) => post<Ok & { fanClub: FanClub }>('/api/admin/fanclubs', club),
+  deleteAdminFanClub: (id: string) => del<Ok & { removed: number }>(`/api/admin/fanclubs/${id}`),
+  seedAdminFanClubs: () => post<Ok & { fanClubs: FanClub[]; message: string }>('/api/admin/fanclubs/seed'),
 
   // ----- growth -----
   getGrowthCatalysts: () => req<{ youthSchools: YouthCupSchool[]; creatorPartners: CreatorPartner[]; commentaryFeeds: CommentaryAudioFeed[]; passportTiers: SuperfanPassportTier[] }>('/api/growth-catalysts'),

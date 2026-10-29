@@ -43,6 +43,88 @@ export interface User {
   bio?: string;
   referralCode?: string;
   createdAt?: string;
+  fanClubCode?: string;
+  instagramFollowed?: boolean;
+  instagramHandle?: string;
+  xFollowed?: boolean;
+  xHandle?: string;
+  claimedVenueOfferIds?: string[];
+  fanClubCheckIns?: {
+    matchId: string;
+    matchNo: number;
+    fanClubId: string;
+    fanClubName: string;
+    checkedInAt: string;
+    pointsAwarded: number;
+  }[];
+}
+
+export interface VenueOffer {
+  id: string;
+  fanClubId: string;
+  title: string;
+  description: string;
+  badge?: string;
+  perk: string;
+  expiresAt?: string;
+  active: boolean;
+}
+
+export interface FanClub {
+  id: string;
+  name: string;
+  city: string;
+  country: string;
+  address: string;
+  region: 'hyderabad' | 'uae' | 'international';
+  capacity?: number;
+  contactPerson?: string;
+  active: boolean;
+  offers: VenueOffer[];
+  createdAt?: string;
+}
+
+export interface FanClubCheckInRecord {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatar?: string;
+  userTeamId?: string | null;
+  fanClubId: string;
+  fanClubName: string;
+  matchId: string;
+  matchNo: number;
+  adminId: string;
+  adminName?: string;
+  pointsAwarded: number;
+  checkedInAt: string;
+}
+
+export interface FanClubStatusResponse {
+  openMatch: {
+    id: string;
+    matchNo: number;
+    teamA: string;
+    teamB: string;
+    startsAt: string;
+    status: string;
+    venue: string;
+  } | null;
+  checkInWindowActive: boolean;
+  minutesToMatch: number | null;
+  checkedIn: boolean;
+  checkedInRecord?: {
+    matchId: string;
+    matchNo: number;
+    fanClubId: string;
+    fanClubName: string;
+    checkedInAt: string;
+    pointsAwarded: number;
+  } | null;
+  fanClubCode: string;
+  qrPayload: string;
+  fanClubs: FanClub[];
+  activeOffers: (VenueOffer & { redeemed: boolean })[];
 }
 
 export interface UserStats {
@@ -112,9 +194,42 @@ export interface Player {
   links?: Partial<Record<PlayerLinkKey, string>>;
   linkSources?: Partial<Record<PlayerLinkKey, 'admin' | 'cricsheet' | 'wikidata' | 'squad'>>;
   linksCheckedAt?: string;
+  socials?: PlayerSocialHandles;
+  stats?: {
+    t10?: PlayerFormatStats;
+    t20_2025_2026?: PlayerFormatStats;
+    t20_career?: PlayerFormatStats;
+  };
 }
 
-export type PlayerLinkKey = 'espncricinfo' | 'cricbuzz' | 'wikipedia' | 'instagram' | 'x' | 'facebook' | 'youtube';
+export type PlayerLinkKey = 'espncricinfo' | 'cricbuzz' | 'wikipedia' | 'instagram' | 'x' | 'facebook' | 'youtube' | 'tiktok' | 'threads';
+
+export interface PlayerSocialHandles {
+  instagram?: string;
+  x?: string;
+  youtube?: string;
+  facebook?: string;
+  tiktok?: string;
+  threads?: string;
+}
+
+export interface PlayerFormatStats {
+  matches: number;
+  innings: number;
+  runs: number;
+  ballsFaced?: number;
+  highestScore: string;
+  strikeRate: number;
+  average: number;
+  hundreds?: number;
+  fifties?: number;
+  fours?: number;
+  sixes?: number;
+  wickets?: number;
+  bestBowling?: string;
+  economy?: number;
+  oversBowled?: number;
+}
 
 /** This season's figures from real scorecards (null fields: not batted / not bowled yet). */
 export interface SeasonStats {
@@ -157,6 +272,12 @@ export interface PlayerDetail {
   fixtures: PlayerFixture[];
   season: SeasonStats | null;
   links: { key: PlayerLinkKey; label: string; url: string; handle: string | null }[];
+  socials?: PlayerSocialHandles;
+  stats?: {
+    t10?: PlayerFormatStats;
+    t20_2025_2026?: PlayerFormatStats;
+    t20_career?: PlayerFormatStats;
+  };
 }
 
 export interface Team {
@@ -820,6 +941,11 @@ export interface SystemSettings {
   smtp: { host: string; port: number; user: string; pass: string; from: string; enabled: boolean };
   cricbuzzSeriesId?: string;
   cricbuzzSeriesUrl?: string;
+  requireInstagramFollow?: boolean;
+  instagramTargetHandle?: string;
+  requireTwitterFollow?: boolean;
+  twitterTargetHandle?: string;
+  fanClubCheckInPoints?: number;
 }
 
 export interface PublicConfig {
@@ -835,6 +961,11 @@ export interface PublicConfig {
   maxSocialPerPlatform: number;
   referralRewardPoints: number;
   referralMaxRewarded: number;
+  requireInstagramFollow?: boolean;
+  instagramTargetHandle?: string;
+  requireTwitterFollow?: boolean;
+  twitterTargetHandle?: string;
+  fanClubCheckInPoints?: number;
   features: { googleSignIn: boolean; emailOtp: boolean; gemini: boolean; pushNotifications: boolean; liveScores: boolean; curator: boolean };
   fcmVapidKey: string;
   stats: { teams: number; players: number; fans: number; handles: number; matches: number; openContests: number; openDraws: number; prizes: number; forumThreads: number };
