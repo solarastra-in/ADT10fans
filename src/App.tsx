@@ -38,7 +38,7 @@ const GrowthPage = React.lazy(() => import('./pages/GrowthPage'));
 const ProfilePage = React.lazy(() => import('./pages/ProfilePage'));
 const InfoPage = React.lazy(() => import('./pages/InfoPage'));
 const AdminPage = React.lazy(() => import('./pages/AdminPage'));
-const FanClubAdminPage = React.lazy(() => import('./pages/FanClubAdminPage').then(m => ({ default: m.FanClubAdminPage })));
+const FanClubAdminPage = React.lazy(() => import('./components/admin/FanClubDesk').then(m => ({ default: m.FanClubAdminPage })));
 const TeamPortalPage = React.lazy(() => import('./pages/TeamPortalPage'));
 const TeamInvitePage = React.lazy(() => import('./pages/TeamInvitePage'));
 const ProposalPage = React.lazy(() => import('./pages/ProposalPage'));

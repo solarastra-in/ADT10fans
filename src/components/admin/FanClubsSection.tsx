@@ -3,7 +3,7 @@ import { Download, Plus, Trash2, Upload, UserPlus, X } from 'lucide-react';
 import { api } from '../../api';
 import { Link } from '../../router';
 import type { FanClubAdminClub, FanClubAdminView } from '../../types';
-import { ClubForm } from '../../pages/FanClubAdminPage';
+import { ClubForm } from './FanClubDesk';
 import { Button, Card, Chip, EmptyState, Field, Notice, NoticeState, SectionHeader, Sheet, TextArea, TextInput, errorMessage } from './ui';
 
 const CSV_HEADER = 'name,city,country,address,region,capacity,contactPerson,checkInPoints,gamesMode';

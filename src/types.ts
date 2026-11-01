@@ -1064,6 +1064,7 @@ export interface SystemSettings {
   fanClubCheckInPoints?: number;
   instagramVerifyPostUrl?: string;
   instagramHideVerifyComments?: boolean;
+  instagramWelcomePoints?: number;
   fanClubCheckInOpensMins?: number;
   fanClubTeamId?: string;
 }

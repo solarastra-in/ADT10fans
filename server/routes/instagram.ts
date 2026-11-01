@@ -11,8 +11,6 @@ import {
 /** The Instagram check fans pass before playing (see instagramGate.ts). */
 export const instagramRouter = Router();
 
-const WELCOME_POINTS = 25;
-
 function view(u: User | null) {
   const store = db.get();
   const g = gateSettings(store);
@@ -26,7 +24,7 @@ function view(u: User | null) {
     handle: u?.instagramHandle || null,
     code: u && statusOf(u) !== 'verified' ? u.instagramCode || null : null,
     note: u?.instagramReviewNote || null,
-    welcomePoints: WELCOME_POINTS,
+    welcomePoints: g.welcomePoints,
   };
 }
 
@@ -34,7 +32,8 @@ function welcome(store: ReturnType<typeof db.get>, u: User) {
   u.badges ||= [];
   if (u.badges.includes('social-instagram')) return 0;
   u.badges.push('social-instagram');
-  return awardPoints(store, u, WELCOME_POINTS, 'social-follow', 'Instagram verified', u.id);
+  const pts = gateSettings(store).welcomePoints;
+  return pts ? awardPoints(store, u, pts, 'social-follow', 'Instagram verified', u.id) : 0;
 }
 
 instagramRouter.get('/instagram/status', requireUser, (req, res) => res.json(view(userOf(req))));
@@ -72,6 +71,7 @@ instagramRouter.post('/instagram/check', requireUser, rateLimit('ig-check', 20, 
   let comments;
   try {
     comments = await recentComments(g.postUrl);
+    if (!proofIn(comments, me.instagramHandle, me.instagramCode)) comments = await recentComments(g.postUrl, true);
   } catch (e: any) {
     console.warn('[instagram] comment check failed:', e?.message || e);
     return res.json({ ...view(me), verified: false, reason: 'Instagram did not answer just now. Try again in a minute, or ask an organiser to check.' });

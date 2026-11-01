@@ -5,8 +5,8 @@ import type { PrizeItem, PrizeRedemption, Team } from '../../types';
 import { FanPointsPanel } from './FanPointsPanel';
 import { Actions, Button, Card, Checkbox, Chip, EmptyState, Errors, Field, Notice, SectionHeader, Select, Sheet, TextArea, TextInput, isHttpsUrl, statusTone, useRunner } from './ui';
 
-type Draft = { id?: string; title: string; description: string; image: string; pointsCost: string; stock: string; teamOnly: string; teamId: string; active: boolean; fulfilment: string };
-const blank: Draft = { title: '', description: '', image: '', pointsCost: '200', stock: '10', teamOnly: '', teamId: '', active: true, fulfilment: 'Show your claim code at the Fan Zone merchandise desk.' };
+type Draft = { id?: string; title: string; description: string; image: string; pointsCost: string; stock: string; teamOnly: string; teamId: string; active: boolean; fulfilment: string; category: string };
+const blank: Draft = { title: '', description: '', image: '', pointsCost: '200', stock: '10', teamOnly: '', teamId: '', active: true, fulfilment: 'Show your claim code at the Fan Zone merchandise desk.', category: '' };
 
 /**
  * Rewards fans can claim with points, and the claims waiting to be fulfilled. In a team portal
@@ -46,7 +46,7 @@ export const PrizesSection: React.FC<{ teams: Team[]; team?: Team | null }> = ({
     if (draft.image && !isHttpsUrl(draft.image)) e.image = 'Image must be an https:// link.';
     setErrors(e);
     if (Object.keys(e).length) return;
-    const r = await run('save', () => api.savePrize({ id: draft.id, title: draft.title.trim(), description: draft.description.trim(), image: draft.image.trim() || undefined, pointsCost: Number(draft.pointsCost), stock: Number(draft.stock), teamOnly: draft.teamOnly || null, teamId: team ? team.id : draft.teamId || null, active: draft.active, fulfilment: draft.fulfilment.trim() }), 'Prize saved.');
+    const r = await run('save', () => api.savePrize({ id: draft.id, title: draft.title.trim(), description: draft.description.trim(), image: draft.image.trim() || undefined, pointsCost: Number(draft.pointsCost), stock: Number(draft.stock), teamOnly: draft.teamOnly || null, teamId: team ? team.id : draft.teamId || null, active: draft.active, fulfilment: draft.fulfilment.trim(), category: draft.category.trim() || undefined }), 'Prize saved.');
     if (r) {
       setDraft(null);
       load();
@@ -69,7 +69,12 @@ export const PrizesSection: React.FC<{ teams: Team[]; team?: Team | null }> = ({
       <SectionHeader
         title={team ? `${team.name} prizes` : 'Prizes & claims'}
         description={team ? `Rewards ${team.name} offers. Fans spend points on them (spending never lowers their leaderboard score). Each claim gets a code: fulfil it when the fan collects, or cancel to refund the points.` : 'Fans spend points on these. Spending never lowers their leaderboard score. Each claim gets a code; fulfil it when the fan collects, or cancel to refund the points.'}
-        actions={<Button variant="primary" size="sm" icon={<Plus className="w-4 h-4" />} onClick={() => { setErrors({}); setDraft({ ...blank }); }}>Add prize</Button>}
+        actions={
+          <div className="flex gap-2">
+            {!team && <Button size="sm" loading={busy === 'seed'} onClick={async () => { const r = await run('seed', () => api.adminSeedPrizes(), 'Done.'); if (r) { setNotice({ kind: 'ok', text: `Added ${r.added.prizes} prize(s) and ${r.added.draws} draw(s) from the season list. Existing prizes were not changed.` }); load(); } }}>Load the season prize list</Button>}
+            <Button variant="primary" size="sm" icon={<Plus className="w-4 h-4" />} onClick={() => { setErrors({}); setDraft({ ...blank }); }}>Add prize</Button>
+          </div>
+        }
       />
       <Notice notice={notice} onClose={() => setNotice(null)} />
       {prizes.length === 0 ? (
@@ -83,6 +88,7 @@ export const PrizesSection: React.FC<{ teams: Team[]; team?: Team | null }> = ({
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-black text-white">{p.title}</span>
                   <Chip tone="amber">{p.pointsCost} pts</Chip>
+                  {p.category && <Chip tone="slate">{p.category}</Chip>}
                   <Chip tone={p.active ? 'green' : 'slate'}>{p.active ? 'active' : 'off'}</Chip>
                   <Chip>{claimed}/{p.stock} claimed</Chip>
                   {p.teamOnly && <Chip tone="blue">{teams.find(t => t.id === p.teamOnly)?.short} fans</Chip>}
@@ -91,7 +97,7 @@ export const PrizesSection: React.FC<{ teams: Team[]; team?: Team | null }> = ({
                 {p.description && <p className="text-sm text-slate-400 mt-2">{p.description}</p>}
                 <p className="text-xs text-slate-500 mt-1">{p.fulfilment}</p>
                 <Actions className="mt-3">
-                  <Button size="sm" icon={<Edit3 className="w-4 h-4" />} onClick={() => { setErrors({}); setDraft({ id: p.id, title: p.title, description: p.description, image: p.image || '', pointsCost: String(p.pointsCost), stock: String(p.stock), teamOnly: p.teamOnly || '', teamId: p.teamId || '', active: p.active, fulfilment: p.fulfilment }); }}>Edit</Button>
+                  <Button size="sm" icon={<Edit3 className="w-4 h-4" />} onClick={() => { setErrors({}); setDraft({ id: p.id, title: p.title, description: p.description, image: p.image || '', pointsCost: String(p.pointsCost), stock: String(p.stock), teamOnly: p.teamOnly || '', teamId: p.teamId || '', active: p.active, fulfilment: p.fulfilment, category: p.category || '' }); }}>Edit</Button>
                   <Button size="sm" variant="danger" icon={<Trash2 className="w-4 h-4" />} loading={busy === `del:${p.id}`} onClick={() => remove(p)}>Delete</Button>
                 </Actions>
               </Card>
@@ -136,6 +142,7 @@ export const PrizesSection: React.FC<{ teams: Team[]; team?: Team | null }> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Prize" required error={errors.title} className="sm:col-span-2"><TextInput value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} error={!!errors.title} /></Field>
             <Field label="Description" className="sm:col-span-2"><TextArea value={draft.description} onChange={e => setDraft({ ...draft, description: e.target.value })} /></Field>
+            <Field label="Reward tier" hint="Prizes with the same tier form one step on the Prizes page timeline, unlocked at the points of its cheapest prize. Leave empty to guess from the name."><TextInput list="prize-tiers" value={draft.category} onChange={e => setDraft({ ...draft, category: e.target.value })} placeholder="e.g. Match tickets" /><datalist id="prize-tiers">{Array.from(new Set(prizes.map(x => x.category).filter(Boolean))).map(c => <option key={c} value={c} />)}</datalist></Field>
             <Field label="Points cost" required error={errors.pointsCost}><TextInput type="number" min={1} value={draft.pointsCost} onChange={e => setDraft({ ...draft, pointsCost: e.target.value })} error={!!errors.pointsCost} /></Field>
             <Field label="Stock" required error={errors.stock} hint="How many can be claimed in total"><TextInput type="number" min={0} value={draft.stock} onChange={e => setDraft({ ...draft, stock: e.target.value })} error={!!errors.stock} /></Field>
             {team ? (

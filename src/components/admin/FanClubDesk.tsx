@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
 import { Camera, CameraOff, CheckCircle2, Gift, Pencil, Plus, Trash2, UserCheck } from 'lucide-react';
-import { useApp, useLoad } from '../state';
-import { api } from '../api';
-import { useT } from '../i18n';
-import { Link, usePageMeta } from '../router';
-import { Avatar, Button, Card, EmptyState, ErrorBox, Field, Modal, PageHeader, Pill, Spinner, Tabs, inputCls, useFormat } from '../components/ui';
-import type { FanClubAdminClub, FanClubFanLookup, VenueOffer } from '../types';
+import { useApp, useLoad } from '../../state';
+import { api } from '../../api';
+import { useT } from '../../i18n';
+import { Link, usePageMeta } from '../../router';
+import { Avatar, Button, Card, EmptyState, ErrorBox, Field, Modal, PageHeader, Pill, Spinner, Tabs, inputCls, useFormat } from '../ui';
+import type { FanClubAdminClub, FanClubFanLookup, VenueOffer } from '../../types';
 
 const CLUB_KEY = 'fanclub_admin_club';
 const store = {

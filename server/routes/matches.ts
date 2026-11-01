@@ -100,7 +100,7 @@ export async function onMatchCompleted(matchId: string, notify = true) {
     if (send) store.jobLog[key] = new Date().toISOString();
     return { input: send ? resultNotificationFor(m) : null };
   });
-  if (!claim) return { notification: undefined, fantasy: null };
+  if (!claim) return { notification: undefined, fantasy: null, predictions: null, teamGames: null };
   let notification: NotificationItem | undefined;
   if (claim.input) notification = await dispatchNotification(claim.input);
   const fantasy = await afterMatchCompleted(matchId);
@@ -164,13 +164,15 @@ matchesRouter.post('/matches', requireAdmin('matches'), wrap(async (req, res) =>
   let notification: NotificationItem | undefined;
   let fantasy: any = null;
   let predictions: any = null;
+  let teamGames: any = null;
   if (match.status === 'completed') {
     const r = await onMatchCompleted(match.id, prev?.status !== 'completed' && b.notify !== false);
     notification = r.notification;
     fantasy = r.fantasy;
     predictions = r.predictions;
+    teamGames = r.teamGames;
   }
-  res.json({ success: true, matches: store.matches.sort(sortByStart), targetMatch: match, notification, fantasy, predictions });
+  res.json({ success: true, matches: store.matches.sort(sortByStart), targetMatch: match, notification, fantasy, predictions, teamGames });
 }));
 
 function sanitizeScorecard(raw: any, teamA: string, teamB: string) {

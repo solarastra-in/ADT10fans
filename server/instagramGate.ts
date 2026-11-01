@@ -21,7 +21,7 @@ import { getAuthUser } from './auth';
 
 export type InstagramStatus = 'none' | 'code' | 'review' | 'verified' | 'rejected';
 
-const graphBase = () => `${(process.env.META_GRAPH_BASE || 'https://graph.facebook.com').replace(/\/$/, '')}/${process.env.META_GRAPH_VERSION || 'v23.0'}`;
+const graphBase = () => `${(process.env.META_COMMENTS_GRAPH_BASE || process.env.META_GRAPH_BASE || 'https://graph.facebook.com').replace(/\/$/, '')}/${process.env.META_GRAPH_VERSION || 'v23.0'}`;
 export const commentCheckConfigured = () => Boolean(process.env.META_ACCESS_TOKEN && process.env.META_IG_USER_ID);
 const scrub = (s: string) => s.replace(/access_token=[^&\s]+/g, 'access_token=…');
 
@@ -41,6 +41,7 @@ export function gateSettings(store: AppStore) {
     target: (s.instagramTargetHandle || '@arabianacesofficial').replace(/^@?/, '@'),
     postUrl: s.instagramVerifyPostUrl || '',
     hideComments: Boolean(s.instagramHideVerifyComments),
+    welcomePoints: Math.max(0, Math.round(s.instagramWelcomePoints ?? 25)),
   };
 }
 
@@ -126,10 +127,15 @@ export interface IgComment { id: string; username: string; text: string }
 /** One shared read of the post's comments, reused for a few seconds by every fan checking at once. */
 let commentsCache: { mediaId: string; at: number; comments: IgComment[] } | null = null;
 let inflight: Promise<IgComment[]> | null = null;
-export async function recentComments(postUrl: string): Promise<IgComment[]> {
+/**
+ * The post's comments. A list read in the last 10 seconds is reused; `fresh` (a fan whose comment was
+ * not in it) reads again once it is 3 seconds old, so Instagram is asked at most every 3 seconds.
+ */
+export async function recentComments(postUrl: string, fresh = false): Promise<IgComment[]> {
   const mediaId = await resolveMediaId(postUrl);
   if (!mediaId) throw new Error('The verification post was not found on the club account. Check the post link in Admin → Settings.');
-  if (commentsCache && commentsCache.mediaId === mediaId && Date.now() - commentsCache.at < 10_000) return commentsCache.comments;
+  const age = commentsCache && commentsCache.mediaId === mediaId ? Date.now() - commentsCache.at : Infinity;
+  if (age < (fresh ? 3_000 : 10_000)) return commentsCache!.comments;
   if (inflight) return inflight;
   inflight = (async () => {
     const comments: IgComment[] = [];

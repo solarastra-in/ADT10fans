@@ -34,13 +34,52 @@ function ok(name, cond, detail) {
   passed++;
   console.log('✓', name);
 }
-async function login(email, ref) {
+async function rawLogin(email, ref) {
   const ip = `10.0.${Math.floor(ipSeq / 250)}.${ipSeq++ % 250}`;
   const r1 = await call('POST', '/api/auth/otp/request', { email }, null, { ip });
   assert.equal(r1.status, 200, JSON.stringify(r1.json));
   const r2 = await call('POST', '/api/auth/otp/verify', { email, code: r1.json.devCode, ref }, null, { ip });
   assert.equal(r2.status, 200, JSON.stringify(r2.json));
-  return { token: r2.json.token, user: r2.json.user };
+  return { token: r2.json.token, user: r2.json.user, ip };
+}
+// Fans must pass the Instagram check before playing. Test fans pass it the way a fan would (a code
+// commented on the club's pinned post, read from the fake Graph API), with no welcome points so the
+// points checks below stay exact. Pass { instagram: false } for a fan who has not done it yet.
+let gateReady = null;
+const META = process.env.META_COMMENTS_GRAPH_BASE;
+let adminSession = null;
+async function setupGate() {
+  const a = (adminSession = await rawLogin('admin@test.dev'));
+  const r = await call('POST', '/api/admin/settings', { instagramWelcomePoints: 0, instagramVerifyPostUrl: 'https://www.instagram.com/p/TESTPOST1/' }, a.token);
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+}
+async function igComment(username, text) {
+  await fetch(`${META}/__comment`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, text }) });
+}
+async function verifyInstagram(token, email, ip) {
+  const handle = email.split('@')[0].replace(/[^a-z0-9._]/gi, '').toLowerCase().slice(0, 24) + ipSeq;
+  const s = await call('POST', '/api/instagram/start', { handle }, token, { ip });
+  assert.equal(s.status, 200, JSON.stringify(s.json));
+  await igComment(handle, `Go Aces ${s.json.code}`);
+  let c;
+  for (let i = 0; i < 4; i++) {
+    c = await call('POST', '/api/instagram/check', {}, token, { ip });
+    if (c.json?.verified) break;
+    await new Promise(r => setTimeout(r, 3_100)); // the server reads the comments at most every 3s
+  }
+  assert.ok(c.json?.verified, JSON.stringify(c.json));
+}
+async function login(email, ref, opts = {}) {
+  if (!gateReady) gateReady = setupGate();
+  await gateReady;
+  if (email === 'admin@test.dev' && adminSession) {
+    const s = adminSession;
+    adminSession = null;
+    return { token: s.token, user: (await get('/api/me', s.token)).json.user };
+  }
+  const s = await rawLogin(email, ref);
+  if (opts.instagram !== false && s.user.role !== 'admin' && !s.user.instagramFollowed) await verifyInstagram(s.token, email, s.ip);
+  return { token: s.token, user: (await get('/api/me', s.token)).json.user };
 }
 const me = async t => (await get('/api/me', t)).json.user;
 const dubaiDay = (d = new Date()) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Dubai' });
@@ -906,6 +945,146 @@ ok('robots.txt blocks admin and API', /Disallow: \/admin/.test((await html('/rob
   const pointsBeforeDelete = (await me(W1)).points;
   ok('fans can delete their own post', (await del(`/api/fanwall/${textPost.json.post.id}`, W1)).status === 200);
   ok('deleting a post takes back its points', (await me(W1)).points === pointsBeforeDelete - 5);
+}
+
+// ============ 14b. Instagram check, fan clubs, team games, reward tiers ============
+{
+  // --- Instagram check: nothing to play until the fan proves their account ---
+  const ig = await login('igfan@test.dev', undefined, { instagram: false });
+  const IG = ig.token;
+  const igIp = '10.77.0.1';
+  const igCall = (m, p, b) => call(m, p, b, IG, { ip: igIp });
+  let st = (await igCall('GET', '/api/instagram/status')).json;
+  ok('a new fan must pass the Instagram check', st.required === true && st.status === 'none' && st.target === '@arabianacesofficial' && st.automatic === true, st);
+  const blocked = await igCall('POST', '/api/checkin', {});
+  ok('games are blocked until Instagram is verified', blocked.status === 403 && blocked.json.code === 'instagram_required', blocked.json);
+  ok('predictions are blocked too', (await igCall('POST', `/api/contests/${quiz.id}/enter`, { answers: {} })).json?.code === 'instagram_required');
+  ok('the fan can still update their profile', (await igCall('POST', '/api/me/profile/update', { bio: 'Aces fan' })).status === 200);
+  ok('an invalid username is refused', (await igCall('POST', '/api/instagram/start', { handle: 'bad name!' })).status === 400);
+  st = (await igCall('POST', '/api/instagram/start', { handle: '@IG.Fan_One' })).json;
+  ok('the fan gets a code to comment', /^ACES-[A-Z2-9]{5}$/.test(st.code) && st.handle === 'ig.fan_one' && st.status === 'code', st);
+  let chk = (await igCall('POST', '/api/instagram/check', {})).json;
+  ok('no comment yet: not verified', chk.verified === false && /could not find/i.test(chk.reason), chk);
+  await igComment('someone.else', `here is ${st.code}`);
+  await new Promise(r => setTimeout(r, 3100));
+  chk = (await igCall('POST', '/api/instagram/check', {})).json;
+  ok('the code from another account does not count', chk.verified === false, chk);
+  await igComment('ig.fan_one', 'Love the Aces!');
+  await new Promise(r => setTimeout(r, 3100));
+  ok('a comment without the code does not count', (await igCall('POST', '/api/instagram/check', {})).json.verified === false);
+  await igComment('ig.fan_one', `My code: ${st.code.toLowerCase()}`);
+  await new Promise(r => setTimeout(r, 3100));
+  chk = (await igCall('POST', '/api/instagram/check', {})).json;
+  ok('the fan’s own comment with the code verifies them', chk.verified === true && chk.status === 'verified', chk);
+  ok('a verified fan can play', (await igCall('POST', '/api/checkin', {})).status === 200);
+  const twin = await login('igtwin@test.dev', undefined, { instagram: false });
+  ok('one Instagram account can verify only one ADT10fans account', (await call('POST', '/api/instagram/start', { handle: 'ig.fan_one' }, twin.token, { ip: '10.77.0.2' })).status === 409);
+  await call('POST', '/api/instagram/start', { handle: 'twin.account' }, twin.token, { ip: '10.77.0.2' });
+  ok('a fan can ask an organiser instead', (await call('POST', '/api/instagram/request-review', {}, twin.token, { ip: '10.77.0.2' })).json.status === 'review');
+  ok('fans cannot see the review queue', (await get('/api/admin/instagram', F1)).status === 403);
+  const queue = (await get('/api/admin/instagram', A)).json;
+  ok('the fan waits in the organisers’ queue', queue.queue.some(r => r.handle === 'twin.account') && queue.counts.waiting >= 1, queue.counts);
+  const twinRow = queue.queue.find(r => r.handle === 'twin.account');
+  ok('an organiser approves them', (await post(`/api/admin/instagram/${twinRow.id}`, { action: 'approve' }, A)).json.status === 'verified' && (await me(twin.token)).instagramFollowed === true);
+  const diag = (await get('/api/admin/instagram?diagnose=1', A)).json.setup;
+  ok('the setup test finds the club account and the pinned post', diag.account === '@arabianacesofficial' && diag.matchesTarget === true && diag.postFound === true, diag);
+
+  // --- Fan clubs: nothing built in, admins add them ---
+  ok('no fan clubs until admins add them', (await get('/api/fanclub/clubs')).json.clubs.length === 0);
+  ok('fans cannot open the fan club desk', (await get('/api/fanclub/admin/clubs', F1)).status === 403);
+  ok('fans cannot check anyone in', (await post('/api/fanclub/admin/checkin', { fanClubId: 'x', code: 'ABCDEF' }, F1)).status === 403);
+  const imp = (await post('/api/fanclub/admin/import', { csv: 'name,city,country,address,checkInPoints,gamesMode\nAces Lounge,Dubai,UAE,"Al Barsha, Dubai",120,team\nCorner Cafe,London,UK,Wembley,,all' }, A)).json;
+  ok('league admins import fan clubs from CSV', imp.added === 2 && imp.errors.length === 0, imp);
+  const clubs = (await get('/api/fanclub/admin/clubs', A)).json.clubs;
+  const lounge = clubs.find(c => c.name === 'Aces Lounge');
+  const cafe = clubs.find(c => c.name === 'Corner Cafe');
+  ok('a club can set its own check-in points; others use the default', lounge.effectiveCheckInPoints === 120 && cafe.effectiveCheckInPoints === 100 && cafe.gamesMode === 'all');
+  ok('importing again updates instead of duplicating', (await post('/api/fanclub/admin/import', { csv: 'name,city,country,capacity\nAces Lounge,Dubai,UAE,150' }, A)).json.updated === 1 && (await get('/api/fanclub/admin/clubs', A)).json.clubs.length === 2);
+  ok('league admins name a fan club admin', (await post(`/api/fanclub/admin/clubs/${lounge.id}/admins`, { email: 'club.admin@test.dev', name: 'Sam' }, A)).json.admins.some(a => a.email === 'club.admin@test.dev'));
+  const ca = await login('club.admin@test.dev');
+  const CA = ca.token;
+  ok('the fan club admin signs in with that role', ca.user.adminRole === 'fanclub_admin' && ca.user.role === 'admin');
+  const caView = (await get('/api/fanclub/admin/clubs', CA)).json;
+  ok('a fan club admin sees only their own clubs', caView.leagueWide === false && caView.clubs.length === 1 && caView.clubs[0].id === lounge.id);
+  ok('a fan club admin cannot use other admin areas', (await get('/api/admin/settings', CA)).status === 403 && (await post('/api/matches', { teamA: 'aces', teamB: 'bulls', startsAt: inMinutes(60) }, CA)).status === 403);
+  ok('a fan club admin cannot edit another club', (await post('/api/fanclub/admin/clubs', { id: cafe.id, name: 'Hijack' }, CA)).status === 403);
+  ok('a fan club admin cannot add clubs', (await post('/api/fanclub/admin/clubs', { name: 'New', city: 'Doha', country: 'Qatar' }, CA)).status === 403);
+  ok('a fan club admin cannot change how their fans play', (await post('/api/fanclub/admin/clubs', { id: lounge.id, gamesMode: 'all' }, CA)).json.club.gamesMode === 'team');
+  const offer = (await post(`/api/fanclub/admin/clubs/${lounge.id}/offers`, { title: 'Free karak chai', perk: 'Free chai', bonusPoints: 15, limit: 1 }, CA)).json.offer;
+  ok('a fan club admin adds an offer', offer?.title === 'Free karak chai' && offer.bonusPoints === 15);
+  ok('but not at another club', (await post(`/api/fanclub/admin/clubs/${cafe.id}/offers`, { title: 'x' }, CA)).status === 403);
+  ok('offers show to fans', (await get('/api/fanclub/clubs')).json.clubs.find(c => c.id === lounge.id).offers.some(o => o.id === offer.id));
+
+  // --- Check-in on a matchday ---
+  const st1 = (await get('/api/fanclub/my-status', IG)).json;
+  ok('a verified fan has a random fan club code and QR', /^[A-Z2-9]{6}$/.test(st1.fanClubCode) && st1.qrPayload === `ADT10FC:${st1.fanClubCode}`, st1);
+  const unv = await login('clubunverified@test.dev', undefined, { instagram: false });
+  ok('a fan who has not verified Instagram gets no code', (await get('/api/fanclub/my-status', unv.token)).json.instagramRequired === true);
+  const far = (await post('/api/matches', { teamA: 'aces', teamB: 'eagles', startsAt: inMinutes(3 * 60) }, A)).json.targetMatch;
+  const tooEarly = await post('/api/fanclub/admin/checkin', { fanClubId: lounge.id, code: st1.fanClubCode, matchId: far.id }, CA);
+  ok('check-in is not open three hours before the match', tooEarly.status === 409 && /opens 90 minutes/.test(tooEarly.json.error), tooEarly.json);
+  const mAces = (await post('/api/matches', { teamA: 'aces', teamB: 'tigers', startsAt: inMinutes(30) }, A)).json.targetMatch;
+  const look = (await get(`/api/fanclub/admin/fan?fanClubId=${lounge.id}&code=${st1.fanClubCode}&matchId=${mAces.id}`, CA)).json;
+  ok('the desk looks the fan up by code', look.fan.name && look.fan.instagramVerified === true && look.window.open === true && look.checkedIn === null, look);
+  ok('an offer cannot be redeemed before checking in', (await post('/api/fanclub/admin/redeem-offer', { fanClubId: lounge.id, offerId: offer.id, code: st1.fanClubCode }, CA)).status === 409);
+  const before = (await me(IG)).points;
+  const ci = await post('/api/fanclub/admin/checkin', { fanClubId: lounge.id, code: `ADT10FC:${st1.fanClubCode}`, matchId: mAces.id }, CA);
+  ok('checking in gives the club’s points', ci.status === 200 && ci.json.pointsAwarded === 120 && (await me(IG)).points === before + 120, ci.json);
+  ok('one check-in per fan per match', (await post('/api/fanclub/admin/checkin', { fanClubId: lounge.id, code: st1.fanClubCode, matchId: mAces.id }, CA)).status === 409);
+  ok('even at another club', (await post('/api/fanclub/admin/checkin', { fanClubId: cafe.id, code: st1.fanClubCode, matchId: mAces.id }, A)).status === 409);
+  const hist = (await get('/api/me/points', IG)).json;
+  ok('the check-in is in the fan’s points history', JSON.stringify(hist).includes('fanclub-checkin'));
+  const red = await post('/api/fanclub/admin/redeem-offer', { fanClubId: lounge.id, offerId: offer.id, code: st1.fanClubCode }, CA);
+  ok('redeeming an offer gives its bonus points', red.status === 200 && red.json.bonusPoints === 15 && (await me(IG)).points === before + 135, red.json);
+  ok('each offer once per fan', (await post('/api/fanclub/admin/redeem-offer', { fanClubId: lounge.id, offerId: offer.id, code: st1.fanClubCode }, CA)).status === 409);
+  ok('an unverified fan cannot be checked in', (await post('/api/fanclub/admin/checkin', { fanClubId: lounge.id, code: 'ZZZZZZ', matchId: mAces.id }, CA)).status === 404);
+  const stats = (await get(`/api/fanclub/admin/stats?fanClubId=${lounge.id}`, CA)).json;
+  ok('the desk counts check-ins, offers and points given', stats.totalCheckIns === 1 && stats.totalRedemptions === 1 && stats.pointsGiven === 135, stats);
+  ok('a fan club admin cannot read another club’s numbers', (await get(`/api/fanclub/admin/stats?fanClubId=${cafe.id}`, CA)).status === 403);
+
+  // --- Team games: Pick 5 and team predictions ---
+  const tg = (await get('/api/team-games', IG)).json;
+  ok('fan club fans play only the team games', tg.onlyTeamGames === true && tg.team.id === 'aces', tg);
+  const tgm = tg.matches.find(m => m.matchId === mAces.id);
+  ok('every open Aces match gets team predictions', tgm?.open === true && tgm.contestId === `team-${mAces.id}`, tgm);
+  ok('the fan club fan cannot play Pick XI', (await post(`/api/fantasy/${mAces.id}`, { playerIds: [], captainId: '' }, IG)).json?.code === 'team_games_only');
+  ok('or the daily games', (await post('/api/games/guess', { guess: 'x' }, IG)).json?.code === 'team_games_only');
+  const igContests = (await get('/api/contests', IG)).json.contests;
+  ok('their predictions list holds only team predictions', igContests.length > 0 && igContests.every(c => c.teamId === 'aces'), igContests.map(c => c.id));
+  ok('other fans still see every game', (await get('/api/contests', F1)).json.contests.some(c => !c.teamId));
+  const pool = (await get(`/api/team-games/${mAces.id}/pick5`, IG)).json.pool;
+  const acesSquad = teams.find(t => t.id === 'aces').squad;
+  ok('Pick 5 offers only the Aces squad', pool.length === acesSquad.length && pool.every(p => acesSquad.some(s2 => s2.id === p.id)));
+  const moeen = acesSquad.find(p => p.name === 'Moeen Ali');
+  const five = [moeen.id, ...acesSquad.filter(p => p.id !== moeen.id).slice(0, 4).map(p => p.id)];
+  ok('Pick 5 needs exactly five', (await post(`/api/team-games/${mAces.id}/pick5`, { playerIds: five.slice(0, 4), captainId: moeen.id }, IG)).status === 400);
+  ok('Pick 5 refuses other teams’ players', (await post(`/api/team-games/${mAces.id}/pick5`, { playerIds: [...five.slice(0, 4), teams.find(t => t.id === 'tigers').squad[0].id], captainId: moeen.id }, IG)).status === 400);
+  ok('Pick 5 needs a captain from the five', (await post(`/api/team-games/${mAces.id}/pick5`, { playerIds: five, captainId: 'nobody' }, IG)).status === 400);
+  ok('the fan saves Pick 5', (await post(`/api/team-games/${mAces.id}/pick5`, { playerIds: five, captainId: moeen.id }, IG)).status === 200);
+  ok('any fan can play the team games too', (await post(`/api/team-games/${mAces.id}/pick5`, { playerIds: five, captainId: five[1] }, F1)).status === 200);
+  ok('fans who have not verified Instagram cannot', (await post(`/api/team-games/${mAces.id}/pick5`, { playerIds: five, captainId: moeen.id }, unv.token)).json?.code === 'instagram_required');
+  const teamC = igContests.find(c => c.id === `team-${mAces.id}`);
+  ok('team predictions ask about the Aces total, 5 overs, sixes, fours and wickets', teamC.questions.map(q => q.id).join() === 'runs,after5,sixes,fours,wickets');
+  ok('the fan club fan enters the team predictions', (await post(`/api/contests/${teamC.id}/enter`, { answers: { runs: '120–139', after5: '45–59', sixes: '0–4', fours: '6–9', wickets: '6–7' } }, IG)).status === 200);
+  const pBefore = (await me(IG)).points;
+  // Moeen Ali: 31 runs off 15 (62 + 2 fours 4 + 3 sixes 15 + 30-run bonus 16 + strike rate 207 +12) + playing 20 = 129, captain x2.
+  const acesCard = {
+    innings1: { teamId: 'aces', totalRuns: 130, wickets: 5, overs: '10', batting: [{ batsman: 'Moeen Ali', dismissal: 'not out', runs: 31, balls: 15, fours: 2, sixes: 3, isNotOut: true }], bowling: [] },
+    innings2: { teamId: 'tigers', totalRuns: 110, wickets: 6, overs: '10', batting: [{ batsman: teams.find(t => t.id === 'tigers').squad[0].name, dismissal: 'run out (x)', runs: 10, balls: 8 }], bowling: [] },
+  };
+  const fin = await post('/api/matches', { id: mAces.id, status: 'completed', winner: 'aces', result: 'Arabian Aces won by 20 runs', scoreA: '130/5', scoreB: '110/6', scorecard: acesCard }, A);
+  ok('completing the match settles the team games', fin.json.teamGames?.settled === true && fin.json.teamGames.picksScored === 2, fin.json.teamGames);
+  const settledC = (await get('/api/contests', IG)).json.contests.find(c => c.id === teamC.id);
+  ok('team answers come from the scorecard; no ball-by-ball, so “after 5 overs” is void', settledC.questions.map(q => q.answer).join('|') === '120–139|No result (void)|0–4|0–5|6–7', settledC.questions.map(q => q.answer));
+  const pick = (await get(`/api/team-games/${mAces.id}/pick5`, IG)).json.pick;
+  ok('Pick 5 is scored with the Pick XI rules, captain double', pick.breakdown.find(b => b.playerId === moeen.id).total === 258 && pick.points === 258, pick.breakdown);
+  ok('fan points: predictions (20 + 15 + 15) plus Pick 5 ÷ 5', (await me(IG)).points === pBefore + 50 + Math.round(258 / 5), { before: pBefore, after: (await me(IG)).points });
+
+  // --- Reward tiers come from the prizes ---
+  await post('/api/admin/prizes', { title: 'Free Match Ticket - Match 3', pointsCost: 150, stock: 5, fulfilment: 'Gate', category: 'Match tickets' }, A);
+  await post('/api/admin/prizes', { title: 'Signed bat', pointsCost: 1100, stock: 1, fulfilment: 'Desk' }, A);
+  const prizeList = (await get('/api/prizes')).json.prizes;
+  ok('prizes carry a reward tier (given, or guessed from the name)', prizeList.find(p => p.title === 'Free Match Ticket - Match 3')?.category === 'Match tickets' && prizeList.find(p => p.title === 'Signed bat')?.category === 'Signed bats');
 }
 
 // ============ 15. Account deletion ============

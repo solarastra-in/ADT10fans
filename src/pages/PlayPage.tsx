@@ -16,6 +16,10 @@ export default function PlayPage() {
   const hub = useLoad(() => api.getFantasyHub(), [user?.id]);
   const games = useLoad(() => api.getGamesToday(), [user?.id]);
   const contests = useLoad(() => api.getContests(), [user?.id]);
+  const teamGames = useLoad(() => api.teamGames(), [user?.id]);
+  const gamesTeam = teamGames.data?.team;
+  const onlyTeam = Boolean(teamGames.data?.onlyTeamGames);
+  const teamOpen = (teamGames.data?.matches || []).filter(m => m.open);
   // Every match that is open now (today's and tomorrow's: each opens at midnight UAE time the day before).
   const openMatches = (hub.data?.matches || []).filter(m => !m.locked && m.open !== false);
   const nextMatch = openMatches[0];
@@ -45,6 +49,32 @@ export default function PlayPage() {
         subtitle={t('Draft Pick XI lineups, enter match predictions, and compete in daily games for all 2 or 3 matches scheduled every day.')}
       />
 
+      {gamesTeam && (
+        <Link to="/team-games" className="block group" data-testid="play-team-games">
+          <Card className="p-5 border-amber-400/40 bg-gradient-to-br from-amber-400/10 to-slate-900 hover:border-amber-400">
+            <div className="flex items-center gap-3">
+              <TeamBadge team={teamById(gamesTeam.id)} />
+              <div className="flex-1 min-w-0">
+                <h2 className="text-lg font-black text-white">{t('{team} games', { team: gamesTeam.name })}</h2>
+                <p className="text-sm text-slate-300">
+                  {t('Pick 5 {team} players and predict their total, sixes, fours and wickets.', { team: gamesTeam.short })}{' '}
+                  {teamOpen.length ? t('{n} match(es) open now.', { n: teamOpen.length }) : ''}
+                </p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-amber-400" />
+            </div>
+            {onlyTeam && <p className="mt-3 text-xs text-amber-100">{t('You checked in at a fan club, so these are your games this season.')}</p>}
+          </Card>
+        </Link>
+      )}
+
+      {onlyTeam ? (
+        <>
+          <FanClubCheckInCard compact />
+          {card('/prizes', Gift, t('Rewards'), t('Spend your points on prizes.'), t('See prizes'), 'play-prizes')}
+        </>
+      ) : (
+      <>
       {user && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <StatTile label={t('Season points')} value={user.points} accent />
@@ -155,7 +185,7 @@ export default function PlayPage() {
           </li>
           <li className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-            <span>{t('Match Predictions: Up to 140 pts per match')}</span>
+            <span>{t('Match predictions: points for every right answer')}</span>
           </li>
           <li className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
@@ -171,6 +201,14 @@ export default function PlayPage() {
           </li>
           <li className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+            <span>{t('Pick 5 and team predictions: the {team} games', { team: gamesTeam?.short || '' })}</span>
+          </li>
+          <li className="flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+            <span>{t('Fan club check-in: points at every matchday check-in')}</span>
+          </li>
+          <li className="flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
             <span>{t('Invites: {n} pts for each friend invited', { n: config?.referralRewardPoints ?? 50 })}</span>
           </li>
         </ul>
@@ -181,6 +219,8 @@ export default function PlayPage() {
           </Link>
         </div>
       </Card>
+      </>
+      )}
     </div>
   );
 }

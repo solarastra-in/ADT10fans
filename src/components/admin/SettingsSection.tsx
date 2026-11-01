@@ -39,6 +39,7 @@ type Draft = {
   fanClubCheckInPoints: string;
   instagramVerifyPostUrl: string;
   instagramHideVerifyComments: boolean;
+  instagramWelcomePoints: string;
   fanClubCheckInOpensMins: string;
   fanClubTeamId: string;
 };
@@ -80,6 +81,7 @@ const toDraft = (s: Partial<SystemSettings> | null | undefined): Draft => ({
   fanClubCheckInPoints: String(s?.fanClubCheckInPoints ?? 100),
   instagramVerifyPostUrl: s?.instagramVerifyPostUrl || '',
   instagramHideVerifyComments: !!s?.instagramHideVerifyComments,
+  instagramWelcomePoints: String(s?.instagramWelcomePoints ?? 25),
   fanClubCheckInOpensMins: String(s?.fanClubCheckInOpensMins ?? 90),
   fanClubTeamId: s?.fanClubTeamId || 'aces',
 });
@@ -210,6 +212,7 @@ export const SettingsSection: React.FC<{ settings: SystemSettings; teams: Team[]
       instagramTargetHandle: draft.instagramTargetHandle.trim() || '@arabianacesofficial',
       instagramVerifyPostUrl: draft.instagramVerifyPostUrl.trim(),
       instagramHideVerifyComments: draft.instagramHideVerifyComments,
+      instagramWelcomePoints: toNumber(draft.instagramWelcomePoints, 25),
       fanClubCheckInPoints: toNumber(draft.fanClubCheckInPoints, 100),
       fanClubCheckInOpensMins: toNumber(draft.fanClubCheckInOpensMins, 90),
       fanClubTeamId: draft.fanClubTeamId,
@@ -365,6 +368,9 @@ export const SettingsSection: React.FC<{ settings: SystemSettings; teams: Team[]
               checked={draft.requireInstagramFollow}
               onChange={c => set({ requireInstagramFollow: c })}
             />
+            <Field label="Points for verifying Instagram" hint="Given once per fan.">
+              <TextInput type="number" value={draft.instagramWelcomePoints} onChange={e => set({ instagramWelcomePoints: e.target.value })} />
+            </Field>
             <Field label="Instagram account fans follow">
               <TextInput value={draft.instagramTargetHandle} onChange={e => set({ instagramTargetHandle: e.target.value })} placeholder="@arabianacesofficial" />
             </Field>

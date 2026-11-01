@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Award, BookOpen, Check, ChevronDown, ChevronUp, Flame, Gamepad2, Grid3x3, HelpCircle, Info, Lightbulb, Puzzle, Search, Sparkles, Swords, Target, Trophy, X, Zap } from 'lucide-react';
 import { api } from '../api';
+import { TeamGamesOnlyNotice } from '../components/TeamGamesOnlyNotice';
 import { useApp, useLoad } from '../state';
 import { useT } from '../i18n';
 import { Link, usePageMeta } from '../router';
@@ -475,6 +476,7 @@ export default function GamesPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <TeamGamesOnlyNotice />
         <PageHeader eyebrow={t('New every day')} title={t('Daily games')} subtitle={t('One go at each game per day. Games reset at midnight UAE time (in {time}).', { time: nextDubaiMidnight() })} />
         <a
           href="#how-to-play"

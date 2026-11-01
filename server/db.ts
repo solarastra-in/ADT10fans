@@ -615,6 +615,8 @@ export interface SystemSettings {
   fanClubCheckInPoints?: number;
   /** The pinned post fans comment their code on (link to a post on the account above). */
   instagramVerifyPostUrl?: string;
+  /** Points a fan gets once, when their Instagram is verified. */
+  instagramWelcomePoints?: number;
   /** Hide verification comments on the post once they are checked. */
   instagramHideVerifyComments?: boolean;
   /** Fan club check-in opens this many minutes before the first ball. */
@@ -1133,6 +1135,7 @@ export function defaultSettings(): SystemSettings {
     instagramTargetHandle: '@arabianacesofficial',
     instagramVerifyPostUrl: '',
     instagramHideVerifyComments: false,
+    instagramWelcomePoints: 25,
     fanClubCheckInOpensMins: 90,
     fanClubTeamId: 'aces',
     requireTwitterFollow: false,

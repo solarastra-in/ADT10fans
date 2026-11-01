@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Copy, LogOut, Plus, Trophy, UserPlus } from 'lucide-react';
 import { api } from '../api';
+import { TeamGamesOnlyNotice } from '../components/TeamGamesOnlyNotice';
 import { useApp, useLoad } from '../state';
 import { useT } from '../i18n';
 import { Link, usePageMeta } from '../router';
@@ -118,6 +119,7 @@ export default function FantasyPage() {
 
   return (
     <div className="space-y-6">
+      <TeamGamesOnlyNotice />
       <PageHeader
         eyebrow={t('Fantasy')}
         title={t('Pick XI')}

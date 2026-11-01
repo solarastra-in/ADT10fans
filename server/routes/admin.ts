@@ -173,6 +173,7 @@ adminRouter.post('/admin/settings', requireAdmin('settings'), (req, res) => {
     if (u && !/^https:\/\/(www\.)?instagram\.com\/(?:[\w.]+\/)?(p|reel|reels|tv)\/[A-Za-z0-9_-]+/i.test(u)) return bad(res, 'Paste the link of a post or reel, like https://www.instagram.com/p/ABC123/');
     s.instagramVerifyPostUrl = u;
   }
+  if (b.instagramWelcomePoints !== undefined) s.instagramWelcomePoints = Math.max(0, Math.min(500, Math.round(num(b.instagramWelcomePoints, 25))));
   if (b.instagramHideVerifyComments !== undefined) s.instagramHideVerifyComments = Boolean(b.instagramHideVerifyComments);
   if (b.fanClubCheckInOpensMins !== undefined) s.fanClubCheckInOpensMins = Math.max(15, Math.min(1440, Math.round(num(b.fanClubCheckInOpensMins, 90))));
   if (b.fanClubTeamId !== undefined) {
