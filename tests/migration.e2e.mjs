@@ -33,4 +33,7 @@ ok('demo forum threads removed, real ones kept', !threads.some(t => t.id === 'th
 ok('stock avatars removed', threads.every(t => !/dicebear|unsplash/.test(t.userAvatar || '')));
 const board = await get('/api/leaderboard');
 ok('demo users removed, real fans kept', board.topFans.some(u => u.name === 'Real Fan') && !board.topFans.some(u => u.name === 'Demo Admin'));
+const clubs = (await get('/api/fanclub/clubs')).clubs;
+ok('seeded fan clubs nobody confirmed are removed; admin-made ones kept', clubs.length === 1 && clubs[0].id === 'fc-real', clubs.map(c => c.id));
+ok('duplicate seeded match predictions removed', !(await get('/api/contests')).contests.some(c => c.id === 'contest-m1'));
 console.log(`\n${passed} migration checks passed`);

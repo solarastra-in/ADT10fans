@@ -84,7 +84,7 @@ export function generateInitialProposalSettings(): ProposalSettings {
       tag: 'VIP Rewards',
       need: 'Traditional sports sweepstakes are often perceived by fans as non-transparent, untrustworthy, or rigged for influencers, dampening contest participation.',
       relevance: 'Abu Dhabi is globally renowned for luxury, hospitality, and cutting-edge tech. Demonstrating transparent, provably fair mechanics builds profound credibility and aspiration.',
-      what: 'A cryptographic SHA-256 verifiable prize draw system offering once-in-a-lifetime experiences: President Box VIP hospitality tickets at Zayed Cricket Stadium, player dugout walks, signed bats, and official team merchandise.',
+      what: 'A cryptographic SHA-256 verifiable prize draw system offering once-in-a-lifetime experiences: President Box VIP hospitality tickets at Zayed Cricket Stadium, player dugout walks, miniature signed bats of international players, and official team merchandise.',
       usdCost: 120000,
       aedCost: Math.round(120000 * USD_TO_AED),
       capexUsd: 20000,

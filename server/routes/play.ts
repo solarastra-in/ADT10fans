@@ -1,9 +1,12 @@
+import { fanClubGamesTeam } from './fanclub';
 import crypto from 'crypto';
 import { Router } from 'express';
 import { Contest, db } from '../db';
 import { getAuthUser, hasPermission, rateLimit, requireAdmin, requireUser, selfUser } from '../auth';
 import { bad, isoOrEmpty, newId, num, str, userOf, wrap } from '../http';
 import { dispatchNotification } from '../notify';
+import { matchOpen, matchOpensAt } from '../matchWindow';
+import { settleContest } from '../predictions';
 import { creditsFor, DREAM_XI, fantasySeasonTotals, lineupLocked, lineupPool, scoreMatchFantasy, scoringRules, validateLineup, lineupPoolWithForm, generateLineupVariations, getMatchSwingInsights, computePlayerPoints, scoreLineup } from '../fantasy';
 import { GameError, guessView, playBall, submitGuess, superOverState, todayLeaderboard, dubaiDay, Shot } from '../games';
 import { notifyFantasyResults } from '../reminders';
@@ -31,11 +34,13 @@ playRouter.get('/contests', (req, res) => {
   const isAdmin = Boolean(user && hasPermission(user, 'contests'));
   const entryCounts: Record<string, number> = {};
   for (const e of store.contestEntries) entryCounts[e.contestId] = (entryCounts[e.contestId] || 0) + 1;
-  const contests = store.contests.map(c => {
+  // Fan club fans play only their team's games.
+  const onlyTeam = fanClubGamesTeam(store, user);
+  const contests = store.contests.filter(c => !onlyTeam || c.teamId === onlyTeam).map(c => {
     const view = stripAnswers(c, isAdmin);
     return c.status === 'open' && c.locksAt && +new Date(c.locksAt) <= Date.now() ? { ...view, status: 'locked' as const } : view;
   });
-  res.json({ contests, myEntries: user ? store.contestEntries.filter(e => e.userId === user.id) : [], entryCounts });
+  res.json({ contests, onlyTeamGames: onlyTeam, myEntries: user ? store.contestEntries.filter(e => e.userId === user.id) : [], entryCounts });
 });
 
 playRouter.post('/contests/:id/enter', requireUser, rateLimit('contest', 30, 60_000), (req, res) => {
@@ -148,23 +153,7 @@ playRouter.post('/admin/contests/:id/settle', requireAdmin('contests'), wrap(asy
     }
   }
   if (contest.questions.some(q => !q.answer)) return bad(res, 'Pick the correct answer for every question');
-  contest.status = 'settled';
-  let winners = 0;
-  let total = 0;
-  const perUser: Record<string, { body: string }> = {};
-  const entrants = store.contestEntries.filter(x => x.contestId === contest.id);
-  for (const e of entrants) {
-    if (contest.instant) continue;
-    const pts = contest.questions.reduce((s, q) => s + (e.answers[q.id] === q.answer ? q.points : 0), 0);
-    e.pointsAwarded = pts;
-    const u = store.users.find(x => x.id === e.userId);
-    if (u && pts > 0) {
-      awardPoints(store, u, pts, 'prediction', contest.title, contest.id);
-      winners++;
-      total += pts;
-    }
-    perUser[e.userId] = { body: pts > 0 ? `You scored ${pts} point${pts === 1 ? '' : 's'}.` : 'No points this time. Try the next one!' };
-  }
+  const { winners, total, perUser, entrants } = settleContest(store, contest);
   db.save();
   if (entrants.length && !contest.instant) {
     await dispatchNotification({
@@ -172,7 +161,7 @@ playRouter.post('/admin/contests/:id/settle', requireAdmin('contests'), wrap(asy
       body: 'Answers are in.',
       category: 'announcement',
       targetAudience: 'users',
-      userIds: entrants.map(e => e.userId),
+      userIds: entrants,
       perUser,
       data: { contestId: contest.id, url: '/contests' },
       createdBy: 'Predictions',
@@ -216,6 +205,8 @@ playRouter.get('/fantasy', (req, res) => {
       startsAt: m.startsAt,
       status: m.status,
       locked: lineupLocked(m),
+      opensAt: matchOpensAt(m),
+      open: matchOpen(m),
       lineups: store.fantasyTeams.filter(f => f.matchId === m.id).length,
       mine: (() => {
         const matching = mine.filter(x => x.matchId === m.id);
@@ -292,9 +283,9 @@ playRouter.get('/fantasy/:matchId/registered-teams', (req, res) => {
     return {
       id: `${ft.userId}-${ft.matchId}-${ft.variationId || 'var-1'}`,
       userId: ft.userId,
-      userName: user?.name || 'Aces Fan',
+      userName: user?.name || 'Fan',
       userAvatar: user?.avatar || '',
-      userCity: user?.city || 'Hyderabad, India',
+      userCity: user?.city || '',
       userTeamId: user?.teamId || null,
       variationId: ft.variationId || 'var-1',
       variationName: ft.variationName || 'Team 1',
@@ -373,6 +364,8 @@ playRouter.get('/fantasy/:matchId', (req, res) => {
   res.json({
     match,
     locked: lineupLocked(match),
+    opensAt: matchOpensAt(match),
+    open: matchOpen(match),
     rules: DREAM_XI,
     pool,
     fantasyTeam: activeTeam,
@@ -389,6 +382,7 @@ playRouter.post('/fantasy/:matchId', requireUser, rateLimit('fantasy', 40, 60_00
   const match = store.matches.find(m => m.id === req.params.matchId);
   if (!match) return bad(res, 'Match not found', 404);
   if (lineupLocked(match)) return bad(res, 'Lineups are locked for this match');
+  if (!matchOpen(match)) return bad(res, `Pick XI for this match opens on ${new Date(matchOpensAt(match)).toUTCString().slice(0, 22)} UTC (the day before match day)`);
   const ids: string[] = Array.isArray(req.body?.playerIds) ? req.body.playerIds.map((x: any) => String(x)) : [];
   const captainId = str(req.body?.captainId, 80);
   const viceCaptainId = str(req.body?.viceCaptainId, 80);

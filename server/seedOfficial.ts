@@ -1,14 +1,14 @@
 import crypto from 'crypto';
-import { AppStore, db, Match, SocialHandle, Team } from './db';
+import { AppStore, db, guessPrizeCategory, Match, SocialHandle, Team } from './db';
 import { OFFICIAL_2026_TEAMS } from './data/officialTeams';
-import { OFFICIAL_SOCIAL_POSTS } from './data/officialSocialPosts';
+import { OFFICIAL_SQUAD_IDS_BEFORE_2026_10_27 } from './data/previousSquadIds';
+import { normName } from './fantasy';
+import { ensureMatchPredictions } from './predictions';
+import { ensureTeamGames } from './teamGames';
 import { OFFICIAL_2026_MATCHES } from './data/officialMatches';
 import { OFFICIAL_ARABIAN_ACES_PRIZES, OFFICIAL_ARABIAN_ACES_DRAWS } from './data/officialPrizes';
-import { generateOfficialMatchContests } from './data/officialContests';
-import { OFFICIAL_FAN_CLUBS } from './data/officialVenues';
-import { seedCommunityFantasyTeams } from './seedCommunityTeams';
 
-export { OFFICIAL_2026_TEAMS, OFFICIAL_SOCIAL_POSTS, OFFICIAL_2026_MATCHES, OFFICIAL_ARABIAN_ACES_PRIZES, OFFICIAL_ARABIAN_ACES_DRAWS, generateOfficialMatchContests, OFFICIAL_FAN_CLUBS };
+export { OFFICIAL_2026_TEAMS, OFFICIAL_2026_MATCHES, OFFICIAL_ARABIAN_ACES_PRIZES, OFFICIAL_ARABIAN_ACES_DRAWS };
 
 type HandleSeed = Omit<SocialHandle, 'id' | 'verifiedAt' | 'foundAt' | 'status' | 'source'> & { evidence: string };
 
@@ -56,49 +56,9 @@ function newHandle(h: HandleSeed, now: string): SocialHandle {
 }
 
 function cloneTeam(t: Team, venue: string, now: string): Team {
-  return { ...t, home: venue, squad: t.squad.map(p => ({ ...p })), createdAt: now, updatedAt: now };
+  return { ...t, home: venue, squad: t.squad.filter(p => !isPlaceholderPlayer(p)).map(p => ({ ...p })), createdAt: now, updatedAt: now };
 }
 
-/** Seeds authentic official social media posts for all teams and links them to the verified handles. */
-export function seedOfficialSocialPosts(store: AppStore, now = new Date().toISOString()): boolean {
-  let changed = false;
-  const existingUrls = new Set(store.feedItems.map(f => f.url));
-  const existingIds = new Set(store.feedItems.map(f => f.id));
-
-  for (const post of OFFICIAL_SOCIAL_POSTS) {
-    if (existingUrls.has(post.url)) {
-      const cur = store.feedItems.find(f => f.url === post.url);
-      if (cur && !cur.handleId) {
-        const matchingHandle = store.handles.find(h =>
-          (h.teamId === post.teamId || (!h.teamId && !post.teamId)) &&
-          (h.platform === post.platform || h.handle.toLowerCase() === post.source.toLowerCase())
-        );
-        if (matchingHandle) {
-          cur.handleId = matchingHandle.id;
-          changed = true;
-        }
-      }
-      continue;
-    }
-    const matchingHandle = store.handles.find(h =>
-      (h.teamId === post.teamId || (!h.teamId && !post.teamId)) &&
-      (h.platform === post.platform || h.handle.toLowerCase() === post.source.toLowerCase())
-    );
-    const id = 'f-' + crypto.createHash('md5').update(post.url).digest('hex').slice(0, 16);
-    if (existingIds.has(id)) continue;
-
-    store.feedItems.push({
-      ...post,
-      id,
-      handleId: matchingHandle?.id,
-      createdAt: now,
-    });
-    existingUrls.add(post.url);
-    existingIds.add(id);
-    changed = true;
-  }
-  return changed;
-}
 
 /**
  * Runs on every store load. A brand-new store gets the six franchises and the checked handles.
@@ -140,25 +100,118 @@ export function initializeStore(store: AppStore): boolean {
       changed = true;
     }
 
-    // Ensure squad matches updated official list with player skills and photos
-    const officialSquadIds = official.squad.map(p => p.id).join(',');
-    const currentSquadIds = (team.squad || []).map(p => p.id).join(',');
-    if (officialSquadIds !== currentSquadIds || !team.squad.some(p => p.skills && p.skills.length > 0)) {
-      team.squad = official.squad.map(p => ({ ...p }));
-      changed = true;
-    }
   }
+  if (applyOfficialSquads(store)) changed = true;
   if (reconcileOfficialHandles(store, now)) changed = true;
   if (addSuggestedHandles(store, now)) changed = true;
   if (!process.env.FEED_FIXTURES_DIR && process.env.NODE_ENV !== 'test') {
     if (seedOfficialMatches(store, now)) changed = true;
     if (seedOfficialPrizesAndDraws(store, now)) changed = true;
-    if (seedOfficialContests(store, now)) changed = true;
-    if (seedOfficialFanClubs(store, now)) changed = true;
-    if (seedCommunityFantasyTeams(store, now)) changed = true;
   }
+  if (removeUnverifiedSeeds(store)) changed = true;
+  if (upgradeSignedBatPrizes(store)) changed = true;
+  if (raisePrizeFloorOnce(store, now)) changed = true;
+  if (ensureMatchPredictions(store)) changed = true;
+  if (ensureTeamGames(store)) changed = true;
   if (!store.jobLog['game-secret'] && !process.env.GAME_SECRET) {
     store.jobLog['game-secret'] = crypto.randomBytes(24).toString('hex');
+    changed = true;
+  }
+  return changed;
+}
+
+export const isPlaceholderPlayer = (p: { name: string; nationality?: string }) => /^replacement\b|\btbc\b|\btba\b/i.test(p.name) || p.nationality === 'TBC';
+
+/** Fields that belong to this site, not to the official squad list: kept when the list is updated. */
+const KEPT_PLAYER_FIELDS = ['credits', 'note', 'links', 'linkSources', 'linksCheckedAt', 'cricinfoId', 'wikidataId', 'cricketdataId', 'selectedBy'] as const;
+
+/**
+ * Brings squads in line with the official list (server/data/officialTeams.ts), once per version of
+ * that list. Each player keeps what this site added to them (links, credits set in the Squad editor,
+ * notes, looked-up ids). Squad edits made in the admin console after that stay until the official
+ * list changes again.
+ */
+export function applyOfficialSquads(store: AppStore): boolean {
+  const version = crypto.createHash('sha1').update(JSON.stringify(OFFICIAL_2026_TEAMS.map(t => [t.id, t.squad]))).digest('hex').slice(0, 16);
+  if (store.jobLog['seed:squads'] === version) return false;
+  for (const team of store.teams) {
+    const official = OFFICIAL_2026_TEAMS.find(t => t.id === team.id);
+    if (!official) continue;
+    const current = team.squad || [];
+    const byId = new Map(current.map(p => [p.id, p]));
+    const byName = new Map(current.map(p => [normName(p.name), p]));
+    // The official list holds places for replacements not yet named ("Replacement TBC"); they are
+    // not players, so they are left out until the franchise names them.
+    const named = official.squad.filter(o => !isPlaceholderPlayer(o));
+    const used = new Set<string>();
+    const merged = named.map(o => {
+      const prev = byId.get(o.id) || byName.get(normName(o.name));
+      const next: any = { ...o };
+      if (prev) {
+        used.add(prev.id);
+        for (const k of KEPT_PLAYER_FIELDS) if ((prev as any)[k] !== undefined) next[k] = (prev as any)[k];
+      }
+      return next;
+    });
+    // Players the previous official list had and this one doesn't have left the squad. Anyone else
+    // in the stored squad was added by an admin and stays.
+    const recorded = store.jobLog[`seed:squad-ids:${team.id}`];
+    const previousOfficial = new Set(recorded ? recorded.split(',') : OFFICIAL_SQUAD_IDS_BEFORE_2026_10_27[team.id] || []);
+    const addedByAdmin = current.filter(p => !used.has(p.id) && !previousOfficial.has(p.id) && !isPlaceholderPlayer(p));
+    team.squad = [...merged, ...addedByAdmin];
+    store.jobLog[`seed:squad-ids:${team.id}`] = named.map(o => o.id).join(',');
+  }
+  store.jobLog['seed:squads'] = version;
+  return true;
+}
+
+/**
+ * The signed bats on offer are miniature bats of international players, not full-size bats. Official
+ * prizes and draws were added to stores before their wording changed, and seeding only adds missing
+ * ones, so saved copies with the old wording are rewritten here (stock, claims and entries are kept).
+ */
+const OLD_BAT_PRIZE_TITLES: Record<string, number> = {
+  'full-size cricket bat signed by moeen ali': 12,
+  'full-size cricket bat signed by andre russell (dre russ)': 13,
+  'full-size cricket bat signed by liam livingstone': 14,
+  'signed bat & t-shirt powerhouse bundle by andre russell (dre russ)': 15,
+  'signed bat & t-shirt boundary hitter bundle by liam livingstone': 16,
+};
+const OLD_BAT_DRAW_TITLES: Record<string, number> = {
+  'signed moeen ali bat & jersey free fan draw': 1,
+  'dre russ explosive signed bat & t-shirt mega draw': 2,
+  'liam livingstone signed matchday bundle draw': 3,
+};
+
+/**
+ * November 2026: prizes now start at 1,000 points (the season prize list was repriced). Raise any
+ * cheaper prize and draw once, so admins can still set their own prices afterwards.
+ */
+export function raisePrizeFloorOnce(store: AppStore, now = new Date().toISOString()): boolean {
+  if (store.jobLog['prizes:floor-1000']) return false;
+  for (const p of store.prizes) if (p.pointsCost < 1000) p.pointsCost = Math.max(1000, p.pointsCost >= 250 ? p.pointsCost * 5 : 1000);
+  for (const d of store.draws) if ((d.minPoints || 0) < 1000) d.minPoints = 1000;
+  store.jobLog['prizes:floor-1000'] = now;
+  return true;
+}
+
+export function upgradeSignedBatPrizes(store: AppStore): boolean {
+  let changed = false;
+  for (const p of store.prizes) {
+    const i = OLD_BAT_PRIZE_TITLES[p.title.toLowerCase().trim()];
+    const next = i === undefined ? null : OFFICIAL_ARABIAN_ACES_PRIZES[i];
+    if (!next) continue;
+    p.title = next.title;
+    p.description = next.description;
+    changed = true;
+  }
+  for (const d of store.draws) {
+    const i = OLD_BAT_DRAW_TITLES[d.title.toLowerCase().trim()];
+    const next = i === undefined ? null : OFFICIAL_ARABIAN_ACES_DRAWS[i];
+    if (!next) continue;
+    d.title = next.title;
+    d.prize = next.prize;
+    d.description = next.description;
     changed = true;
   }
   return changed;
@@ -177,6 +230,7 @@ export function seedOfficialPrizesAndDraws(store: AppStore, now = new Date().toI
       if (!existingTitles.has(op.title.toLowerCase().trim())) {
         store.prizes.push({
           ...op,
+          category: op.category || guessPrizeCategory(op.title),
           id: `prz-aces-${i + 1}`,
           createdAt: now,
         });
@@ -209,21 +263,12 @@ export function seedOfficialPrizesAndDraws(store: AppStore, now = new Date().toI
       p.description = p.description.replace(/full[- ]size/i, 'handcrafted miniature display');
       changed = true;
     }
-    // Ensure all claim prizes start from 1000 points onwards per instruction
-    if (p.pointsCost < 1000) {
-      p.pointsCost = Math.max(1000, p.pointsCost >= 250 ? p.pointsCost * 5 : 1000);
-      changed = true;
-    }
   }
   for (const d of store.draws) {
     if (/full[- ]size/i.test(d.title) || /full[- ]size/i.test(d.prize || '') || /full[- ]size/i.test(d.description || '')) {
       d.title = d.title.replace(/full[- ]size/i, 'Miniature');
       if (d.prize) d.prize = d.prize.replace(/full[- ]size/i, 'Miniature');
       if (d.description) d.description = d.description.replace(/full[- ]size/i, 'miniature display');
-      changed = true;
-    }
-    if ((d.minPoints || 0) < 1000) {
-      d.minPoints = 1000;
       changed = true;
     }
   }
@@ -266,60 +311,45 @@ export function seedOfficialMatches(store: AppStore, now = new Date().toISOStrin
 }
 
 /**
- * Seeds prediction contests for all official tournament matches.
- * Allows fans to make predictions for all 2 or 3 matches scheduled on the match day.
+ * An earlier build seeded nine fan clubs (with addresses, contacts and offers nobody confirmed) and
+ * a second set of match prediction contests (contest-mN) that duplicated the automatic ones
+ * (auto-mN). Fan clubs and offers now come only from admins, so remove those seeds wherever no fan
+ * has used them yet.
  */
-export function seedOfficialContests(store: AppStore, now = new Date().toISOString(), overwrite = false): boolean {
-  if (!overwrite && store.contests && store.contests.length > 0) return false;
-  const officialContests = generateOfficialMatchContests();
-  const existingIds = new Set((store.contests || []).map(c => c.id));
-  let changed = false;
-  if (!store.contests) store.contests = [];
+const UNVERIFIED_FAN_CLUB_IDS = new Set(['fc-hyd-banjara', 'fc-hyd-cyberabad', 'fc-hyd-charminar', 'fc-hyd-gachibowli', 'fc-hyd-secunderabad', 'fc-uae-zayed', 'fc-uae-corniche', 'fc-uae-dubai', 'fc-uk-london']);
 
-  for (const c of officialContests) {
-    if (!existingIds.has(c.id)) {
-      store.contests.push(c);
-      existingIds.add(c.id);
+export function removeUnverifiedSeeds(store: AppStore): boolean {
+  let changed = false;
+  const usedClubs = new Set((store.fanClubCheckIns || []).map(c => c.fanClubId));
+  const clubs = (store.fanClubs || []).filter(c => !UNVERIFIED_FAN_CLUB_IDS.has(c.id) || usedClubs.has(c.id) || c.createdBy);
+  if (clubs.length !== (store.fanClubs || []).length) { store.fanClubs = clubs; changed = true; }
+  // Made-up fan accounts (stock photos, @arabianaces.fans emails) and their Pick XI teams from the
+  // same build: never real people.
+  const fake = new Set(store.users.filter(u => /^usr-fan-/.test(u.id) && /@arabianaces\.fans$/.test(u.email)).map(u => u.id));
+  if (fake.size) {
+    store.users = store.users.filter(u => !fake.has(u.id));
+    store.fantasyTeams = store.fantasyTeams.filter(f => !fake.has(f.userId));
+    store.contestEntries = store.contestEntries.filter(e => !fake.has(e.userId));
+    changed = true;
+  }
+  // Fan club managers named by email in that build become fan club admins of those clubs.
+  for (const c of (store.fanClubs || []) as any[]) {
+    for (const email of (c.managerEmails || []) as string[]) {
+      const e = String(email).trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e)) continue;
+      const rec = store.adminUsers.find(a => a.email.toLowerCase() === e);
+      if (!rec) store.adminUsers.push({ email: e, name: e.split('@')[0], role: 'fanclub_admin', permissions: ['fanclubs'], fanClubIds: [c.id], addedBy: 'migration', addedAt: new Date().toISOString() });
+      else if (rec.role === 'fanclub_admin' && !(rec.fanClubIds || []).includes(c.id)) rec.fanClubIds = [...(rec.fanClubIds || []), c.id];
+      else continue;
       changed = true;
     }
+    if (c.managerEmails) { delete c.managerEmails; changed = true; }
   }
-  if (changed) {
-    store.jobLog['seed:contests'] = now;
-  }
+  const entered = new Set((store.contestEntries || []).map(e => e.contestId));
+  const contests = (store.contests || []).filter(c => !/^contest-m\d+$/.test(c.id) || entered.has(c.id));
+  if (contests.length !== (store.contests || []).length) { store.contests = contests; changed = true; }
   return changed;
 }
-
-/**
- * Seeds official fan club chapters across Hyderabad, India, UAE, and international hubs.
- */
-export function seedOfficialFanClubs(store: AppStore, now = new Date().toISOString(), overwrite = false): boolean {
-  let changed = false;
-  if (!store.fanClubs) store.fanClubs = [];
-
-  const existingById = new Map(store.fanClubs.map(c => [c.id, c]));
-  for (const fc of OFFICIAL_FAN_CLUBS) {
-    const existing = existingById.get(fc.id);
-    if (!existing) {
-      store.fanClubs.push({ ...fc, createdAt: now });
-      changed = true;
-    } else if (overwrite) {
-      Object.assign(existing, { ...fc, createdAt: existing.createdAt || now });
-      changed = true;
-    } else {
-      // Reconcile manager emails if missing or empty
-      if (!existing.managerEmails || existing.managerEmails.length === 0) {
-        existing.managerEmails = [...(fc.managerEmails || [])];
-        changed = true;
-      }
-    }
-  }
-
-  if (changed) {
-    store.jobLog['seed:fanclubs'] = now;
-  }
-  return changed;
-}
-
 
 /**
  * Accounts someone proposed for the other teams (October 2026) but that could not be confirmed.
@@ -465,7 +495,14 @@ export function seedOfficialTeams(overwrite = false, onlyTeamId?: string) {
         home: prev.home || venue,
         logo: official.logo || prev.logo || (official.id ? `/logos/${official.id}.svg` : ''),
         website: prev.website || official.website,
-        squad: official.squad.map(p => ({ ...p, credits: prevById.get(p.id)?.credits, note: prevById.get(p.id)?.note })),
+        squad: official.squad
+          .filter(p => !isPlaceholderPlayer(p))
+          .map(p => {
+            const old: any = prevById.get(p.id);
+            const next: any = { ...p };
+            if (old) for (const k of KEPT_PLAYER_FIELDS) if (old[k] !== undefined) next[k] = old[k];
+            return next;
+          }),
         createdAt: prev.createdAt || now,
         updatedAt: now,
       };

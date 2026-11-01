@@ -37,6 +37,13 @@ const store = {
     { id: 'thread-real', title: 'Real thread', content: 'Real content from a fan', category: 'general', userId: 'usr_real', userName: 'Real Fan', userAvatar: 'https://api.dicebear.com/7.x/b.svg', upvotes: 0, upvotedBy: [], commentsCount: 0, createdAt: now, lastActivityAt: now },
   ],
   forumComments: [],
+  // A November 2026 build seeded nine fan clubs nobody confirmed and a duplicate set of match
+  // predictions (contest-mN); an admin-made club must survive.
+  fanClubs: [
+    { id: 'fc-hyd-banjara', name: 'Arabian Aces Fan Club – Banjara Hills, Hyderabad', city: 'Hyderabad', country: 'India', address: 'Road No. 12', region: 'hyderabad', active: true, offers: [], createdAt: now },
+    { id: 'fc-real', name: 'Real Fan Club', city: 'Dubai', country: 'UAE', address: 'Al Barsha', active: true, offers: [], createdBy: 'admin@test.dev', createdAt: now },
+  ],
+  contests: [{ id: 'contest-m1', type: 'predictor', title: 'Match 1 – Matchday Predictions', description: '', status: 'open', prize: '', questions: [], createdAt: now }],
   settings: { brandName: 'ADT10 Fans', smtp: { host: 'smtp.gmail.com', port: 587, user: '', pass: '', from: 'noreply@t10fanhub.com', enabled: false } },
 };
 fs.writeFileSync(path.join(dir, 't10_store.json'), JSON.stringify(store));

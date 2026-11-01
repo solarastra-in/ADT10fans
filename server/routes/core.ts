@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { Router } from 'express';
+import { cleanUsername, takenBy, USERNAME_RE } from '../instagramGate';
 import { db } from '../db';
 import {
   firebaseProjectId, getAuthUser, requireUser, upsertUser, createSession, revokeSession, verifyFirebaseIdToken, rateLimit,
@@ -40,12 +41,12 @@ coreRouter.get('/config', (req, res) => {
       referralRewardPoints: st.referralRewardPoints || 0,
       referralMaxRewarded: st.referralMaxRewarded ?? 10,
       requireInstagramFollow: st.requireInstagramFollow !== false,
-      instagramTargetHandle: st.instagramTargetHandle || '@ArabianAcesofficial',
-      instagramPinnedPostUrl: st.instagramPinnedPostUrl || 'https://www.instagram.com/ArabianAcesofficial/',
-      instagramGatekeeperMode: st.instagramGatekeeperMode || 'blocking',
+      instagramTargetHandle: st.instagramTargetHandle || '@arabianacesofficial',
+      instagramVerifyPostUrl: st.instagramVerifyPostUrl || '',
+      fanClubTeamId: st.fanClubTeamId || 'aces',
       requireTwitterFollow: Boolean(st.requireTwitterFollow),
       twitterTargetHandle: st.twitterTargetHandle || '@arabianacesT10',
-      fanClubCheckInPoints: st.fanClubCheckInPoints || 100,
+      fanClubCheckInPoints: st.fanClubCheckInPoints ?? 100,
       features: {
         googleSignIn: Boolean(firebaseProjectId()),
         emailOtp: emailOtpAvailable(),
@@ -76,39 +77,14 @@ coreRouter.get('/me', (req, res) => {
   res.json({ user: u ? selfUser(u) : null });
 });
 
-function onSignIn(email: string, provider: 'google' | 'email', profile: { name?: string; avatar?: string }, ref: unknown, instagramHandle?: string, verificationCode?: string) {
+function onSignIn(email: string, provider: 'google' | 'email', profile: { name?: string; avatar?: string }, ref: unknown, instagramHandle?: string) {
   const store = db.get();
-  if (instagramHandle && typeof instagramHandle === 'string') {
-    const cleanHandle = instagramHandle.trim().toLowerCase().replace(/^@/, '');
-    if (cleanHandle) {
-      const existing = store.users.find(u => u.email.toLowerCase() !== email.toLowerCase() && u.instagramHandle && u.instagramHandle.toLowerCase().replace(/^@/, '') === cleanHandle);
-      if (existing) {
-        throw new Error(`Instagram handle @${cleanHandle} is already registered by another fan (${existing.name}). Each Instagram handle can only be linked to one account.`);
-      }
-    }
-  }
-
   const { user, created } = upsertUser(email, provider, profile);
   if (created) attachReferral(store, user, ref);
-
-  if (instagramHandle && typeof instagramHandle === 'string') {
-    const cleanHandle = instagramHandle.trim().toLowerCase().replace(/^@/, '');
-    if (cleanHandle) {
-      user.instagramFollowed = true;
-      user.instagramHandle = `@${cleanHandle}`;
-      user.instagramLikedPost = true;
-      if (verificationCode && typeof verificationCode === 'string') {
-        user.instagramVerificationCode = verificationCode;
-      }
-      user.instagramVerifiedAt = user.instagramVerifiedAt || new Date().toISOString();
-      if (!user.badges) user.badges = [];
-      if (!user.badges.includes('social-instagram')) {
-        user.badges.push('social-instagram');
-        awardPoints(store, user, 25, 'social-follow', 'Welcome to Arabian Aces on Instagram', user.id);
-      }
-    }
-  }
-
+  // A username given at sign-in only pre-fills the Instagram check; it does not verify anyone
+  // (see instagramGate.ts: the fan must comment their code, or an organiser approves them).
+  const handle = cleanUsername(instagramHandle);
+  if (handle && USERNAME_RE.test(handle) && !user.instagramFollowed && !takenBy(store, handle, user.id)) user.instagramHandle = handle;
   db.save();
   return { token: createSession(user.id), user: selfUser(user), created };
 }
@@ -123,9 +99,8 @@ coreRouter.post('/auth/google', rateLimit('google', 20, 60_000), wrap(async (req
     return bad(res, e?.message?.includes('not configured') ? e.message : 'Google sign-in could not be verified. Please try again.', 401);
   }
   const insta = typeof req.body?.instagramHandle === 'string' ? req.body.instagramHandle : undefined;
-  const vCode = typeof req.body?.verificationCode === 'string' ? req.body.verificationCode : undefined;
   try {
-    res.json(onSignIn(profile.email, 'google', { name: profile.name, avatar: profile.picture }, req.body?.ref, insta, vCode));
+    res.json(onSignIn(profile.email, 'google', { name: profile.name, avatar: profile.picture }, req.body?.ref, insta));
   } catch (err: any) {
     return bad(res, err.message || 'Sign in failed');
   }
@@ -175,9 +150,8 @@ coreRouter.post('/auth/otp/verify', rateLimit('otp-verify', 20, 10 * 60_000), (r
   }
   otp.used = true;
   const insta = typeof req.body?.instagramHandle === 'string' ? req.body.instagramHandle : undefined;
-  const vCode = typeof req.body?.verificationCode === 'string' ? req.body.verificationCode : undefined;
   try {
-    res.json(onSignIn(email, 'email', {}, req.body?.ref, insta, vCode));
+    res.json(onSignIn(email, 'email', {}, req.body?.ref, insta));
   } catch (err: any) {
     return bad(res, err.message || 'Sign in failed');
   }

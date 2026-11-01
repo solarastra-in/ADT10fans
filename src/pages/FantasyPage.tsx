@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Copy, LogOut, Plus, Trophy, UserPlus } from 'lucide-react';
 import { api } from '../api';
+import { TeamGamesOnlyNotice } from '../components/TeamGamesOnlyNotice';
 import { useApp, useLoad } from '../state';
 import { useT } from '../i18n';
 import { Link, usePageMeta } from '../router';
@@ -46,7 +47,8 @@ export default function FantasyPage() {
   if (hub.error) return <ErrorBox message={hub.error} onRetry={hub.reload} />;
   const rules = hub.data!.rules;
   const matches = hub.data!.matches;
-  const open = matches.filter(m => !m.locked);
+  const open = matches.filter(m => !m.locked && m.open !== false);
+  const soon = matches.filter(m => !m.locked && m.open === false);
   const closed = matches.filter(m => m.locked).reverse();
 
   const create = async (e: React.FormEvent) => {
@@ -93,7 +95,7 @@ export default function FantasyPage() {
               {a?.short} vs {b?.short} · {t('Match {n}', { n: m.matchNo })}
             </p>
             <p className="text-[11px] text-slate-400">
-              {m.locked ? (m.status === 'completed' ? t('Completed') : t('Locked')) : <><Countdown to={m.startsAt} prefix="locks in {time}" /> · {f.dateTime(m.startsAt)}</>} · {t('{n} teams', { n: m.lineups })}
+              {m.locked ? (m.status === 'completed' ? t('Completed') : t('Locked')) : m.open === false ? t('Opens {date}', { date: f.dateTime(m.opensAt) }) : <><Countdown to={m.startsAt} prefix="locks in {time}" /> · {f.dateTime(m.startsAt)}</>} · {t('{n} teams', { n: m.lineups })}
             </p>
           </div>
           {m.mine?.points !== null && m.mine?.points !== undefined ? (
@@ -107,7 +109,7 @@ export default function FantasyPage() {
                 ? t('{n} variations', { n: m.mine.variationsCount })
                 : m.locked ? t('Waiting for result') : t('Saved')}
             </Pill>
-          ) : !m.locked ? (
+          ) : !m.locked && m.open !== false ? (
             <Pill tone="amber">{t('Pick XI')}</Pill>
           ) : null}
         </Card>
@@ -117,6 +119,7 @@ export default function FantasyPage() {
 
   return (
     <div className="space-y-6">
+      <TeamGamesOnlyNotice />
       <PageHeader
         eyebrow={t('Fantasy')}
         title={t('Pick XI')}
@@ -170,6 +173,13 @@ export default function FantasyPage() {
                     </div>
                   ));
                 })()}
+              </section>
+            )}
+            {soon.length > 0 && (
+              <section>
+                <SectionTitle title={t('Opening soon')} />
+                <p className="text-xs text-slate-400 -mt-1 mb-2">{t('Each match opens at midnight UAE time on the day before match day.')}</p>
+                <div className="space-y-2">{soon.slice(0, 6).map(matchRow)}</div>
               </section>
             )}
             {closed.length > 0 && (

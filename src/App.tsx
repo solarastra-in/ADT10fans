@@ -10,7 +10,6 @@ import { ErrorBox, Spinner } from './components/ui';
 
 import HomePage from './pages/HomePage';
 import NotFoundPage from './pages/NotFoundPage';
-import { InstagramFollowModal } from './components/InstagramFollowModal';
 import { QuickQRPassModal } from './components/QuickQRPassModal';
 
 // Resilient lazy loader that retries failed chunk fetches (e.g. during server restarts or transient drops)
@@ -36,7 +35,9 @@ function safeLazy<T extends React.ComponentType<any>>(
   });
 }
 
-// Every page except the home page is loaded on demand with automatic chunk retry
+
+// Every page except the home page is its own chunk, loaded when it is first opened: visitors no
+// longer download the admin console, the Pick XI analytics and the charts just to read a score.
 const MatchesPage = safeLazy(() => import('./pages/MatchesPage'));
 const MatchPage = safeLazy(() => import('./pages/MatchPage'));
 const TeamsPage = safeLazy(() => import('./pages/TeamsPage'));
@@ -62,8 +63,14 @@ const GrowthPage = safeLazy(() => import('./pages/GrowthPage'));
 const ProfilePage = safeLazy(() => import('./pages/ProfilePage'));
 const InfoPage = safeLazy(() => import('./pages/InfoPage'));
 const AdminPage = safeLazy(() => import('./pages/AdminPage'));
-const FanClubAdminPage = safeLazy(() => import('./pages/FanClubAdminPage').then(m => ({ default: m.FanClubAdminPage })));
+const FanClubAdminPage = safeLazy(() => import('./components/admin/FanClubDesk').then(m => ({ default: m.FanClubAdminPage })));
+const TeamPortalPage = safeLazy(() => import('./pages/TeamPortalPage'));
+const TeamInvitePage = safeLazy(() => import('./pages/TeamInvitePage'));
 const ProposalPage = safeLazy(() => import('./pages/ProposalPage'));
+const TeamGamesPage = safeLazy(() => import('./pages/TeamGamesPage'));
+const Pick5Page = safeLazy(() => import('./pages/TeamGamesPage').then(m => ({ default: m.Pick5Page })));
+const FanClubPage = safeLazy(() => import('./pages/FanClubPage'));
+import { InstagramGate } from './components/InstagramGate';
 
 function Page() {
   const route = useRoute();
@@ -80,6 +87,9 @@ function Page() {
     case 'videos': return <SocialPage mode="videos" />;
     case 'news': return <SocialPage mode="news" />;
     case 'play': return <PlayPage />;
+    case 'teamGames': return <TeamGamesPage />;
+    case 'pick5': return <Pick5Page id={p.id} />;
+    case 'fanclub': return <FanClubPage />;
     case 'fantasy': return <FantasyPage />;
     case 'fantasyMatch': return <FantasyMatchPage id={p.id} />;
     case 'games': return <GamesPage />;
@@ -100,6 +110,8 @@ function Page() {
     case 'terms': return <InfoPage kind={route.name} />;
     case 'adminFanclub': return <FanClubAdminPage />;
     case 'admin': return p.section === 'fanclub' ? <FanClubAdminPage /> : <AdminPage section={p.section} />;
+    case 'teamPortal': return <TeamPortalPage section={p.section} />;
+    case 'teamInvite': return <TeamInvitePage token={p.token} />;
     case 'proposal': return <ProposalPage />;
     default: return <NotFoundPage />;
   }
@@ -186,9 +198,9 @@ function Shell() {
       </main>
       <Footer />
       <BottomNav route={route} />
-      <FloatingQRButton />
+      <FloatingQRButton route={route} />
       <QuickQRPassModal isOpen={qrPassOpen} onClose={closeQrPass} />
-      <InstagramFollowModal />
+      <InstagramGate />
       <AuthModal />
       <TeamPickerModal />
       <PlayerCardHost />

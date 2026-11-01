@@ -1,7 +1,8 @@
 import crypto from 'crypto';
 import { Router } from 'express';
-import { db, PrizeDraw, PrizeItem } from '../db';
-import { getAuthUser, rateLimit, requireAdmin, requireUser, selfUser } from '../auth';
+import { db, guessPrizeCategory, PrizeDraw, PrizeItem } from '../db';
+import { seedOfficialPrizesAndDraws } from '../seedOfficial';
+import { getAuthUser, rateLimit, requireAdmin, requireUser, selfUser, teamScopeOf } from '../auth';
 import { bad, isColor, isoOrEmpty, newId, num, optionalUrl, str, userOf, wrap } from '../http';
 import { dispatchNotification } from '../notify';
 import { awardPoints, balanceOf, ledgerFor, refundPoints, spendPoints, summaryFor } from '../points';
@@ -250,9 +251,18 @@ prizesRouter.post('/prizes/:id/redeem', requireUser, rateLimit('redeem', 5, 60_0
   res.json({ success: true, redemption, fulfilment: prize.fulfilment, user: selfUser(user) });
 });
 
-prizesRouter.get('/admin/prizes', requireAdmin('prizes'), (_req, res) => {
+/** Team admins see and fulfil only their own franchise's prizes and claims. */
+const prizeScope = (req: any) => teamScopeOf(userOf(req));
+const ownsPrize = (scope: string | null, p: PrizeItem | undefined) => Boolean(p) && (scope === null || p!.teamId === scope);
+/** League-wide tools (fans' points, prize draws) are not for team admins. */
+const leagueOnly = (req: any, res: any, next: any) => (prizeScope(req) === null ? next() : bad(res, 'Only league admins can do this', 403));
+
+prizesRouter.get('/admin/prizes', requireAdmin('prizes'), (req, res) => {
   const store = db.get();
-  res.json({ prizes: store.prizes, redemptions: store.redemptions.slice(0, 3000) });
+  const scope = prizeScope(req);
+  const prizes = scope === null ? store.prizes : store.prizes.filter(p => p.teamId === scope);
+  const ids = new Set(prizes.map(p => p.id));
+  res.json({ prizes, redemptions: store.redemptions.filter(r => scope === null || ids.has(r.prizeId)).slice(0, 3000) });
 });
 
 prizesRouter.post('/admin/prizes', requireAdmin('prizes'), (req, res) => {
@@ -270,6 +280,12 @@ prizesRouter.post('/admin/prizes', requireAdmin('prizes'), (req, res) => {
   const teamOnly = str(b.teamOnly, 60) || null;
   if (teamOnly && !store.teams.some(t => t.id === teamOnly)) return bad(res, 'Unknown team');
   const idx = b.id ? store.prizes.findIndex(p => p.id === b.id) : -1;
+  // A team admin's prizes belong to their franchise, for any fan or for their own fans only.
+  const scope = prizeScope(req);
+  if (idx >= 0 && !ownsPrize(scope, store.prizes[idx])) return bad(res, 'You can only edit your own team\'s prizes', 403);
+  if (scope !== null && teamOnly && teamOnly !== scope) return bad(res, 'A team prize can be for any fan or for your own team\'s fans only', 403);
+  const owner = scope !== null ? scope : b.teamId !== undefined ? str(b.teamId, 60) || null : idx >= 0 ? store.prizes[idx].teamId ?? null : null;
+  if (owner && !store.teams.some(t => t.id === owner)) return bad(res, 'Unknown team');
   const prize: PrizeItem = {
     ...(idx >= 0 ? store.prizes[idx] : {}),
     id: idx >= 0 ? store.prizes[idx].id : newId('prize'),
@@ -279,6 +295,8 @@ prizesRouter.post('/admin/prizes', requireAdmin('prizes'), (req, res) => {
     pointsCost,
     stock,
     teamOnly,
+    teamId: owner,
+    category: str(b.category, 40) || (idx >= 0 ? store.prizes[idx].category : undefined) || guessPrizeCategory(title),
     active: b.active !== false,
     fulfilment,
     createdAt: idx >= 0 ? store.prizes[idx].createdAt : new Date().toISOString(),
@@ -289,8 +307,18 @@ prizesRouter.post('/admin/prizes', requireAdmin('prizes'), (req, res) => {
   res.json({ success: true, prize, prizes: store.prizes });
 });
 
+/** Load the season's prize list and draws (adds any that are missing; never changes existing ones). */
+prizesRouter.post('/admin/prizes/seed-official', requireAdmin('prizes'), leagueOnly, (_req, res) => {
+  const store = db.get();
+  const before = { prizes: store.prizes.length, draws: store.draws.length };
+  seedOfficialPrizesAndDraws(store, new Date().toISOString(), true);
+  db.save();
+  res.json({ success: true, added: { prizes: store.prizes.length - before.prizes, draws: store.draws.length - before.draws }, prizes: store.prizes });
+});
+
 prizesRouter.delete('/admin/prizes/:id', requireAdmin('prizes'), (req, res) => {
   const store = db.get();
+  if (!ownsPrize(prizeScope(req), store.prizes.find(p => p.id === req.params.id))) return bad(res, 'You can only delete your own team\'s prizes', 403);
   if (store.redemptions.some(r => r.prizeId === req.params.id && r.status === 'pending')) return bad(res, 'Fans have pending claims for this prize. Fulfil or cancel them first, or switch the prize off instead.', 409);
   store.prizes = store.prizes.filter(p => p.id !== req.params.id);
   db.save();
@@ -302,6 +330,7 @@ prizesRouter.post('/admin/redemptions/:id', requireAdmin('prizes'), wrap(async (
   const store = db.get();
   const r = store.redemptions.find(x => x.id === req.params.id);
   if (!r) return bad(res, 'Claim not found', 404);
+  if (!ownsPrize(prizeScope(req), store.prizes.find(p => p.id === r.prizeId))) return bad(res, 'You can only handle claims for your own team\'s prizes', 403);
   const status = req.body?.status;
   if (!['fulfilled', 'cancelled'].includes(status)) return bad(res, 'Choose fulfilled or cancelled');
   if (r.status !== 'pending') return bad(res, `This claim is already ${r.status}`);
@@ -328,7 +357,7 @@ prizesRouter.post('/admin/redemptions/:id', requireAdmin('prizes'), wrap(async (
 // ---------- fan points (admin) ----------
 
 /** Finds fans by name, email or claim code, with their points and recent history. */
-prizesRouter.get('/admin/points', requireAdmin('prizes'), (req, res) => {
+prizesRouter.get('/admin/points', requireAdmin('prizes'), leagueOnly, (req, res) => {
   const store = db.get();
   const q = str(req.query.q, 120).toLowerCase();
   let users = store.users;
@@ -363,7 +392,7 @@ prizesRouter.get('/admin/points', requireAdmin('prizes'), (req, res) => {
 });
 
 /** Adds or removes points with a reason (corrections, fraud, goodwill). Recorded with the admin's email. */
-prizesRouter.post('/admin/points/:userId/adjust', requireAdmin('prizes'), (req, res) => {
+prizesRouter.post('/admin/points/:userId/adjust', requireAdmin('prizes'), leagueOnly, (req, res) => {
   const store = db.get();
   const fan = store.users.find(u => u.id === req.params.userId);
   if (!fan) return bad(res, 'Fan not found', 404);

@@ -24,6 +24,7 @@ export type AdminSectionId =
   | 'approvals'
   | 'marketing'
   | 'fanclubs'
+  | 'instagram'
   | 'settings'
   | 'proposal';
 
@@ -46,7 +47,8 @@ export const ADMIN_SECTIONS: { id: AdminSectionId; label: string }[] = [
   { id: 'fanwall', label: 'Fan wall' },
   { id: 'notifications', label: 'Notifications' },
   { id: 'fanspaces', label: 'Fan Spaces' },
-  { id: 'fanclubs', label: 'Fan Clubs & Hubs' },
+  { id: 'fanclubs', label: 'Fan clubs' },
+  { id: 'instagram', label: 'Instagram checks' },
   { id: 'checkin', label: 'Door check-in' },
   { id: 'growth', label: 'Growth' },
   { id: 'approvals', label: 'Approvals' },
@@ -60,11 +62,15 @@ const IMPLIED: Record<string, string[]> = {
   matches: ['leagues'], teams: ['leagues', 'team'], fantasy: ['contests'], games: ['contests'], draws: ['winners', 'prizes'], prizes: ['winners'],
   social: ['feeds'], feeds: ['social'], community: ['social'],
 };
+/** The Instagram review queue is open to moderators, fan club admins and growth admins (as on the server). */
+const ANY_OF: Record<string, string[]> = { 'instagram-review': ['community', 'fanclubs', 'growth'] };
 export function can(user: { isSuperAdmin?: boolean; adminRole?: string; permissions?: string[] } | null | undefined, perm: string): boolean {
   if (!user) return false;
+  if (ANY_OF[perm]) return ANY_OF[perm].some(p => can(user, p));
   if (user.isSuperAdmin || user.adminRole === 'superadmin') return true;
   const perms = user.permissions || [];
   if (perm === 'admins') return false;
+  if (user.adminRole === 'fanclub_admin') return perm === 'fanclubs';
   if (perms.includes('all') && user.adminRole !== 'team_official') return true;
   return perms.includes(perm) || (IMPLIED[perm] || []).some(p => perms.includes(p));
 }
@@ -72,7 +78,7 @@ export function can(user: { isSuperAdmin?: boolean; adminRole?: string; permissi
 export const SECTION_PERMISSION: Partial<Record<AdminSectionId, string | 'super'>> = {
   tools: 'teams', env: 'super', admins: 'super', teams: 'teams', squads: 'teams', handles: 'social', feeds: 'social', matches: 'matches',
   contests: 'contests', fantasy: 'fantasy', prizes: 'prizes', draws: 'draws', forum: 'community', polls: 'community', fanwall: 'community', notifications: 'notifications',
-  fanspaces: 'fanspaces', checkin: 'fanspaces', growth: 'growth', approvals: 'social', marketing: 'social', settings: 'settings', proposal: 'settings',
+  fanspaces: 'fanspaces', checkin: 'fanspaces', growth: 'growth', fanclubs: 'fanclubs', instagram: 'instagram-review', approvals: 'social', marketing: 'social', settings: 'settings', proposal: 'settings',
 };
 
 export const isAdminSectionId = (v: unknown): v is AdminSectionId =>

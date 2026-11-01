@@ -1,388 +1,184 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
+import { CheckCircle2, Gift, MapPin, QrCode, RefreshCw } from 'lucide-react';
 import { useApp } from '../state';
 import { api } from '../api';
-import type { FanClubStatusResponse, FanClub } from '../types';
+import { useT } from '../i18n';
+import { Link } from '../router';
+import { Button, Card, Countdown, Pill, Spinner, cx, useFormat } from './ui';
+import type { FanClubStatusResponse } from '../types';
 
+/**
+ * A fan's fan club pass: the code (and QR) a fan club admin scans to check them in, the match they
+ * can check in for, the clubs and their offers, and the fan's past check-ins.
+ */
 export const FanClubCheckInCard: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
-  const { user, openAuth, teamById } = useApp();
+  const { user, openAuth, teamById, toast } = useApp();
+  const t = useT();
+  const f = useFormat();
   const [status, setStatus] = useState<FanClubStatusResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [qrDataUrl, setQrDataUrl] = useState<string>('');
-  const [copied, setCopied] = useState(false);
-  const [selectedRegion, setSelectedRegion] = useState<'all' | 'hyderabad' | 'uae'>('hyderabad');
-  const [selectedClub, setSelectedClub] = useState<FanClub | null>(null);
+  const [error, setError] = useState('');
+  const [qr, setQr] = useState('');
+  const [renewing, setRenewing] = useState(false);
 
-  const fetchStatus = async () => {
+  const load = async () => {
     try {
       const data = await api.getFanClubStatus();
       setStatus(data);
-
-      if (data.qrPayload) {
-        const url = await QRCode.toDataURL(data.qrPayload, {
-          width: 320,
-          margin: 1,
-          color: {
-            dark: '#0a1024',
-            light: '#ffffff',
-          },
-        });
-        setQrDataUrl(url);
-      }
-    } catch (e) {
-      console.error('Failed to load fan club check-in status', e);
-    } finally {
-      setLoading(false);
+      setError('');
+      if (data.qrPayload) setQr(await QRCode.toDataURL(data.qrPayload, { width: 320, margin: 1, errorCorrectionLevel: 'M' }));
+      else setQr('');
+    } catch (e: any) {
+      setError(e?.message || t('Could not load your fan club pass.'));
     }
   };
 
   useEffect(() => {
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 30_000);
-    return () => clearInterval(interval);
+    load();
+    const id = setInterval(load, 30_000);
+    return () => clearInterval(id);
   }, [user?.id]);
 
-  const handleCopyCode = () => {
-    if (!status?.fanClubCode) return;
-    navigator.clipboard?.writeText(status.fanClubCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const renew = async () => {
+    setRenewing(true);
+    try {
+      await api.renewFanClubCode();
+      await load();
+      toast(t('New code ready. The old one no longer works.'));
+    } catch (e: any) {
+      toast(e?.message || t('Could not renew the code'));
+    } finally {
+      setRenewing(false);
+    }
   };
 
-  if (loading) {
-    return (
-      <div className="bg-navy-900/60 border border-navy-800 rounded-2xl p-6 text-center animate-pulse">
-        <div className="h-6 w-48 bg-navy-800 rounded mx-auto mb-4" />
-        <div className="h-48 w-48 bg-navy-800 rounded-xl mx-auto mb-4" />
-        <div className="h-4 w-36 bg-navy-800 rounded mx-auto" />
-      </div>
-    );
-  }
-
-  const { openMatch, checkInWindowActive, minutesToMatch, checkedIn, checkedInRecord, fanClubCode, fanClubs = [], activeOffers = [] } = status || {};
-
-  const filteredClubs = fanClubs.filter(fc => {
-    if (selectedRegion === 'all') return true;
-    return fc.region === selectedRegion;
-  });
+  if (!status) return error ? <Card className="p-4 text-sm text-red-300">{error}</Card> : <Spinner />;
+  const m = status.openMatch;
+  const a = m ? teamById(m.teamA) : null;
+  const b = m ? teamById(m.teamB) : null;
+  const gamesTeam = status.gamesTeamId ? teamById(status.gamesTeamId) : null;
 
   return (
-    <div className="bg-gradient-to-b from-navy-900 to-navy-950 border border-gold-500/30 rounded-2xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
-      {/* Background accents */}
-      <div className="absolute top-0 right-0 w-72 h-72 bg-gold-500/5 rounded-full blur-3xl pointer-events-none" />
-
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-navy-800">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="w-2.5 h-2.5 rounded-full bg-gold-400 animate-pulse" />
-            <span className="text-xs font-bold uppercase tracking-wider text-gold-400">Matchday Fan Club Pass</span>
-          </div>
-          <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
-            Fan Club Check-In & Venue Offers
-          </h3>
-          <p className="text-navy-300 text-sm mt-0.5">
-            Check in at official Arabian Aces venue desks across Hyderabad & UAE to earn <span className="text-amber-400 font-bold">+100 Fan Points</span>.
+    <Card className="p-4 sm:p-5 space-y-4" data-testid="fanclub-card">
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 rounded-xl bg-amber-400/15 text-amber-300 flex items-center justify-center shrink-0">
+          <QrCode className="w-5 h-5" />
+        </div>
+        <div className="min-w-0">
+          <h2 className="text-lg font-black text-white">{t('Fan club pass')}</h2>
+          <p className="text-xs text-slate-400">
+            {t('Watching at a fan club? Show this code at the door. Each check-in earns points, and fans checked in can use the club’s offers.')}
           </p>
         </div>
-
-        {/* Status pill */}
-        <div>
-          {checkedIn ? (
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 text-xs font-semibold">
-              <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              Checked In ({checkedInRecord?.fanClubName || 'Match Venue'})
-            </div>
-          ) : checkInWindowActive ? (
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-950/80 border border-amber-500/60 text-amber-300 text-xs font-bold animate-pulse">
-              <span className="w-2 h-2 rounded-full bg-amber-400" />
-              Check-In Desk Open Now
-            </div>
-          ) : openMatch ? (
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-navy-800/80 border border-navy-700 text-navy-300 text-xs">
-              <svg className="w-3.5 h-3.5 text-navy-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Window opens {minutesToMatch && minutesToMatch > 90 ? `in ${minutesToMatch - 90}m` : 'at T-90 min'}
-            </div>
-          ) : null}
-        </div>
       </div>
 
-      {/* Main Grid: QR Code & Check-in Info */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-8 py-6 items-center">
-        {/* Left: QR Code Card */}
-        <div className="md:col-span-5 flex flex-col items-center text-center">
-          <div className="relative p-3.5 bg-white rounded-2xl shadow-2xl border-4 border-gold-500/40">
-            {qrDataUrl ? (
-              <img
-                src={qrDataUrl}
-                alt="Fan Club Check-in QR Code"
-                className="w-48 h-48 sm:w-56 sm:h-56 rounded-lg object-contain"
-              />
-            ) : (
-              <div className="w-48 h-48 sm:w-56 sm:h-56 flex items-center justify-center text-navy-900 font-bold text-xs">
-                Generating QR...
-              </div>
-            )}
-            {!user && (
-              <div className="absolute inset-0 bg-navy-950/90 backdrop-blur-xs rounded-xl flex flex-col items-center justify-center p-4 text-center">
-                <span className="text-xs font-bold text-white mb-1">Fan Pass Locked</span>
-                <p className="text-[11px] text-navy-300 mb-3">Sign in to generate your personal check-in QR pass and earn +100 points.</p>
-                <button
-                  type="button"
-                  onClick={() => openAuth('Fan Club Matchday Check-In Pass')}
-                  className="px-4 py-2 rounded-xl bg-gold-500 hover:bg-gold-400 text-navy-950 font-bold text-xs shadow"
-                >
-                  Sign In to Unlock Pass
-                </button>
-              </div>
-            )}
-            <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-navy-950 text-gold-400 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-gold-500/50 uppercase tracking-widest whitespace-nowrap">
-              Aces Verified Pass
-            </div>
-          </div>
-
-          {/* 6-Character Fallback Code */}
-          <div className="mt-6 flex flex-col items-center">
-            <span className="text-[11px] uppercase tracking-wider text-navy-400 font-medium mb-1">
-              Manual Check-in Code
-            </span>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl font-mono font-bold tracking-widest text-gold-400 bg-navy-950/80 px-4 py-1.5 rounded-xl border border-navy-700">
-                {fanClubCode || '••••••'}
-              </span>
-              <button
-                type="button"
-                onClick={handleCopyCode}
-                title="Copy Code"
-                className="p-2 rounded-xl bg-navy-800 hover:bg-navy-700 text-navy-200 transition-colors"
-              >
-                {copied ? (
-                  <svg className="w-5 h-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                ) : (
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                )}
-              </button>
-            </div>
-            {copied && <span className="text-xs text-emerald-400 mt-1">Code copied to clipboard!</span>}
-          </div>
-        </div>
-
-        {/* Right: How to check in + Match window details */}
-        <div className="md:col-span-7 space-y-4">
-          <div className="bg-navy-950/60 border border-navy-800 rounded-xl p-4 sm:p-5">
-            <h4 className="text-sm font-bold text-white flex items-center gap-2 mb-2">
-              <svg className="w-4 h-4 text-gold-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              How Matchday Check-In Works
-            </h4>
-            <ol className="text-xs sm:text-sm text-navy-200 space-y-2 list-decimal list-inside">
-              <li>Head to any official Arabian Aces Fan Club venue (watch parties, stadium kiosks, sports hubs).</li>
-              <li>Present this QR code or 6-digit code to the Venue Desk Admin <strong>60 to 90 minutes before match start</strong>.</li>
-              <li>Admin scans your pass, instantly verifying your attendance and awarding <strong>+100 Fan Points</strong> directly into your profile!</li>
-            </ol>
-          </div>
-
-          {openMatch && (
-            <div className="bg-navy-900/80 border border-gold-500/20 rounded-xl p-4 flex items-center justify-between">
-              <div>
-                <span className="text-[10px] uppercase font-bold text-gold-400 tracking-wider">Next Match Fixture</span>
-                <div className="text-sm font-bold text-white mt-0.5">
-                  Match {openMatch.matchNo}: {teamById?.(openMatch.teamA)?.name || openMatch.teamA} vs {teamById?.(openMatch.teamB)?.name || openMatch.teamB}
-                </div>
-                <div className="text-xs text-navy-400 mt-0.5">
-                  {new Date(openMatch.startsAt).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} at {new Date(openMatch.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {openMatch.venue}
-                </div>
-              </div>
-              <div className="text-right">
-                <span className="text-xs font-bold text-gold-400 block">+100 Pts</span>
-                <span className="text-[11px] text-navy-400">On Check-in</span>
-              </div>
-            </div>
-          )}
-
-          {/* User profile reflected points confirmation */}
-          {checkedIn && checkedInRecord && (
-            <div className="bg-emerald-950/50 border border-emerald-500/40 rounded-xl p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">
-                  ✓
-                </div>
-                <div>
-                  <div className="text-xs font-bold text-emerald-300">
-                    Checked in at {checkedInRecord.fanClubName}
-                  </div>
-                  <div className="text-[11px] text-emerald-400/80">
-                    Awarded {checkedInRecord.pointsAwarded} Fan Points · {new Date(checkedInRecord.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </div>
-                </div>
-              </div>
-            </div>
+      {m && (
+        <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-sm">
+          <p className="font-bold text-white">
+            {t('Match {n}', { n: m.matchNo })}: {a?.short || m.teamA} vs {b?.short || m.teamB}
+          </p>
+          <p className="text-xs text-slate-400 mt-0.5">
+            {f.dateTime(m.startsAt)} ·{' '}
+            {status.checkInWindowActive ? (
+              <span className="text-emerald-300 font-bold">{t('Check-in is open now')}</span>
+            ) : status.opensAt ? (
+              <Countdown to={status.opensAt} prefix={t('check-in opens in {time}')} />
+            ) : null}
+          </p>
+          {status.checkedInRecord && (
+            <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-emerald-300" data-testid="fanclub-checked-in">
+              <CheckCircle2 className="w-4 h-4" /> {t('Checked in at {club} · +{n} points', { club: status.checkedInRecord.fanClubName, n: status.checkedInRecord.pointsAwarded })}
+            </p>
           )}
         </div>
-      </div>
+      )}
+
+      {!status.signedIn ? (
+        <Button onClick={() => openAuth(t('Sign in to get your fan club pass.'))}>{t('Sign in for your pass')}</Button>
+      ) : status.instagramRequired ? (
+        <p className="text-sm text-amber-200">{t('Verify your Instagram first to get your fan club pass.')}</p>
+      ) : (
+        <div className="flex flex-col sm:flex-row items-center gap-4">
+          {qr && <img src={qr} alt={t('Your fan club QR code')} className="w-40 h-40 rounded-xl bg-white p-2" />}
+          <div className="text-center sm:text-start space-y-2">
+            <p className="text-[11px] uppercase tracking-widest text-slate-400 font-bold">{t('Your code')}</p>
+            <p className="font-mono text-3xl font-black tracking-[0.25em] text-amber-300" data-testid="fanclub-code">{status.fanClubCode}</p>
+            <Button size="sm" variant="ghost" onClick={renew} loading={renewing}>
+              <RefreshCw className="w-3.5 h-3.5" /> {t('Get a new code')}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {gamesTeam && (
+        <p className="text-xs rounded-xl border border-amber-400/30 bg-amber-400/10 text-amber-100 p-3">
+          {t('As a fan club member you play the {team} games.', { team: gamesTeam.name })}{' '}
+          <Link to="/play/team" className="font-bold underline">{t('Open them')}</Link>
+        </p>
+      )}
 
       {!compact && (
         <>
-          {/* Venue Specific Single-Use Offers Section with "City Name - Venue Name" selector */}
-          <div className="mt-6 pt-6 border-t border-navy-800">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-              <div>
-                <h4 className="text-base font-bold text-white">Exclusive Venue Perks & Single-Use Offers</h4>
-                <p className="text-xs text-navy-300">Select your venue to view its specific perks. Each perk can be redeemed once at the venue desk.</p>
-              </div>
-
-              {/* City Name - Venue Name Selection */}
-              <div className="w-full sm:w-auto min-w-[280px]">
-                <label className="sr-only">Select Venue</label>
-                <select
-                  value={selectedClub?.id || fanClubs[0]?.id || ''}
-                  onChange={(e) => {
-                    const found = fanClubs.find(c => c.id === e.target.value);
-                    if (found) {
-                      setSelectedClub(found);
-                      localStorage.setItem('aces_preferred_venue_id', found.id);
-                    }
-                  }}
-                  className="w-full bg-navy-950 border border-gold-500/50 rounded-xl px-3.5 py-2 text-xs font-bold text-white focus:outline-none focus:ring-1 focus:ring-gold-500"
-                >
-                  {fanClubs.map(fc => (
-                    <option key={fc.id} value={fc.id}>
-                      {fc.city} - {fc.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Venue Specific Perks */}
-            {(() => {
-              const activeVenue = selectedClub || fanClubs[0];
-              const offersForVenue = activeVenue?.offers || [];
-              const claimedOfferIds = new Set(user?.claimedVenueOfferIds || []);
-
-              if (offersForVenue.length === 0) {
-                return (
-                  <div className="p-4 rounded-xl bg-navy-950 border border-navy-800 text-xs text-navy-400 text-center">
-                    No custom perks currently listed for {activeVenue?.name}. General +100 check-in points apply!
-                  </div>
-                );
-              }
-
-              return (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {offersForVenue.map(offer => {
-                    const redeemed = claimedOfferIds.has(offer.id);
-                    return (
-                      <div
-                        key={offer.id}
-                        className={`p-4 rounded-xl border transition-all ${
-                          redeemed
-                            ? 'bg-navy-950/40 border-navy-800/60 opacity-60'
-                            : 'bg-navy-900/90 border-navy-700 hover:border-gold-500/50 shadow-sm'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2 mb-2">
-                          <h5 className="font-bold text-sm text-white line-clamp-1">{offer.title}</h5>
-                          {redeemed ? (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-navy-800 text-navy-400 border border-navy-700">
-                              Claimed
-                            </span>
-                          ) : (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                              Single-Use
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-navy-300 mb-3 line-clamp-2">{offer.description}</p>
-                        <div className="flex items-center justify-between text-[11px] pt-2 border-t border-navy-800/60">
-                          <span className="text-gold-400 font-semibold">{offer.perk}</span>
-                          <span className="text-navy-400">At venue desk</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })()}
-          </div>
-
-          {/* Official Fan Club Locations (Primary focus: Hyderabad, India & UAE) */}
-          <div className="mt-8 pt-6 border-t border-navy-800">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-              <div>
-                <h4 className="text-base font-bold text-white">Official Fan Club Hubs</h4>
-                <p className="text-xs text-navy-300">Watch parties, merchandise desks, and live screening locations.</p>
-              </div>
-
-              {/* Region Filter */}
-              <div className="inline-flex rounded-xl bg-navy-950 p-1 border border-navy-800 text-xs font-semibold">
-                <button
-                  type="button"
-                  onClick={() => setSelectedRegion('hyderabad')}
-                  className={`px-3 py-1 rounded-lg transition-colors ${
-                    selectedRegion === 'hyderabad' ? 'bg-gold-500 text-navy-950' : 'text-navy-300 hover:text-white'
-                  }`}
-                >
-                  Hyderabad ({fanClubs.filter(c => c.region === 'hyderabad').length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedRegion('uae')}
-                  className={`px-3 py-1 rounded-lg transition-colors ${
-                    selectedRegion === 'uae' ? 'bg-gold-500 text-navy-950' : 'text-navy-300 hover:text-white'
-                  }`}
-                >
-                  UAE ({fanClubs.filter(c => c.region === 'uae').length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedRegion('all')}
-                  className={`px-3 py-1 rounded-lg transition-colors ${
-                    selectedRegion === 'all' ? 'bg-gold-500 text-navy-950' : 'text-navy-300 hover:text-white'
-                  }`}
-                >
-                  All ({fanClubs.length})
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {filteredClubs.map(club => (
-                <div
-                  key={club.id}
-                  onClick={() => setSelectedClub(selectedClub?.id === club.id ? null : club)}
-                  className={`p-3.5 rounded-xl border text-left cursor-pointer transition-all ${
-                    selectedClub?.id === club.id
-                      ? 'bg-navy-850 border-gold-500 shadow-lg'
-                      : 'bg-navy-950/70 border-navy-800 hover:border-navy-700'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-bold text-gold-400">{club.city}, {club.country}</span>
-                    <span className="text-[10px] text-navy-400 font-mono">Cap: {club.capacity}</span>
-                  </div>
-                  <h5 className="font-semibold text-sm text-white mb-1">{club.name}</h5>
-                  <p className="text-xs text-navy-400 line-clamp-1">{club.address}</p>
-                  {club.contactPerson && (
-                    <div className="text-[11px] text-navy-500 mt-2">
-                      Coordinator: {club.contactPerson}
+          <section className="space-y-2">
+            <h3 className="text-xs font-black uppercase tracking-wider text-slate-400">{t('Fan clubs')}</h3>
+            {status.fanClubs.length ? (
+              <ul className="grid gap-2 sm:grid-cols-2">
+                {status.fanClubs.map(c => (
+                  <li key={c.id} className="rounded-xl border border-slate-800 bg-slate-950/50 p-3 space-y-1.5">
+                    <p className="font-bold text-white text-sm">{c.name}</p>
+                    <p className="text-xs text-slate-400 flex items-start gap-1">
+                      <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                      <span>{[c.address, c.city, c.country].filter(Boolean).join(', ')}</span>
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      <Pill tone="amber">{t('+{n} points per check-in', { n: c.checkInPoints ?? 0 })}</Pill>
+                      {c.offers.map(o => (
+                        <Pill key={o.id} tone="green">
+                          <Gift className="w-3 h-3 inline" /> {o.badge || o.perk}
+                        </Pill>
+                      ))}
                     </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-slate-500">{t('No fan clubs have been added yet.')}</p>
+            )}
+          </section>
+
+          {!!status.activeOffers?.length && (
+            <section className="space-y-2">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400">{t('Offers')}</h3>
+              <ul className="space-y-2">
+                {status.activeOffers.map(o => (
+                  <li key={o.id} className={cx('rounded-xl border p-3 text-sm', o.used ? 'border-slate-800 opacity-60' : 'border-emerald-500/30 bg-emerald-500/5')}>
+                    <div className="flex items-center gap-2">
+                      <p className="font-bold text-white flex-1">{o.title}</p>
+                      {o.used ? <Pill>{t('Used')}</Pill> : o.bonusPoints ? <Pill tone="amber">+{o.bonusPoints}</Pill> : null}
+                    </div>
+                    {o.description && <p className="text-xs text-slate-400 mt-1">{o.description}</p>}
+                    <p className="text-[11px] text-slate-500 mt-1">{o.clubName}{o.expiresAt ? ` · ${t('until {d}', { d: f.date(o.expiresAt) })}` : ''}</p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {!!status.checkIns?.length && (
+            <section className="space-y-2">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-400">{t('Your check-ins')}</h3>
+              <ul className="text-xs text-slate-300 divide-y divide-slate-800">
+                {status.checkIns.map(c => (
+                  <li key={c.matchId} className="py-1.5 flex gap-2">
+                    <span className="flex-1">{t('Match {n}', { n: c.matchNo })} · {c.fanClubName}</span>
+                    <span className="text-amber-300 font-bold">+{c.pointsAwarded}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
         </>
       )}
-    </div>
+    </Card>
   );
 };

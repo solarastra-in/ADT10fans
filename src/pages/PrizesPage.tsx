@@ -5,7 +5,7 @@ import { useApp, useLoad } from '../state';
 import { useT } from '../i18n';
 import { Link, usePageMeta } from '../router';
 import { Button, Card, Countdown, EmptyState, ErrorBox, Modal, Notice, PageHeader, Pill, SectionTitle, Spinner, StatTile, TeamBadge, cx, useFormat } from '../components/ui';
-import { TieredRewardDashboard } from '../components/TieredRewardDashboard';
+import { TieredRewardDashboard, buildTiers, prizeCategory } from '../components/TieredRewardDashboard';
 import { LevelUpCelebration } from '../components/LevelUpCelebration';
 import type { PrizeDraw, PrizeItem } from '../types';
 
@@ -20,7 +20,7 @@ export default function PrizesPage() {
   const [confirmPrize, setConfirmPrize] = useState<PrizeItem | null>(null);
   const [claimed, setClaimed] = useState<{ code: string; fulfilment: string; title: string; prize?: PrizeItem } | null>(null);
   const [verify, setVerify] = useState<PrizeDraw | null>(null);
-  const [category, setCategory] = useState<'all' | 'tickets' | 'tshirts' | 'bats' | 'signed'>('all');
+  const [category, setCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   const handleClaimClick = (p: PrizeItem) => {
@@ -64,24 +64,14 @@ export default function PrizesPage() {
   const activePrizes = prizes.data?.prizes || [];
   const allDraws = draws.data?.draws || [];
 
-  const ticketsCount = useMemo(() => activePrizes.filter(p => p.title.toLowerCase().includes('ticket')).length, [activePrizes]);
-  const tshirtsCount = useMemo(() => activePrizes.filter(p => p.title.toLowerCase().includes('t-shirt') || p.title.toLowerCase().includes('jersey')).length, [activePrizes]);
-  const signedCount = useMemo(() => activePrizes.filter(p => p.title.toLowerCase().includes('signed')).length, [activePrizes]);
-  const batsCount = useMemo(() => activePrizes.filter(p => p.title.toLowerCase().includes('bat')).length, [activePrizes]);
+  const tiers = useMemo(() => buildTiers(activePrizes), [activePrizes]);
 
   const filteredPrizes = useMemo(() => {
-    return activePrizes.filter(p => {
-      const titleLower = p.title.toLowerCase();
-      if (category === 'tickets' && !titleLower.includes('ticket')) return false;
-      if (category === 'tshirts' && !titleLower.includes('t-shirt') && !titleLower.includes('jersey')) return false;
-      if (category === 'bats' && !titleLower.includes('bat')) return false;
-      if (category === 'signed' && !titleLower.includes('signed')) return false;
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        return titleLower.includes(q) || p.description.toLowerCase().includes(q);
-      }
-      return true;
-    });
+    const q = searchQuery.toLowerCase().trim();
+    return activePrizes
+      .filter(p => category === 'all' || prizeCategory(p) === category)
+      .filter(p => !q || p.title.toLowerCase().includes(q) || p.description.toLowerCase().includes(q))
+      .sort((a, b) => a.pointsCost - b.pointsCost);
   }, [activePrizes, category, searchQuery]);
 
   const dailyUsed = (prizes.data as any)?.limits?.dailyClaimsUsed ?? 0;
@@ -100,7 +90,7 @@ export default function PrizesPage() {
           <div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 bg-amber-400/10 border border-amber-400/30 px-2 py-0.5 rounded-full">
-                Abu Dhabi T10 Official Rewards
+                Fan rewards
               </span>
               <img
                 src="/logos/aces.svg"
@@ -160,7 +150,7 @@ export default function PrizesPage() {
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Search tickets, shirts, signed bats..."
+                placeholder="Search tickets, shirts, miniature signed bats..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
@@ -169,52 +159,20 @@ export default function PrizesPage() {
           )}
         </div>
 
-        {/* Category Filters */}
-        {activePrizes.length > 0 && (
-          <div className="flex flex-wrap gap-2 text-xs">
-            <button
-              type="button"
-              onClick={() => setCategory('all')}
-              className={cx('px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer', category === 'all' ? 'bg-amber-400 text-slate-950' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800')}
-            >
-              All ({activePrizes.length})
-            </button>
-            {ticketsCount > 0 && (
+        {/* Tier filters (same tiers as the timeline above) */}
+        {activePrizes.length > 0 && tiers.length > 1 && (
+          <div className="flex flex-wrap gap-2 text-xs" data-testid="tier-filters">
+            {[{ category: 'all', label: `${t('All')} (${activePrizes.length})` }, ...tiers.map(tr => ({ category: tr.category, label: `${tr.category} (${tr.items.length})` }))].map(x => (
               <button
+                key={x.category}
                 type="button"
-                onClick={() => setCategory('tickets')}
-                className={cx('flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer', category === 'tickets' ? 'bg-amber-400 text-slate-950' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800')}
+                onClick={() => setCategory(x.category)}
+                aria-pressed={category === x.category}
+                className={cx('px-3 py-1.5 rounded-xl font-bold transition-colors', category === x.category ? 'bg-amber-400 text-slate-950' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800')}
               >
-                <Ticket className="w-3.5 h-3.5" /> Match Tickets ({ticketsCount})
+                {x.label}
               </button>
-            )}
-            {signedCount > 0 && (
-              <button
-                type="button"
-                onClick={() => setCategory('signed')}
-                className={cx('flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer', category === 'signed' ? 'bg-amber-400 text-slate-950' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800')}
-              >
-                <Sparkles className="w-3.5 h-3.5" /> Signed Memorabilia ({signedCount})
-              </button>
-            )}
-            {tshirtsCount > 0 && (
-              <button
-                type="button"
-                onClick={() => setCategory('tshirts')}
-                className={cx('flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer', category === 'tshirts' ? 'bg-amber-400 text-slate-950' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800')}
-              >
-                <Shirt className="w-3.5 h-3.5" /> T-Shirts & Jerseys ({tshirtsCount})
-              </button>
-            )}
-            {batsCount > 0 && (
-              <button
-                type="button"
-                onClick={() => setCategory('bats')}
-                className={cx('flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer', category === 'bats' ? 'bg-amber-400 text-slate-950' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800')}
-              >
-                <span className="text-sm">🏏</span> Miniature Signed Bats ({batsCount})
-              </button>
-            )}
+            ))}
           </div>
         )}
 
@@ -231,7 +189,8 @@ export default function PrizesPage() {
               const isTicket = p.title.toLowerCase().includes('ticket');
               const isSigned = p.title.toLowerCase().includes('signed');
               const isBat = p.title.toLowerCase().includes('bat');
-              const team = p.teamOnly ? teamById(p.teamOnly) : null;
+              // The team stamp: the franchise offering the prize, or whose fans it is for.
+              const team = p.teamOnly || p.teamId ? teamById((p.teamOnly || p.teamId)!) : null;
 
               return (
                 <Card key={p.id} className="overflow-hidden flex flex-col relative" data-testid="prize-card">
@@ -251,7 +210,7 @@ export default function PrizesPage() {
                         )}
                         {isBat && (
                           <span className="inline-flex items-center gap-1 text-[10px] font-black text-cyan-300 bg-cyan-500/15 border border-cyan-500/30 px-2 py-0.5 rounded-md">
-                            🏏 Willow Bat
+                            🏏 Miniature Bat
                           </span>
                         )}
                       </div>

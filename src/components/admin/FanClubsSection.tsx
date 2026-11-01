@@ -1,369 +1,183 @@
 import React, { useEffect, useState } from 'react';
+import { Download, Plus, Trash2, Upload, UserPlus, X } from 'lucide-react';
 import { api } from '../../api';
-import type { FanClub, VenueOffer } from '../../types';
-import { Button, Card, Notice, NoticeState, SectionHeader, TextInput, Select } from './ui';
+import { Link } from '../../router';
+import type { FanClubAdminClub, FanClubAdminView } from '../../types';
+import { ClubForm } from './FanClubDesk';
+import { Button, Card, Chip, EmptyState, Field, Notice, NoticeState, SectionHeader, Sheet, TextArea, TextInput, errorMessage } from './ui';
 
+const CSV_HEADER = 'name,city,country,address,region,capacity,contactPerson,checkInPoints,gamesMode';
+
+/**
+ * League admins: every fan club, with its admins. Add clubs one by one or import a list (CSV or the
+ * JSON export of another season). Fan club admins sign in with the email named here and see only
+ * their own clubs on the fan club desk.
+ */
 export const FanClubsSection: React.FC = () => {
-  const [clubs, setClubs] = useState<FanClub[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [editingClub, setEditingClub] = useState<Partial<FanClub> | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [view, setView] = useState<FanClubAdminView | null>(null);
   const [notice, setNotice] = useState<NoticeState | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [busy, setBusy] = useState('');
 
-  const loadClubs = async () => {
-    setLoading(true);
-    try {
-      const res = await api.getAdminFanClubs();
-      setClubs(res.fanClubs || []);
-    } catch (err: any) {
-      setNotice({ kind: 'err', text: err?.message || 'Failed to load fan clubs' });
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  const load = () => api.fanClubAdmin().then(setView).catch(e => setNotice({ kind: 'err', text: errorMessage(e) }));
   useEffect(() => {
-    loadClubs();
+    load();
   }, []);
 
-  const handleSeed = async () => {
-    if (!window.confirm('Reset fan clubs to the official seed list (including Hyderabad & UAE chapters)?')) return;
-    try {
-      const res = await api.seedAdminFanClubs();
-      setClubs(res.fanClubs);
-      setNotice({ kind: 'ok', text: res.message || 'Official fan clubs seeded successfully!' });
-    } catch (err: any) {
-      setNotice({ kind: 'err', text: err?.message || 'Failed to seed fan clubs' });
-    }
-  };
+  if (!view) return <Notice notice={notice} />;
+  if (!view.leagueWide) {
+    return (
+      <Card className="p-5">
+        <p className="text-sm text-slate-300">You run {view.clubs.length} fan club{view.clubs.length === 1 ? '' : 's'}.</p>
+        <Link to="/admin/fanclub" className="mt-3 inline-flex rounded-xl bg-amber-400 px-3 py-2 text-sm font-black text-slate-950">Open the fan club desk</Link>
+      </Card>
+    );
+  }
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!window.confirm(`Delete "${name}" fan club?`)) return;
+  const doImport = async () => {
+    setBusy('import');
     try {
-      await api.deleteAdminFanClub(id);
-      setClubs(prev => prev.filter(c => c.id !== id));
-      setNotice({ kind: 'ok', text: `Removed ${name}` });
-    } catch (err: any) {
-      setNotice({ kind: 'err', text: err?.message || 'Failed to delete fan club' });
-    }
-  };
-
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingClub?.name || !editingClub?.city || !editingClub?.address) {
-      setNotice({ kind: 'err', text: 'Name, City, and Address are required' });
-      return;
-    }
-
-    setSaving(true);
-    setNotice(null);
-    try {
-      const res = await api.saveAdminFanClub(editingClub);
-      setEditingClub(null);
-      await loadClubs();
-      setNotice({ kind: 'ok', text: `Saved fan club "${res.fanClub.name}"!` });
-    } catch (err: any) {
-      setNotice({ kind: 'err', text: err?.message || 'Failed to save fan club' });
+      const text = importText.trim();
+      const payload = text.startsWith('[') || text.startsWith('{') ? { clubs: (() => { const j = JSON.parse(text); return Array.isArray(j) ? j : j.clubs; })() } : { csv: text };
+      const r = await api.fanClubImport(payload);
+      setNotice({ kind: r.errors.length ? 'warn' : 'ok', text: `Added ${r.added}, updated ${r.updated}, ${r.offers} offer(s).${r.errors.length ? ` Skipped: ${r.errors.slice(0, 5).join('; ')}` : ''}` });
+      setImporting(false);
+      setImportText('');
+      load();
+    } catch (e) {
+      setNotice({ kind: 'err', text: errorMessage(e, 'Import failed. Check the CSV header or JSON.') });
     } finally {
-      setSaving(false);
+      setBusy('');
+    }
+  };
+
+  const doExport = async () => {
+    const r = await api.fanClubExport();
+    const blob = new Blob([JSON.stringify(r, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `fan-clubs-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const remove = async (c: FanClubAdminClub) => {
+    if (!window.confirm(`Remove ${c.name}?`)) return;
+    try {
+      const r = await api.fanClubDelete(c.id);
+      setNotice({ kind: 'ok', text: r.note || `${c.name} removed.` });
+      load();
+    } catch (e) {
+      setNotice({ kind: 'err', text: errorMessage(e) });
     }
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <SectionHeader
-        title="Fan Clubs & Matchday Check-In Desks"
-        description="Manage global and Hyderabad fan club venues, watch parties, capacity, and check-in desk operations."
+        title="Fan clubs"
+        description={`Fans check in at a fan club on matchdays (from ${view.opensMinutesBefore} minutes before the first ball) and earn points. Each club's admins run its desk and offers.`}
         actions={
-          <div className="flex items-center gap-2">
-            <a
-              href="/admin/fanclub"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gold-500 hover:bg-gold-400 text-navy-950 font-bold text-xs transition-colors shadow"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-              </svg>
-              Open Live QR Scanner
-            </a>
-            <Button size="sm" variant="secondary" onClick={handleSeed}>
-              Seed Official Clubs
-            </Button>
-            <Button
-              size="sm"
-              onClick={() =>
-                setEditingClub({
-                  id: '',
-                  name: '',
-                  city: 'Hyderabad',
-                  country: 'India',
-                  address: '',
-                  region: 'hyderabad',
-                  capacity: 250,
-                  active: true,
-                  offers: [],
-                })
-              }
-            >
-              + Add Fan Club
-            </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setAdding(true)} data-testid="fanclub-add">Add a fan club</Button>
+            <Button icon={<Upload className="w-4 h-4" />} onClick={() => setImporting(true)}>Import</Button>
+            <Button icon={<Download className="w-4 h-4" />} onClick={doExport} disabled={!view.clubs.length}>Export</Button>
+            <Link to="/admin/fanclub" className="inline-flex items-center rounded-xl border border-slate-700 px-3 text-sm font-bold text-slate-200">Fan club desk</Link>
           </div>
         }
       />
-
-      {notice && <Notice notice={notice} onClose={() => setNotice(null)} />}
-
-      {/* Edit / Add Modal Form */}
-      {editingClub && (
-        <Card className="p-6 border-gold-500/40 bg-navy-900/90 shadow-xl">
-          <h3 className="text-base font-bold text-white mb-4">
-            {editingClub.id ? 'Edit Fan Club Venue' : 'Create New Fan Club Venue'}
-          </h3>
-          <form onSubmit={handleSave} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-navy-300 uppercase mb-1">Fan Club Name</label>
-                <TextInput
-                  value={editingClub.name || ''}
-                  onChange={e => setEditingClub({ ...editingClub, name: e.target.value })}
-                  placeholder="e.g. Hyderabad Aces Hub - HITEC City"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-navy-300 uppercase mb-1">Region</label>
-                <Select
-                  value={editingClub.region || 'hyderabad'}
-                  onChange={e => setEditingClub({ ...editingClub, region: e.target.value as any })}
-                >
-                  <option value="hyderabad">Hyderabad, India (Primary Hub)</option>
-                  <option value="uae">UAE (Abu Dhabi / Dubai)</option>
-                  <option value="international">International Chapter</option>
-                </Select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-navy-300 uppercase mb-1">City</label>
-                <TextInput
-                  value={editingClub.city || ''}
-                  onChange={e => setEditingClub({ ...editingClub, city: e.target.value })}
-                  placeholder="Hyderabad"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-navy-300 uppercase mb-1">Country</label>
-                <TextInput
-                  value={editingClub.country || ''}
-                  onChange={e => setEditingClub({ ...editingClub, country: e.target.value })}
-                  placeholder="India"
-                  required
-                />
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-semibold text-navy-300 uppercase mb-1">Address & Landmark</label>
-                <TextInput
-                  value={editingClub.address || ''}
-                  onChange={e => setEditingClub({ ...editingClub, address: e.target.value })}
-                  placeholder="e.g. Road No. 36, Jubilee Hills / HITEC City Main Rd"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-navy-300 uppercase mb-1">Capacity</label>
-                <TextInput
-                  type="number"
-                  value={String(editingClub.capacity || 200)}
-                  onChange={e => setEditingClub({ ...editingClub, capacity: parseInt(e.target.value) || 100 })}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-navy-300 uppercase mb-1">Venue Coordinator / Contact</label>
-                <TextInput
-                  value={editingClub.contactPerson || ''}
-                  onChange={e => setEditingClub({ ...editingClub, contactPerson: e.target.value })}
-                  placeholder="Contact Name & Mobile"
-                />
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-semibold text-gold-400 uppercase mb-1">
-                  Venue Managers (More than 1 manager allowed)
-                </label>
-                <TextInput
-                  value={(editingClub.managerEmails || []).join(', ')}
-                  onChange={e => {
-                    const emails = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
-                    setEditingClub({ ...editingClub, managerEmails: emails });
-                  }}
-                  placeholder="solarastra.in@gmail.com, admin@aces.com, venue_lead@hyd.com"
-                />
-                <p className="text-[11px] text-navy-400 mt-1">
-                  Separate multiple emails with commas. These authorized venue managers can log in with their personal fan profile and operate the live QR scanner / manual check-in desk at <span className="font-mono text-gold-400">/admin/fanclub</span>.
-                </p>
-              </div>
-
-              {/* Venue Perks Editor */}
-              <div className="sm:col-span-2 pt-2 border-t border-navy-800">
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-xs font-semibold text-navy-300 uppercase">
-                    Venue Perks & Offers (Single-Use per Fan at this Venue)
-                  </label>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => {
-                      const newOffer: VenueOffer = {
-                        id: `offer_${Date.now()}`,
-                        fanClubId: editingClub.id || '',
-                        title: 'Matchday Drink / Snack Voucher',
-                        description: 'Redeemable at venue counter during match interval',
-                        perk: 'Free Beverage or Snack',
-                        active: true,
-                      };
-                      setEditingClub({
-                        ...editingClub,
-                        offers: [...(editingClub.offers || []), newOffer],
-                      });
-                    }}
-                  >
-                    + Add Perk
-                  </Button>
-                </div>
-
-                <div className="space-y-2">
-                  {(!editingClub.offers || editingClub.offers.length === 0) ? (
-                    <div className="text-xs text-navy-400 p-3 bg-navy-950/60 rounded-xl border border-navy-800">
-                      No perks configured for this venue yet. Click "+ Add Perk" to create exclusive venue perks.
-                    </div>
-                  ) : (
-                    editingClub.offers.map((offer, idx) => (
-                      <div key={offer.id || idx} className="p-3 bg-navy-950/90 rounded-xl border border-navy-800 space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <input
-                            type="text"
-                            value={offer.title}
-                            onChange={e => {
-                              const updated = [...(editingClub.offers || [])];
-                              updated[idx] = { ...updated[idx], title: e.target.value };
-                              setEditingClub({ ...editingClub, offers: updated });
-                            }}
-                            placeholder="Perk Title (e.g. Free Team Flag)"
-                            className="bg-navy-900 border border-navy-700 rounded-lg px-2.5 py-1 text-xs text-white flex-1 font-bold"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const updated = (editingClub.offers || []).filter((_, i) => i !== idx);
-                              setEditingClub({ ...editingClub, offers: updated });
-                            }}
-                            className="text-xs text-rose-400 hover:text-rose-300 px-2 py-1"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          <input
-                            type="text"
-                            value={offer.perk}
-                            onChange={e => {
-                              const updated = [...(editingClub.offers || [])];
-                              updated[idx] = { ...updated[idx], perk: e.target.value };
-                              setEditingClub({ ...editingClub, offers: updated });
-                            }}
-                            placeholder="Perk Summary (e.g. Free Aces Jersey Badge)"
-                            className="bg-navy-900 border border-navy-700 rounded-lg px-2.5 py-1 text-xs text-gold-300"
-                          />
-                          <input
-                            type="text"
-                            value={offer.description}
-                            onChange={e => {
-                              const updated = [...(editingClub.offers || [])];
-                              updated[idx] = { ...updated[idx], description: e.target.value };
-                              setEditingClub({ ...editingClub, offers: updated });
-                            }}
-                            placeholder="Description / Claim instructions"
-                            className="bg-navy-900 border border-navy-700 rounded-lg px-2.5 py-1 text-xs text-navy-300"
-                          />
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-4 border-t border-navy-800">
-              <Button type="button" variant="secondary" onClick={() => setEditingClub(null)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={saving}>
-                {saving ? 'Saving...' : 'Save Venue & Perks'}
-              </Button>
-            </div>
-          </form>
-        </Card>
-      )}
-
-      {/* Fan Clubs List */}
-      {loading ? (
-        <div className="p-8 text-center text-navy-400">Loading fan clubs...</div>
+      <Notice notice={notice} onClose={() => setNotice(null)} />
+      {view.clubs.length === 0 ? (
+        <EmptyState title="No fan clubs yet" description="Add your fan clubs, or import a list. Nothing is built in." />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {clubs.map(club => (
-            <Card key={club.id} className="p-4 border-navy-800 bg-navy-900/60 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gold-500/20 text-gold-400 uppercase tracking-wide">
-                    {club.region === 'hyderabad' ? '🇮🇳 Hyderabad' : club.region === 'uae' ? '🇦🇪 UAE' : '🌍 Global'}
-                  </span>
-                  <span className="text-xs text-navy-400 font-mono">Cap: {club.capacity}</span>
-                </div>
-                <h4 className="font-bold text-white text-sm mb-1">{club.name}</h4>
-                <p className="text-xs text-navy-300 mb-2">{club.address}</p>
-                {club.contactPerson && (
-                  <p className="text-[11px] text-navy-400">Coordinator: {club.contactPerson}</p>
-                )}
-                {club.managerEmails && club.managerEmails.length > 0 && (
-                  <div className="mt-2 text-[11px] text-navy-400">
-                    <span className="font-semibold text-slate-300">Desk Managers ({club.managerEmails.length}):</span>{' '}
-                    <span className="font-mono text-gold-400/90 break-words">{club.managerEmails.join(', ')}</span>
-                  </div>
-                )}
-                {club.offers && club.offers.length > 0 && (
-                  <div className="mt-2 text-[11px] text-amber-400 font-medium">
-                    {club.offers.length} Venue Perk{club.offers.length > 1 ? 's' : ''} Active
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-4 pt-3 border-t border-navy-800 flex items-center justify-between">
-                <button
-                  type="button"
-                  onClick={() => setEditingClub(club)}
-                  className="text-xs font-semibold text-gold-400 hover:text-gold-300"
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDelete(club.id, club.name)}
-                  className="text-xs text-rose-400 hover:text-rose-300"
-                >
-                  Delete
-                </button>
-              </div>
-            </Card>
+        <div className="grid gap-3 lg:grid-cols-2">
+          {view.clubs.map(c => (
+            <ClubCard key={c.id} club={c} onChanged={load} onRemove={() => remove(c)} setNotice={setNotice} defaultPoints={view.defaultCheckInPoints} />
           ))}
         </div>
       )}
+      <Sheet open={adding} title="Add a fan club" onClose={() => setAdding(false)}>
+        <ClubForm club={{ gamesMode: 'team', active: true, offers: [] }} leagueWide defaultPoints={view.defaultCheckInPoints} onSaved={() => { setAdding(false); load(); }} />
+      </Sheet>
+      <Sheet
+        open={importing}
+        title="Import fan clubs"
+        onClose={() => setImporting(false)}
+        footer={<Button variant="primary" loading={busy === 'import'} disabled={!importText.trim()} onClick={doImport}>Import</Button>}
+      >
+        <div className="space-y-3 text-sm text-slate-300">
+          <p>Paste CSV with this header row, or the JSON from Export (which can include offers). A row with the same name and city as an existing club updates it.</p>
+          <pre className="rounded-lg bg-slate-950 p-2 text-xs text-amber-200 overflow-x-auto">{CSV_HEADER}</pre>
+          <TextArea rows={10} value={importText} onChange={e => setImportText(e.target.value)} placeholder={`${CSV_HEADER}\nAces Lounge,Dubai,UAE,"Al Barsha 1",UAE,120,Sam,100,team`} />
+        </div>
+      </Sheet>
     </div>
   );
 };
+
+function ClubCard({ club, onChanged, onRemove, setNotice, defaultPoints }: { club: FanClubAdminClub; onChanged: () => void; onRemove: () => void; setNotice: (n: NoticeState) => void; defaultPoints: number }) {
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const addAdmin = async () => {
+    setBusy(true);
+    try {
+      await api.fanClubSetAdmin(club.id, email, { name });
+      setEmail('');
+      setName('');
+      setNotice({ kind: 'ok', text: `${email} can now run ${club.name} after signing in with that email.` });
+      onChanged();
+    } catch (e) {
+      setNotice({ kind: 'err', text: errorMessage(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const removeAdmin = async (e: string) => {
+    try {
+      await api.fanClubSetAdmin(club.id, e, { remove: true });
+      onChanged();
+    } catch (err) {
+      setNotice({ kind: 'err', text: errorMessage(err) });
+    }
+  };
+  return (
+    <Card className="p-4 space-y-3" data-testid="fanclub-row">
+      <div className="flex items-start gap-2">
+        <div className="flex-1 min-w-0">
+          <p className="font-black text-white">{club.name} {club.active === false && <Chip tone="slate">off</Chip>}</p>
+          <p className="text-xs text-slate-400">{[club.address, club.city, club.country].filter(Boolean).join(', ')}</p>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            <Chip tone="amber">+{club.effectiveCheckInPoints} per check-in</Chip>
+            <Chip tone="blue">{club.gamesMode === 'all' ? 'Every game' : 'Fan club team games only'}</Chip>
+            <Chip tone="slate">{club.offers.length} offer(s)</Chip>
+            <Chip tone="slate">{club.totalCheckIns} check-ins</Chip>
+          </div>
+        </div>
+        <Button size="sm" onClick={() => setEditing(true)}>Edit</Button>
+        <Button size="sm" variant="ghost" onClick={onRemove} aria-label={`Remove ${club.name}`}><Trash2 className="w-4 h-4" /></Button>
+      </div>
+      <div className="space-y-1.5">
+        <p className="text-xs font-bold text-slate-300">Fan club admins</p>
+        {club.admins.length === 0 && <p className="text-xs text-slate-500">None yet.</p>}
+        {club.admins.map(a => (
+          <span key={a.email} className="me-1.5 inline-flex items-center gap-1 rounded-full bg-slate-800 px-2 py-1 text-xs text-slate-200">
+            {a.name} · {a.email}
+            <button type="button" onClick={() => removeAdmin(a.email)} aria-label={`Remove ${a.email}`}><X className="w-3 h-3" /></button>
+          </span>
+        ))}
+        <form className="flex flex-wrap gap-2" onSubmit={e => { e.preventDefault(); addAdmin(); }}>
+          <Field label="Email" className="flex-1 min-w-[160px]"><TextInput type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@club.com" data-testid="fanclub-admin-email" /></Field>
+          <Field label="Name" className="w-32"><TextInput value={name} onChange={e => setName(e.target.value)} /></Field>
+          <Button type="submit" size="sm" loading={busy} icon={<UserPlus className="w-4 h-4" />} className="self-end" data-testid="fanclub-admin-add">Add</Button>
+        </form>
+      </div>
+      <Sheet open={editing} title={`Edit ${club.name}`} onClose={() => setEditing(false)}>
+        <ClubForm club={club} leagueWide defaultPoints={defaultPoints} onSaved={() => { setEditing(false); onChanged(); }} />
+      </Sheet>
+    </Card>
+  );
+}

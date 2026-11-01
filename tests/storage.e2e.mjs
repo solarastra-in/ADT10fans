@@ -111,6 +111,25 @@ for (let i = 0; i < 6; i++) {
   tokens.push(r2.json.token);
 }
 ok('a session made on B works on A', (await call(A, 'GET', '/api/me', null, tokens[0])).json.user?.email === 'fan0@test.dev');
+// Fans pass the Instagram check before posting: each asks on A, an organiser approves on B.
+let adminToken;
+{
+  const r1 = await call(A, 'POST', '/api/auth/otp/request', { email: 'admin@test.dev' }, null, '10.2.1.1');
+  const admin = (adminToken = (await call(B, 'POST', '/api/auth/otp/verify', { email: 'admin@test.dev', code: r1.json.devCode }, null, '10.2.1.1')).json.token);
+  await call(B, 'POST', '/api/admin/settings', { instagramWelcomePoints: 0 }, admin); // keep the points checks below exact
+  for (let i = 0; i < tokens.length; i++) {
+    await call(A, 'POST', '/api/instagram/start', { handle: `storage.fan${i}` }, tokens[i], `10.2.2.${i + 1}`);
+    const id = (await call(A, 'GET', '/api/me', null, tokens[i])).json.user.id;
+    await call(B, 'POST', `/api/admin/instagram/${id}`, { action: 'approve' }, admin);
+  }
+  // Each server re-reads the shared store every few seconds, so A sees B's approval shortly.
+  let seen = false;
+  for (let i = 0; i < 40 && !seen; i++) {
+    seen = (await Promise.all(tokens.map(t => call(A, 'GET', '/api/me', null, t)))).every(r => r.json.user?.instagramFollowed === true);
+    if (!seen) await new Promise(r => setTimeout(r, 500));
+  }
+  ok('an organiser on B verifies fans who asked on A', seen);
+}
 
 const th = await call(A, 'POST', '/api/forum/threads', { title: 'Concurrency thread', content: 'Replies arrive from both servers' }, tokens[0], '10.3.0.1');
 const T = th.json.thread.id;
@@ -139,15 +158,12 @@ if (MODE === 'firestore') {
 const pts = (await call(B, 'GET', '/api/me', null, tokens[3])).json.user.points;
 ok('points from both servers add up (5 replies x5 + check-in 10)', pts === 35, pts);
 // A key saved in the Admin console on one instance applies on the other (no environment variables).
-const ip = '10.9.0.1';
-const o1 = await call(A, 'POST', '/api/auth/otp/request', { email: 'admin@test.dev' }, null, ip);
-const o2 = await call(A, 'POST', '/api/auth/otp/verify', { email: 'admin@test.dev', code: o1.json.devCode }, null, ip);
-await call(A, 'POST', '/api/admin/env', { overrides: { GEMINI_API_KEY: 'shared-console-key' } }, o2.json.token);
+await call(A, 'POST', '/api/admin/env', { overrides: { GEMINI_API_KEY: 'shared-console-key' } }, adminToken);
 await new Promise(r => setTimeout(r, 1200));
 ok('a key saved in the console on one server applies on the other', (await call(B, 'GET', '/api/config')).json.config.features.gemini === true);
 if (MODE === 'firestore') {
   fake.options.publicRead = true;
-  const dash = (await call(B, 'GET', '/api/admin/dashboard', null, o2.json.token)).json;
+  const dash = (await call(B, 'GET', '/api/admin/dashboard', null, adminToken)).json;
   ok('the dashboard warns when Firestore rules let anyone read the data', dash.warnings.some(w => /security rules/.test(w)), dash.warnings);
 }
 console.log(`\n${passed} storage checks passed`);

@@ -33,7 +33,6 @@ interface AppState {
   openQrPass: () => void;
   closeQrPass: () => void;
   instaModalOpen: boolean;
-  openInstaModal: () => void;
   closeInstaModal: () => void;
   toasts: Toast[];
   toast: (text: string, kind?: Toast['kind']) => void;
@@ -147,7 +146,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       openQrPass: () => setQrPassOpen(true),
       closeQrPass: () => setQrPassOpen(false),
       instaModalOpen,
-      openInstaModal: () => setInstaModalOpen(true),
       closeInstaModal: () => setInstaModalOpen(false),
       toasts,
       toast,

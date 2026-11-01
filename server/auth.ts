@@ -86,6 +86,11 @@ export function hasPermission(user: User, permission?: AdminPermission | AdminPe
   const wanted = Array.isArray(permission) ? permission : [permission];
   return wanted.some(p => {
     if (p === 'admins') return false; // only super admins manage admins
+    // Team admins run their own franchise: never league-wide draws, fans' points or settings, even
+    // where one permission normally implies another (prizes → draws).
+    if (user.adminRole === 'team_official' && !TEAM_OFFICIAL_PERMISSIONS.includes(p) && !['teams', 'feeds'].includes(p)) return false;
+    // Fan club admins only run their own fan clubs.
+    if (user.adminRole === 'fanclub_admin') return p === 'fanclubs';
     if (perms.includes('all') && user.adminRole !== 'team_official') return true;
     if (perms.includes(p)) return true;
     if ((IMPLIED[p] || []).some(alt => perms.includes(alt))) return true;
@@ -93,6 +98,18 @@ export function hasPermission(user: User, permission?: AdminPermission | AdminPe
     if (p === 'teams' && perms.includes('team')) return true;
     return false;
   });
+}
+
+/** null = every fan club; otherwise the fan clubs this admin runs. */
+export function fanClubScopeOf(user: User): string[] | null {
+  if (user.adminRole === 'fanclub_admin') return user.adminFanClubIds || [];
+  return null;
+}
+
+export function canManageFanClub(user: User, fanClubId: string | null | undefined): boolean {
+  if (!hasPermission(user, 'fanclubs')) return false;
+  const scope = fanClubScopeOf(user);
+  return scope === null || (Boolean(fanClubId) && scope.includes(String(fanClubId)));
 }
 
 /** null = every team; otherwise the one team this admin may touch. */
@@ -120,7 +137,12 @@ function syncUserRbac(user: User) {
     user.role = 'admin';
     user.isSuperAdmin = false;
     user.adminRole = rec.role;
-    if (rec.role === 'team_official') {
+    user.adminFanClubIds = undefined;
+    if (rec.role === 'fanclub_admin') {
+      user.permissions = ['fanclubs'];
+      user.adminTeamId = null;
+      user.adminFanClubIds = (rec.fanClubIds || []).slice(0, 50);
+    } else if (rec.role === 'team_official') {
       user.permissions = TEAM_OFFICIAL_PERMISSIONS.filter(p => rec.permissions.includes(p) || rec.permissions.length === 0);
       if (!user.permissions.length) user.permissions = [...TEAM_OFFICIAL_PERMISSIONS];
       user.adminTeamId = rec.teamId || null;
@@ -354,6 +376,26 @@ export function emailOtpAvailable(): boolean {
 
 export function resetSmtpErrorState() {
   // kept for backwards-compat with callers
+}
+
+/** Sends an email through the SMTP settings. Returns 'not-configured' when there is no mail server. */
+export async function sendEmail(msg: { to: string; subject: string; text: string; html: string }): Promise<'sent' | 'not-configured'> {
+  const c = smtpConfig();
+  if (!c.host || !c.from || !c.enabled) return 'not-configured';
+  const transporter = nodemailer.createTransport({
+    host: c.host,
+    port: c.port,
+    secure: c.port === 465,
+    auth: c.user ? { user: c.user, pass: c.pass } : undefined,
+    tls: { rejectUnauthorized: process.env.SMTP_INSECURE_TLS !== '1' },
+  });
+  await transporter.sendMail({ from: c.from, ...msg });
+  return 'sent';
+}
+
+/** Gives a signed-in user the admin access their email now has (after an invitation is accepted). */
+export function refreshAccess(user: User) {
+  syncUserRbac(user);
 }
 
 export async function sendOtpEmail(to: string, code: string, brand: string): Promise<'sent' | 'dev'> {

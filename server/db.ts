@@ -8,6 +8,7 @@ export const SUPER_ADMIN_EMAIL = 'solarastra.in@gmail.com';
 
 export type AdminPermission =
   | 'all'
+  | 'fanclubs'
   | 'leagues'
   | 'matches'
   | 'teams'
@@ -29,11 +30,11 @@ export type AdminPermission =
 
 export const ALL_PERMISSIONS: AdminPermission[] = [
   'all', 'leagues', 'matches', 'teams', 'contests', 'fantasy', 'games', 'winners', 'draws', 'prizes',
-  'feeds', 'social', 'community', 'notifications', 'fanspaces', 'growth', 'settings', 'admins',
+  'feeds', 'social', 'community', 'notifications', 'fanspaces', 'growth', 'settings', 'admins', 'fanclubs',
 ];
 
 /** What a team official may do: only for their own franchise. */
-export const TEAM_OFFICIAL_PERMISSIONS: AdminPermission[] = ['team', 'social', 'community', 'notifications'];
+export const TEAM_OFFICIAL_PERMISSIONS: AdminPermission[] = ['team', 'social', 'community', 'notifications', 'prizes'];
 
 export type AdminRole =
   | 'superadmin'
@@ -42,6 +43,7 @@ export type AdminRole =
   | 'winner_admin'
   | 'social_admin'
   | 'team_official'
+  | 'fanclub_admin'
   | 'custom';
 
 export interface AdminUserRecord {
@@ -51,10 +53,33 @@ export interface AdminUserRecord {
   permissions: AdminPermission[];
   /** team_official only: the franchise they manage. */
   teamId?: string | null;
+  /** fanclub_admin only: the fan clubs they run (check-ins and offers). */
+  fanClubIds?: string[];
   isSuperAdmin?: boolean;
   addedBy?: string;
   addedAt: string;
   updatedAt?: string;
+}
+
+/**
+ * An invitation for someone to run a franchise's team portal. A super admin sends it (name, email,
+ * team); it becomes a team admin (team_official) when that person signs in with the same email and
+ * accepts. Only a hash of the link's token is kept.
+ */
+export interface TeamInvite {
+  id: string;
+  tokenHash: string;
+  email: string;
+  name: string;
+  teamId: string;
+  invitedBy: string;
+  createdAt: string;
+  expiresAt: string;
+  status: 'pending' | 'accepted' | 'revoked';
+  acceptedAt?: string;
+  /** Last time the invitation email was sent, and whether it went out. */
+  sentAt?: string;
+  emailed?: boolean;
 }
 
 export interface User {
@@ -78,6 +103,8 @@ export interface User {
   permissions?: AdminPermission[];
   /** Set for team officials: the one team they can manage. */
   adminTeamId?: string | null;
+  /** Set for fan club admins: the fan clubs they run. */
+  adminFanClubIds?: string[];
   /** Optional, self-declared; used for the Fan Base map. */
   country?: string;
   city?: string;
@@ -87,12 +114,24 @@ export interface User {
   referralRewardedAt?: string | null;
   /** Set when this friend joined after the inviter reached the invite-reward limit. */
   referralInviterUnpaid?: boolean;
+  /** Code a fan shows at a fan club to be checked in (random, can be renewed). */
   fanClubCode?: string;
+  /** True once the Instagram check passed (see instagramGate.ts). */
   instagramFollowed?: boolean;
+  /** Without @, lower case. */
   instagramHandle?: string;
+  instagramStatus?: 'none' | 'code' | 'review' | 'verified' | 'rejected';
+  /** The code the fan comments on the verification post. */
+  instagramCode?: string;
+  instagramCodeAt?: string;
+  instagramVerifiedAt?: string;
+  /** 'comment' for the automatic check, otherwise the approving admin's email. */
+  instagramVerifiedBy?: string;
+  instagramReviewNote?: string;
+  instagramRequestedAt?: string;
+  /** Older builds: a code the browser made up; not used. */
   instagramVerificationCode?: string;
   instagramLikedPost?: boolean;
-  instagramVerifiedAt?: string;
   xFollowed?: boolean;
   xHandle?: string;
   claimedVenueOfferIds?: string[];
@@ -151,19 +190,28 @@ export interface Player {
   /** Where each link came from; an admin's link is never replaced by the lookup. */
   linkSources?: Partial<Record<'espncricinfo' | 'cricbuzz' | 'wikipedia' | 'instagram' | 'x' | 'facebook' | 'youtube' | 'tiktok' | 'threads', 'admin' | 'cricsheet' | 'wikidata' | 'squad'>>;
   linksCheckedAt?: string;
-  socials?: {
-    instagram?: string;
-    x?: string;
-    youtube?: string;
-    facebook?: string;
-    tiktok?: string;
-    threads?: string;
-  };
-  stats?: {
-    t10?: any;
-    t20_2025_2026?: any;
-    t20_career?: any;
-  };
+  /** CricketData.org player id, for career records (set by the lookup, or by an admin to correct it). */
+  cricketdataId?: string;
+}
+
+/** One format of a player's career record (CricketData.org players_info; values as published). */
+export interface CareerFormat {
+  /** CricketData's match type: t20 (T20 internationals), ipl, odi, test… */
+  key: string;
+  label: string;
+  /** m, inn, no, runs, hs, avg, bf, sr, 100s, 50s, 4s, 6s… */
+  batting?: Record<string, string>;
+  /** m, inn, b, runs, wkts, bbi, econ, avg, sr, 5w… */
+  bowling?: Record<string, string>;
+}
+
+export interface PlayerCareer {
+  playerId: string;
+  cricketdataId?: string;
+  status: 'found' | 'no-match' | 'ambiguous' | 'error';
+  note?: string;
+  checkedAt: string;
+  formats: CareerFormat[];
 }
 
 export interface Team {
@@ -385,7 +433,25 @@ export interface Contest {
   prize: string;
   questions: ContestQuestion[];
   instant?: boolean;
+  /** Created and settled by the site (one prediction set per match; see predictions.ts). */
+  auto?: boolean;
+  /** A team's own game (e.g. Aces predictions): the only kind fan club fans play. See teamGames.ts. */
+  teamId?: string | null;
   createdAt: string;
+}
+
+/** Pick 5: five players from one team for one match, one of them captain (double points). */
+export interface TeamPick {
+  userId: string;
+  matchId: string;
+  teamId: string;
+  playerIds: string[];
+  captainId: string;
+  points?: number;
+  breakdown?: FantasyBreakdownLine[];
+  scoredAt?: string;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface ContestEntry {
@@ -467,6 +533,10 @@ export interface PrizeItem {
   pointsCost: number;
   stock: number;
   teamOnly?: string | null;
+  /** The franchise offering and fulfilling the prize (set for prizes a team admin creates). */
+  teamId?: string | null;
+  /** Reward tier this prize belongs to on the Prizes page, e.g. "Match tickets". Tiers are built from these. */
+  category?: string;
   active: boolean;
   /** How the fan receives it, shown after claiming (e.g. "Collect at the Fan Zone with your code"). */
   fulfilment: string;
@@ -534,6 +604,8 @@ export interface SystemSettings {
   lockReminderMinutes: number;
   /** Points for the fan whose post the admins pick as Fan of the Day. */
   fanOfTheDayPoints: number;
+  /** CricketData.org requests a day for career stats (the free plan has 100 for everything). */
+  careerStatsDailyCalls?: number;
   /** Which fan wall posts wait for an admin before fans see them. */
   fanWallReview: 'photos' | 'all' | 'none';
   smtp: { host: string; port: number; user: string; pass: string; from: string; enabled: boolean };
@@ -546,6 +618,16 @@ export interface SystemSettings {
   requireTwitterFollow?: boolean;
   twitterTargetHandle?: string;
   fanClubCheckInPoints?: number;
+  /** The pinned post fans comment their code on (link to a post on the account above). */
+  instagramVerifyPostUrl?: string;
+  /** Points a fan gets once, when their Instagram is verified. */
+  instagramWelcomePoints?: number;
+  /** Hide verification comments on the post once they are checked. */
+  instagramHideVerifyComments?: boolean;
+  /** Fan club check-in opens this many minutes before the first ball. */
+  fanClubCheckInOpensMins?: number;
+  /** The team whose games fan club fans get (the club's own franchise). */
+  fanClubTeamId?: string;
 }
 
 export type ReactionEmoji = '👏' | '🔥' | '😂' | '😮' | '💯';
@@ -556,7 +638,7 @@ export type PointsSource =
   | 'forum-thread' | 'forum-reply' | 'forum-removed' | 'badge' | 'referral'
   | 'prize' | 'prize-refund' | 'admin'
   | 'connections' | 'grid' | 'statwars' | 'duel' | 'fan-post' | 'fan-of-day'
-  | 'fanclub-checkin' | 'social-follow';
+  | 'fanclub-checkin' | 'fanclub-offer' | 'social-follow' | 'aces-pick5';
 
 /** One change to a fan's points (see server/points.ts). */
 export interface PointsEntry {
@@ -729,8 +811,16 @@ export interface VenueOffer {
   description: string;
   badge?: string;
   perk: string;
+  /** Extra points the fan gets when the offer is redeemed (0 = none). */
+  bonusPoints?: number;
+  /** How many fans may redeem it in total (0 or unset = no limit). */
+  limit?: number;
+  redeemed?: number;
+  startsAt?: string;
   expiresAt?: string;
   active: boolean;
+  createdBy?: string;
+  createdAt?: string;
 }
 
 export interface FanClub {
@@ -739,13 +829,34 @@ export interface FanClub {
   city: string;
   country: string;
   address: string;
-  region: 'hyderabad' | 'uae' | 'international';
+  /** Free text, e.g. 'UAE', 'India', 'UK'. */
+  region?: string;
   capacity?: number;
   contactPerson?: string;
   managerEmails?: string[];
   active: boolean;
   offers: VenueOffer[];
+  /** Points for checking in here; unset = the site default (Admin → Settings). */
+  checkInPoints?: number;
+  /** 'team' (default): fans checked in here play only their team's games. 'all': every game. */
+  gamesMode?: 'team' | 'all';
+  createdBy?: string;
   createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface FanClubRedemption {
+  id: string;
+  userId: string;
+  userName: string;
+  fanClubId: string;
+  offerId: string;
+  offerTitle: string;
+  matchId?: string;
+  bonusPoints: number;
+  adminId: string;
+  adminName?: string;
+  at: string;
 }
 
 export interface FanClubCheckInRecord {
@@ -934,6 +1045,8 @@ export interface AppStore {
   duels: Duel[];
   fanPosts: FanPost[];
   fansOfTheDay: FanOfTheDay[];
+  playerCareer: PlayerCareer[];
+  teamInvites: TeamInvite[];
   sessions: Session[];
   passportInterest: PassportInterest[];
   claimedBadges: Record<string, boolean>;
@@ -946,6 +1059,7 @@ export interface AppStore {
   contests: Contest[];
   contestEntries: ContestEntry[];
   fantasyTeams: FantasyTeam[];
+  teamPicks: TeamPick[];
   fantasyLeagues: FantasyLeague[];
   gamePlays: GamePlay[];
   draws: PrizeDraw[];
@@ -974,9 +1088,10 @@ export interface AppStore {
   adminUsers: AdminUserRecord[];
   fanClubs: FanClub[];
   fanClubCheckIns: FanClubCheckInRecord[];
+  fanClubRedemptions: FanClubRedemption[];
 }
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export function superAdminRecord(): AdminUserRecord {
   return {
@@ -1024,7 +1139,12 @@ export function defaultSettings(): SystemSettings {
     cricbuzzSeriesId: '13307',
     cricbuzzSeriesUrl: 'https://www.cricbuzz.com/cricket-series/13307/abu-dhabi-t10-league-2026',
     requireInstagramFollow: true,
-    instagramTargetHandle: '@ArabianAcesofficial',
+    instagramTargetHandle: '@arabianacesofficial',
+    instagramVerifyPostUrl: '',
+    instagramHideVerifyComments: false,
+    instagramWelcomePoints: 25,
+    fanClubCheckInOpensMins: 90,
+    fanClubTeamId: 'aces',
     requireTwitterFollow: false,
     twitterTargetHandle: '@arabianacesT10',
     fanClubCheckInPoints: 100,
@@ -1060,6 +1180,8 @@ export function emptyStore(): AppStore {
     duels: [],
     fanPosts: [],
     fansOfTheDay: [],
+    playerCareer: [],
+    teamInvites: [],
     sessions: [],
     passportInterest: [],
     claimedBadges: {},
@@ -1072,6 +1194,7 @@ export function emptyStore(): AppStore {
     contests: [],
     contestEntries: [],
     fantasyTeams: [],
+    teamPicks: [],
     fantasyLeagues: [],
     gamePlays: [],
     draws: [],
@@ -1099,6 +1222,7 @@ export function emptyStore(): AppStore {
     adminUsers: [superAdminRecord()],
     fanClubs: [],
     fanClubCheckIns: [],
+    fanClubRedemptions: [],
   };
 }
 
@@ -1158,6 +1282,17 @@ export function isFabricatedFeedItem(f: any): boolean {
  * Upgrade a store written by an older version. Real accounts, forum posts and everything an admin
  * created are kept. Invented demo content is dropped; unconfirmed handles go to the approval queue.
  */
+/** A starting tier for a prize from its name; admins can change it (Admin → Prizes). */
+export function guessPrizeCategory(title: string): string {
+  const t = String(title || '').toLowerCase();
+  if (t.includes('bundle')) return 'Signed bundles';
+  if (/\bbat\b/.test(t)) return 'Signed bats';
+  if (t.includes('signed') && /(t-shirt|shirt|jersey)/.test(t)) return 'Signed shirts';
+  if (/(t-shirt|shirt|jersey|cap|scarf|kit)/.test(t)) return 'Team apparel';
+  if (t.includes('ticket')) return 'Match tickets';
+  return 'Other rewards';
+}
+
 export function migrate(raw: any): AppStore {
   const fresh = emptyStore();
   if (!raw || typeof raw !== 'object') return fresh;
@@ -1219,6 +1354,23 @@ export function migrate(raw: any): AppStore {
     for (const h of out.handles as any[]) {
       if (h.meta?.channelId && !/^UC[\w-]{22}$/.test(h.meta.channelId)) delete h.meta.channelId;
     }
+  }
+  if (version < 6) {
+    // Before November 2026 the Instagram "check" accepted whatever username a fan typed. Those fans
+    // keep their username (pre-filled) but take the real check; their welcome points stay.
+    for (const u of out.users as any[]) {
+      if (u.instagramFollowed && !u.instagramVerifiedBy) {
+        u.instagramFollowed = false;
+        u.instagramStatus = 'none';
+      }
+      if (u.instagramHandle) u.instagramHandle = String(u.instagramHandle).replace(/^@/, '').toLowerCase();
+    }
+    for (const c of out.fanClubs as any[]) {
+      if (!['team', 'all'].includes(c.gamesMode)) c.gamesMode = 'team';
+      if (!Array.isArray(c.offers)) c.offers = [];
+    }
+    for (const p of out.prizes as any[]) if (!p.category) p.category = guessPrizeCategory(p.title);
+    if (out.settings.instagramTargetHandle === '@ArabianAcesofficial') out.settings.instagramTargetHandle = '@arabianacesofficial';
   }
   for (const u of out.users as any[]) {
     if (u.avatar && STOCK_IMAGE.test(u.avatar)) u.avatar = '';

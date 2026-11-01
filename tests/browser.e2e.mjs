@@ -32,8 +32,12 @@ const dubaiDay = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/
 
 // ---------- data the journeys need (made through the admin API) ----------
 const A = await apiLogin('admin@test.dev');
+// The journeys below browse as fans; the Instagram check has its own journey at the end.
+await api('POST', '/api/admin/settings', { requireInstagramFollow: false, instagramWelcomePoints: 0, instagramVerifyPostUrl: 'https://www.instagram.com/p/TESTPOST1/' }, A);
 await api('POST', '/api/admin/feeds/sync', {}, A);
-const match = (await api('POST', '/api/matches', { teamA: 'bulls', teamB: 'aces', startsAt: new Date(Date.now() + 2 * 86400_000).toISOString() }, A)).targetMatch;
+// Games open at midnight in Abu Dhabi the day before match day: a match 20 hours away is open, one four days away is not yet.
+const match = (await api('POST', '/api/matches', { teamA: 'bulls', teamB: 'aces', startsAt: new Date(Date.now() + 20 * 3600_000).toISOString() }, A)).targetMatch;
+const laterMatch = (await api('POST', '/api/matches', { teamA: 'lions', teamB: 'tigers', startsAt: new Date(Date.now() + 4 * 86400_000).toISOString() }, A)).targetMatch;
 await api('POST', '/api/admin/contests', { title: 'Who wins match 1?', matchId: match.id, questions: [{ prompt: 'Winner?', options: ['UAE Bulls', 'Arabian Aces'], points: 50 }] }, A);
 await api('POST', '/api/admin/polls', { question: 'Best T10 finisher?', options: ['Pollard', 'Russell'] }, A);
 await api('POST', '/api/admin/prizes', { title: 'Signed cap', pointsCost: 10, stock: 5, fulfilment: 'Collect at the Fan Zone' }, A);
@@ -151,9 +155,19 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
   const token = await fan.page.evaluate(() => localStorage.getItem('t10_auth_token'));
   ok(`${w}px signed in with a Bulls team`, (await api('GET', '/api/me', null, token)).user.teamId === 'bulls');
 
+  // Play hub lists every open match with Pick XI and predictions; a later match says when it opens.
+  await go(fan.page, '/play');
+  await fan.page.waitForSelector('[data-testid="open-match"]');
+  ok(`${w}px Play hub lists open matches with Pick XI and predictions`, (await fan.page.locator('[data-testid="open-match"]').count()) === 1 && (await fan.page.locator('[data-testid="open-match"] a', { hasText: 'Predict' }).count()) === 1);
+  await go(fan.page, `/fantasy/${laterMatch.id}`);
+  ok(`${w}px a match that has not opened says when it opens`, (await fan.page.locator('[data-testid="fantasy-not-open"]').count()) === 1);
+  await go(fan.page, '/players/bulls-kieron-pollard');
+  await fan.page.waitForSelector('h2');
+  ok(`${w}px player profile has no fixtures list`, !(await fan.page.locator('main').innerText()).includes('Fixtures'));
+
   // 5. Build and save a Dream XI.
   await go(fan.page, `/fantasy/${match.id}`);
-  const names = ['Max Bryant', 'Matiullah Khan', 'Aneurin Donald', 'Khushdil Shah', 'Mohammad Amir', 'Moeen Ali', 'Amshi de Silva', 'Ibrahim Masood', 'Muhammad Arfan', 'Sam Billings', 'Paul Walter'];
+  const names = ['Max Bryant', 'Muhammad Rohid', 'Aneurin Donald', 'Khushdil Shah', 'Muhammad Amir', 'Moeen Ali', 'Amshi de Silva', 'Ibrahim Masood', 'Muhammad Arfan', 'Sam Billings', 'Paul Walter'];
   for (const n of names) await fan.page.locator('[data-testid="player-pool"] > div', { hasText: n }).first().locator('button[data-player]').click();
   ok(`${w}px Dream XI counters show 11 picked`, /11\s*\/\s*11/.test(await fan.page.locator('[data-testid="xi-counters"]').innerText()));
   await fan.page.locator('[data-testid="xi-next"]').click();
@@ -165,13 +179,14 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
   ok(`${w}px Dream XI saved with a captain and vice-captain`, ft?.playerIds.length === 11 && ft.captainId && ft.viceCaptainId && ft.captainId !== ft.viceCaptainId);
   ok(`${w}px Dream XI builder fits the screen`, await noOverflow(fan.page));
 
-  // 6. Prediction contest.
-  await go(fan.page, '/contests');
-  const card = fan.page.locator('[data-testid="contest-card"]').first();
-  await card.locator('label', { hasText: 'UAE Bulls' }).first().click();
-  await card.locator('button:not([disabled])').last().click();
+  // 6. Match predictions (created for every open match): answer each question, then lock them in.
+  await go(fan.page, `/contests#auto-${match.id}`);
+  const card = fan.page.locator(`[id="auto-${match.id}"]`);
+  await card.waitFor();
+  for (const fs of await card.locator('fieldset').all()) await fs.locator('label').first().click();
+  await card.locator('button', { hasText: 'Lock in predictions' }).click();
   await fan.page.waitForTimeout(500);
-  ok(`${w}px contest entry saved`, (await api('GET', '/api/contests', null, token)).myEntries.length === 1);
+  ok(`${w}px match predictions saved`, (await api('GET', '/api/contests', null, token)).myEntries.some(e => e.contestId === `auto-${match.id}`));
 
   // 7. Daily games.
   await go(fan.page, '/games');
@@ -248,6 +263,39 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
     ok(`${w}px admin "${s}" opens without errors and fits`, adm.errors.length === 0 && (await noOverflow(adm.page)), { errors: adm.errors, overflow: await adm.page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]) });
   }
   await adm.ctx.close();
+
+  // 13. Team portal: a super admin invites a team admin, who accepts and runs their team's portal.
+  const inviteEmail = `aces${w}@test.dev`;
+  const sa = await newPage(w, h, A);
+  await go(sa.page, '/admin/admins');
+  const panel = sa.page.locator('[data-testid="team-invites"]');
+  await panel.waitFor();
+  await panel.locator('input').nth(0).fill(`Aces Admin ${w}`);
+  await panel.locator('input[type="email"]').fill(inviteEmail);
+  await panel.locator('select').selectOption('aces');
+  await panel.locator('button[type="submit"]').click();
+  await sa.page.waitForSelector('[data-testid="invite-link"] input');
+  const inviteUrl = await sa.page.locator('[data-testid="invite-link"] input').inputValue();
+  ok(`${w}px super admin sends an invitation and gets its link`, /\/team-invite\/[\w-]{40,}$/.test(inviteUrl) && (await noOverflow(sa.page)));
+  await sa.ctx.close();
+  const invitee = await newPage(w, h, await apiLogin(inviteEmail));
+  await go(invitee.page, new URL(inviteUrl).pathname);
+  await invitee.page.locator('[data-testid="accept-invite"]').click();
+  await invitee.page.waitForSelector('[data-testid="team-portal"]');
+  ok(`${w}px the invited person accepts and lands in the Aces portal`, (await invitee.page.locator('[data-testid="team-portal"] h1').innerText()).includes('Arabian Aces'));
+  await invitee.page.waitForSelector('[data-testid="team-overview"]');
+  const portalSections = await invitee.page.locator('#team-portal-section option').evaluateAll(os => os.map(o => o.value));
+  ok(`${w}px team portal lists its sections`, portalSections.length === 10, portalSections);
+  for (const s of portalSections) {
+    await invitee.page.selectOption('#team-portal-section', s);
+    await invitee.page.waitForTimeout(250);
+    await invitee.page.waitForLoadState('networkidle').catch(() => undefined);
+    ok(`${w}px team portal "${s}" opens without errors and fits`, invitee.errors.length === 0 && (await noOverflow(invitee.page)), { errors: invitee.errors });
+  }
+  await go(invitee.page, '/admin');
+  await invitee.page.waitForSelector('[data-testid="team-portal"]');
+  ok(`${w}px a team admin opening /admin goes to their team portal`, new URL(invitee.page.url()).pathname === '/team-portal');
+  await invitee.ctx.close();
 }
 
 // Right-to-left: Arabic and Urdu lay out correctly on a phone.
@@ -262,6 +310,74 @@ for (const lang of ['ar', 'ur']) {
     ok(`${lang} ${p} is right-to-left, translated and fits`, dir === 'rtl' && arabicScript && (await noOverflow(rtl.page)) && rtl.errors.length === 0, { dir, arabicScript, errors: rtl.errors });
   }
   await rtl.ctx.close();
+}
+
+// The Instagram check, the fan club desk and Pick 5, at phone width.
+{
+  await api('POST', '/api/admin/settings', { requireInstagramFollow: true }, A);
+  const anon = await newPage(390, 844);
+  await go(anon.page, '/play');
+  await anon.page.waitForSelector('[data-testid="instagram-gate"]');
+  ok('visitors see the Instagram check before they can play', await anon.page.locator('[data-testid="instagram-gate"]').isVisible());
+  await go(anon.page, '/rules');
+  await anon.page.waitForSelector('main');
+  ok('the rules stay readable without it', (await anon.page.locator('[data-testid="instagram-gate"]').count()) === 0);
+  await anon.ctx.close();
+
+  const fanToken = await apiLogin('gatefan@test.dev');
+  const fan = await newPage(390, 844, fanToken);
+  await go(fan.page, '/');
+  await fan.page.waitForSelector('[data-testid="ig-handle"]');
+  await fan.page.fill('[data-testid="ig-handle"]', '@gate.fan');
+  await fan.page.locator('form:has([data-testid="ig-handle"]) button[type="submit"]').click();
+  await fan.page.waitForSelector('[data-testid="ig-code"]');
+  const code = (await fan.page.locator('[data-testid="ig-code"]').innerText()).trim();
+  ok('the fan gets a code to comment', /^ACES-[A-Z2-9]{5}$/.test(code), code);
+  ok('the check fits a phone screen', await noOverflow(fan.page));
+  await fetch(`${process.env.META_COMMENTS_GRAPH_BASE}/__comment`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'gate.fan', text: code }) });
+  await fan.page.waitForTimeout(3200);
+  await fan.page.locator('[data-testid="ig-check"]').click();
+  await fan.page.waitForSelector('[data-testid="instagram-gate"]', { state: 'detached', timeout: 15000 });
+  ok('after commenting the code the fan is in', (await fan.page.locator('[data-testid="instagram-gate"]').count()) === 0 && fan.errors.length === 0, fan.errors);
+
+  // A league admin adds a club and its admin; the club admin checks the fan in at the desk.
+  await api('POST', '/api/fanclub/admin/import', { csv: 'name,city,country,checkInPoints\nBrowser Lounge,Abu Dhabi,UAE,80' }, A);
+  const club = (await api('GET', '/api/fanclub/admin/clubs', null, A)).clubs.find(c => c.name === 'Browser Lounge');
+  await api('POST', `/api/fanclub/admin/clubs/${club.id}/admins`, { email: 'desk@test.dev' }, A);
+  const soon = (await api('POST', '/api/matches', { teamA: 'aces', teamB: 'eagles', startsAt: new Date(Date.now() + 45 * 60_000).toISOString() }, A)).targetMatch;
+  await go(fan.page, '/fanclub');
+  await fan.page.waitForSelector('[data-testid="fanclub-code"]');
+  const fanCode = (await fan.page.locator('[data-testid="fanclub-code"]').innerText()).trim();
+  ok('the fan sees their fan club pass', /^[A-Z2-9]{6}$/.test(fanCode) && (await noOverflow(fan.page)));
+  const desk = await newPage(390, 844, await apiLogin('desk@test.dev'));
+  await go(desk.page, '/admin/fanclub');
+  await desk.page.waitForSelector('[data-testid="desk-code"]');
+  await desk.page.selectOption('#fc-match', soon.id);
+  await desk.page.fill('[data-testid="desk-code"]', fanCode);
+  await desk.page.locator('[data-testid="desk-find"]').click();
+  await desk.page.waitForSelector('[data-testid="desk-checkin"]');
+  await desk.page.locator('[data-testid="desk-checkin"]').click();
+  await desk.page.waitForSelector('[data-testid="desk-checked-in"]');
+  ok('the fan club admin checks the fan in at the desk', desk.errors.length === 0 && (await noOverflow(desk.page)), desk.errors);
+  await desk.ctx.close();
+
+  // Checked in at a fan club, the fan plays the Aces games.
+  await go(fan.page, '/play');
+  await fan.page.waitForSelector('[data-testid="play-team-games"]');
+  ok('the fan club fan’s Play page leads to the Aces games only', (await fan.page.locator('[data-testid="play-fantasy"]').count()) === 0);
+  await go(fan.page, `/team-games/${soon.id}`);
+  await fan.page.waitForSelector('[data-testid="pick5-player"]');
+  const players = fan.page.locator('[data-testid="pick5-player"]');
+  for (let i = 0; i < 5; i++) await players.nth(i).click();
+  await fan.page.locator('[data-testid="pick5-captain"]').first().click();
+  await fan.page.locator('[data-testid="pick5-save"]').click();
+  await fan.page.waitForTimeout(800);
+  const saved = await api('GET', `/api/team-games/${soon.id}/pick5`, null, fanToken);
+  ok('the fan saves Pick 5 on a phone', saved.pick?.playerIds.length === 5 && Boolean(saved.pick.captainId) && (await noOverflow(fan.page)) && fan.errors.length === 0, { pick: saved.pick, errors: fan.errors });
+  await go(fan.page, '/prizes');
+  await fan.page.waitForSelector('[data-testid="reward-tiers"]');
+  ok('the prize tiers come from the prizes', (await fan.page.locator('[data-testid="tier-points"]').first().innerText()).trim() === '10+');
+  await fan.ctx.close();
 }
 
 // Lock reminders still run with the browser data in place.

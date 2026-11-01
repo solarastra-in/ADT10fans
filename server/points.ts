@@ -37,8 +37,10 @@ export const SOURCE_LABEL: Record<PointsSource, string> = {
   duel: 'Stat Wars duel',
   'fan-post': 'Fan wall post',
   'fan-of-day': 'Fan of the Day',
-  'fanclub-checkin': 'Matchday Fan Club Check-In',
-  'social-follow': 'Social Follow Bonus',
+  'fanclub-checkin': 'Fan club check-in',
+  'fanclub-offer': 'Fan club offer',
+  'social-follow': 'Instagram verified',
+  'aces-pick5': 'Pick 5',
 };
 
 export const balanceOf = (u: Pick<User, 'points' | 'pointsSpent'>) => Math.max(0, (u.points || 0) - (u.pointsSpent || 0));
