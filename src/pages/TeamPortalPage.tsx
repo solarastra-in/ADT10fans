@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Camera, Gift, Megaphone, MessageSquare, Radio, Shield, Trophy, UserPlus, Users, Vote } from 'lucide-react';
+import { Camera, ClipboardList, Gift, Megaphone, MessageSquare, Radio, Shield, Trophy, UserPlus, Users, Vote } from 'lucide-react';
 import { api } from '../api';
 import { useApp } from '../state';
 import { Link, navigate, usePageMeta, useRoute } from '../router';
@@ -14,6 +14,7 @@ import { PollsSection } from '../components/admin/PollsSection';
 import { ForumSection } from '../components/admin/ForumSection';
 import { FanWallSection } from '../components/admin/FanWallSection';
 import { NotificationsSection } from '../components/admin/NotificationsSection';
+import { ScorecardsSection } from '../components/admin/ScorecardsSection';
 
 /**
  * A franchise's own portal. Team admins (invited by a super admin) manage their team page, squad and
@@ -25,6 +26,7 @@ const SECTIONS = [
   { id: 'overview', label: 'Overview', Icon: Shield },
   { id: 'page', label: 'Team page', Icon: Trophy },
   { id: 'squad', label: 'Squad & players', Icon: Users },
+  { id: 'scorecards', label: 'Scorecards', Icon: ClipboardList },
   { id: 'accounts', label: 'Official accounts', Icon: Radio },
   { id: 'posts', label: 'Posts', Icon: Megaphone },
   { id: 'prizes', label: 'Prizes & claims', Icon: Gift },
@@ -154,6 +156,7 @@ export default function TeamPortalPage({ section }: { section?: string }) {
           {current === 'overview' && <Overview team={team} go={go} />}
           {current === 'page' && <TeamsSection teams={[team]} onRefreshAll={refreshAll} goToSection={() => go('squad')} isTeamOfficial />}
           {current === 'squad' && <SquadEditorSection teams={[team]} onRefreshAll={refreshAll} />}
+          {current === 'scorecards' && <ScorecardsSection matches={matches} teams={teams} teamId={team.id} onSaved={refreshAll} />}
           {current === 'accounts' && <HandlesSection handles={data.handles} teams={[team]} approvals={data.approvals} onRefreshAll={refreshAll} isTeamOfficial />}
           {current === 'posts' && <FeedsSection feedItems={data.feedItems} teams={[team]} onRefreshAll={refreshAll} isTeamOfficial />}
           {current === 'prizes' && <PrizesSection teams={teams} team={team} />}

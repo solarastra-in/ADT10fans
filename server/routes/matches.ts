@@ -2,8 +2,8 @@ import { ensureMatchPredictions, settleMatchPredictions } from '../predictions';
 import { ensureTeamGames, settleTeamGames } from '../teamGames';
 import { Router } from 'express';
 import { db, Match, NotificationItem } from '../db';
-import { requireAdmin } from '../auth';
-import { bad, isHttpsUrl, isoOrEmpty, newId, num, str, wrap } from '../http';
+import { requireAdmin, teamScopeOf } from '../auth';
+import { bad, isHttpsUrl, isoOrEmpty, newId, num, str, userOf, wrap } from '../http';
 import { dispatchNotification } from '../notify';
 import { afterMatchCompleted } from '../reminders';
 import { computePlayerPoints } from '../fantasy';
@@ -195,6 +195,48 @@ function sanitizeScorecard(raw: any, teamA: string, teamB: string) {
   };
   return { innings1: inn(raw.innings1), innings2: inn(raw.innings2) };
 }
+
+/**
+ * Enter or upload a match's scorecard by hand, for when live scores are not available. League and
+ * super admins can do it for any match; a team admin only for their own team's matches. Saving with
+ * complete: true finishes the match, which scores Pick XI, Pick 5 and the predictions.
+ */
+matchesRouter.post('/admin/matches/:id/scorecard', requireAdmin(['matches', 'team']), wrap(async (req, res) => {
+  const user = userOf(req);
+  const store = db.get();
+  const m = store.matches.find(x => x.id === req.params.id);
+  if (!m) return bad(res, 'Match not found', 404);
+  const scope = teamScopeOf(user);
+  if (scope !== null && m.teamA !== scope && m.teamB !== scope) return bad(res, 'You can only enter scorecards for your own team’s matches', 403);
+  const b = req.body || {};
+  const card = sanitizeScorecard(b.scorecard, m.teamA, m.teamB);
+  if (!card?.innings1?.batting.length && !card?.innings2?.batting.length) return bad(res, 'Add at least one batter to the scorecard');
+  const winner = b.winner !== undefined ? str(b.winner, 60) : m.winner || '';
+  if (winner && winner !== m.teamA && winner !== m.teamB) return bad(res, 'Winner must be one of the two teams');
+  const wasCompleted = m.status === 'completed';
+  const scoreOf = (teamId: string) => {
+    const inn = [card.innings1, card.innings2].find(i => i?.teamId === teamId);
+    return inn ? { score: `${inn.totalRuns}/${inn.wickets}`, overs: inn.overs } : null;
+  };
+  const a = scoreOf(m.teamA);
+  const bb = scoreOf(m.teamB);
+  Object.assign(m, {
+    scorecard: card,
+    scoreSource: 'manual',
+    scoreA: a?.score ?? m.scoreA,
+    oversA: a?.overs ?? m.oversA,
+    scoreB: bb?.score ?? m.scoreB,
+    oversB: bb?.overs ?? m.oversB,
+    winner: winner || undefined,
+    result: b.result !== undefined ? str(b.result, 200) || undefined : m.result,
+    status: b.complete ? 'completed' : m.status === 'upcoming' && +new Date(m.startsAt) <= Date.now() ? 'live' : m.status,
+    updatedAt: new Date().toISOString(),
+  });
+  db.save();
+  let completed: any = null;
+  if (m.status === 'completed') completed = await onMatchCompleted(m.id, !wasCompleted);
+  res.json({ success: true, match: m, ...(completed ? { fantasy: completed.fantasy, predictions: completed.predictions, teamGames: completed.teamGames } : {}) });
+}));
 
 matchesRouter.delete('/matches/:id', requireAdmin('matches'), (req, res) => {
   const store = db.get();

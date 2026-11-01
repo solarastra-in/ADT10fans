@@ -100,7 +100,7 @@ export function FanClubAdminPage() {
       />
       {tab === 'desk' && <Desk club={club} view={data.data} onChange={data.reload} />}
       {tab === 'matches' && <ClubMatches club={club} view={data.data} onChange={data.reload} />}
-      {tab === 'offers' && <Offers club={club} onChange={data.reload} />}
+      {tab === 'offers' && <Offers club={club} view={data.data} onChange={data.reload} />}
       {tab === 'club' && <ClubForm club={club} leagueWide={data.data.leagueWide} defaultPoints={data.data.defaultCheckInPoints} onSaved={data.reload} />}
       {tab === 'activity' && <Activity clubId={club.id} />}
     </div>
@@ -377,8 +377,14 @@ function Desk({ club, view, onChange }: { club: FanClubAdminClub; view: NonNulla
 const emptyOffer: Partial<VenueOffer> = { title: '', description: '', perk: '', badge: '', bonusPoints: 0, limit: 0, startsAt: '', expiresAt: '', active: true };
 const toLocal = (iso?: string) => (iso ? new Date(new Date(iso).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '');
 
-function Offers({ club, onChange }: { club: FanClubAdminClub; onChange: () => void }) {
-  const { toast } = useApp();
+function Offers({ club, view, onChange }: { club: FanClubAdminClub; view: NonNullable<Awaited<ReturnType<typeof api.fanClubAdmin>>>; onChange: () => void }) {
+  const { toast, teamById } = useApp();
+  // Offers can be for particular matches of the club (upcoming or today's, test match included).
+  const offerMatches = view.matches.filter(m => club.matchIds.includes(m.id) && (m.status !== 'completed' || m.day === view.today));
+  const matchLabel = (id: string) => {
+    const m = view.matches.find(x => x.id === id);
+    return m ? `${m.test ? 'TEST' : `M${m.matchNo}`} ${teamById(m.teamA)?.short || m.teamA} v ${teamById(m.teamB)?.short || m.teamB}` : id;
+  };
   const t = useT();
   const f = useFormat();
   const [edit, setEdit] = useState<Partial<VenueOffer> | null>(null);
@@ -427,6 +433,9 @@ function Offers({ club, onChange }: { club: FanClubAdminClub; onChange: () => vo
               {o.limit ? ` / ${o.limit}` : ''}
               {o.expiresAt ? ` · ${t('until {d}', { d: f.dateTime(o.expiresAt) })}` : ''}
             </p>
+            <p className="text-[11px] text-sky-300 mt-0.5" data-testid="offer-matches">
+              {o.matchIds?.length ? o.matchIds.map(matchLabel).join(', ') : t('Every match at this club')}
+            </p>
           </div>
           <Button size="sm" variant="ghost" onClick={() => setEdit({ ...o, startsAt: toLocal(o.startsAt), expiresAt: toLocal(o.expiresAt) })} aria-label={t('Edit')}><Pencil className="w-4 h-4" /></Button>
           <Button size="sm" variant="ghost" onClick={() => remove(o)} aria-label={t('Remove')}><Trash2 className="w-4 h-4" /></Button>
@@ -445,6 +454,25 @@ function Offers({ club, onChange }: { club: FanClubAdminClub; onChange: () => vo
               <Field label={t('Starts')} htmlFor="of-start"><input id="of-start" type="datetime-local" className={inputCls} value={edit.startsAt || ''} onChange={e => setEdit({ ...edit, startsAt: e.target.value })} /></Field>
               <Field label={t('Ends')} htmlFor="of-end"><input id="of-end" type="datetime-local" className={inputCls} value={edit.expiresAt || ''} onChange={e => setEdit({ ...edit, expiresAt: e.target.value })} /></Field>
             </div>
+            <Field label={t('Which matches')} hint={t('None ticked = every match at this club.')}>
+              <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-800 divide-y divide-slate-800">
+                {offerMatches.length === 0 && <p className="p-2 text-xs text-slate-500">{t('No upcoming matches.')}</p>}
+                {offerMatches.map(m => (
+                  <label key={m.id} className="flex items-center gap-2 p-2 text-sm text-slate-200">
+                    <input
+                      type="checkbox"
+                      className="accent-amber-400"
+                      checked={(edit.matchIds || []).includes(m.id)}
+                      onChange={e => setEdit({ ...edit, matchIds: e.target.checked ? [...(edit.matchIds || []), m.id] : (edit.matchIds || []).filter(x => x !== m.id) })}
+                      data-testid="offer-match"
+                      data-match={m.id}
+                    />
+                    <span className="flex-1">{matchLabel(m.id)}</span>
+                    <span className="text-xs text-slate-500">{f.dateTime(m.startsAt)}</span>
+                  </label>
+                ))}
+              </div>
+            </Field>
             <Button type="submit" loading={busy} data-testid="offer-save">{t('Save offer')}</Button>
           </form>
         )}

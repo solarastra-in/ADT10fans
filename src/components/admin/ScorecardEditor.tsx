@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Download, Plus, Trash2, Upload } from 'lucide-react';
 import type { BattingScorecardEntry, BowlingScorecardEntry, InningsScorecard, MatchScorecard, Team } from '../../types';
 import { Button, Field, Select, TextInput } from './ui';
 
@@ -64,7 +64,116 @@ function InningsEditor({ inn, onChange, batting, bowling }: { inn: InningsScorec
   );
 }
 
-export function ScorecardEditor({ value, onChange, teamA, teamB }: { value: MatchScorecard | undefined; onChange: (s: MatchScorecard) => void; teamA: Team; teamB: Team }) {
+/**
+ * CSV for a whole scorecard (one row per line, header first):
+ *   innings,kind,name,dismissal,runs,balls,fours,sixes,overs,maidens,wickets
+ *   kind "team": name = the batting team (id, short name or name); runs, overs, wickets = innings total
+ *   kind "bat":  a batter: name, dismissal, runs, balls, fours, sixes
+ *   kind "bowl": a bowler of the other team: name, overs, maidens, runs (conceded), wickets
+ */
+export const SCORECARD_CSV_HEADER = 'innings,kind,name,dismissal,runs,balls,fours,sixes,overs,maidens,wickets';
+
+function splitCsvLine(line: string): string[] {
+  const out: string[] = [];
+  let cell = '';
+  let q = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (q) {
+      if (ch === '"' && line[i + 1] === '"') { cell += '"'; i++; }
+      else if (ch === '"') q = false;
+      else cell += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ',') { out.push(cell); cell = ''; }
+    else cell += ch;
+  }
+  out.push(cell);
+  return out.map(c => c.trim());
+}
+
+export function scorecardFromCsv(text: string, teamA: Team, teamB: Team): { card: MatchScorecard; errors: string[] } {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const errors: string[] = [];
+  if (!lines.length) return { card: {}, errors: ['The file is empty'] };
+  const head = splitCsvLine(lines[0]).map(h => h.toLowerCase());
+  const col = (row: string[], k: string) => row[head.indexOf(k)] ?? '';
+  if (!head.includes('innings') || !head.includes('kind') || !head.includes('name')) return { card: {}, errors: [`The first line must be: ${SCORECARD_CSV_HEADER}`] };
+  const teamOf = (name: string) => [teamA, teamB].find(t => [t.id, t.short, t.name].some(x => x && x.toLowerCase() === name.toLowerCase()));
+  const inns: Record<1 | 2, InningsScorecard> = { 1: emptyInnings(''), 2: emptyInnings('') };
+  lines.slice(1).forEach((line, i) => {
+    const row = splitCsvLine(line);
+    const k = Number(col(row, 'innings')) === 2 ? 2 : Number(col(row, 'innings')) === 1 ? 1 : 0;
+    if (!k) return errors.push(`Line ${i + 2}: innings must be 1 or 2`);
+    const kind = col(row, 'kind').toLowerCase();
+    const name = col(row, 'name');
+    const inn = inns[k as 1 | 2];
+    if (kind === 'team') {
+      const t = teamOf(name);
+      if (!t) return errors.push(`Line ${i + 2}: unknown team "${name}"`);
+      inn.teamId = t.id;
+      inn.totalRuns = n(col(row, 'runs'));
+      inn.wickets = n(col(row, 'wickets'));
+      inn.overs = col(row, 'overs');
+    } else if (kind === 'bat') {
+      if (!name) return errors.push(`Line ${i + 2}: batter name missing`);
+      const runs = n(col(row, 'runs'));
+      const balls = n(col(row, 'balls'));
+      const dismissal = col(row, 'dismissal') || 'not out';
+      inn.batting.push({ batsman: name, dismissal, runs, balls, fours: n(col(row, 'fours')), sixes: n(col(row, 'sixes')), strikeRate: balls ? Math.round((runs / balls) * 1000) / 10 : 0, isNotOut: /not out/i.test(dismissal) });
+    } else if (kind === 'bowl') {
+      if (!name) return errors.push(`Line ${i + 2}: bowler name missing`);
+      inn.bowling.push({ bowler: name, overs: col(row, 'overs'), maidens: n(col(row, 'maidens')), runs: n(col(row, 'runs')), wickets: n(col(row, 'wickets')), economy: 0 });
+    } else errors.push(`Line ${i + 2}: kind must be team, bat or bowl`);
+  });
+  // An innings without a team row: the other team of the one given, or the default order.
+  if (!inns[1].teamId) inns[1].teamId = inns[2].teamId ? (inns[2].teamId === teamA.id ? teamB.id : teamA.id) : teamA.id;
+  if (!inns[2].teamId) inns[2].teamId = inns[1].teamId === teamA.id ? teamB.id : teamA.id;
+  return { card: { innings1: inns[1], innings2: inns[2] }, errors };
+}
+
+export function scorecardCsvTemplate(teamA: Team, teamB: Team): string {
+  const a = teamA.squad.slice(0, 2).map(p => p.name);
+  const b = teamB.squad.slice(0, 2).map(p => p.name);
+  return [
+    SCORECARD_CSV_HEADER,
+    `1,team,${teamA.short || teamA.id},,120,,,,10,,4`,
+    `1,bat,${a[0] || 'Batter one'},c ${b[0] || 'Fielder'} b ${b[1] || 'Bowler'},45,22,4,3,,,`,
+    `1,bat,${a[1] || 'Batter two'},not out,30,18,2,1,,,`,
+    `1,bowl,${b[1] || 'Bowler'},,,,,,2,0,18,1`,
+    `2,team,${teamB.short || teamB.id},,110,,,,10,,6`,
+    `2,bat,${b[0] || 'Batter three'},run out (${a[0] || 'Fielder'}),25,15,2,1,,,`,
+    `2,bowl,${a[1] || 'Bowler two'},,,,,,2,1,9,3`,
+  ].join('\n');
+}
+
+function CsvTools({ teamA, teamB, onLoad }: { teamA: Team; teamB: Team; onLoad: (c: MatchScorecard, errors: string[]) => void }) {
+  const read = (file: File | undefined) => {
+    if (!file) return;
+    file.text().then(text => {
+      const r = scorecardFromCsv(text, teamA, teamB);
+      onLoad(r.card, r.errors);
+    });
+  };
+  const download = () => {
+    const blob = new Blob([scorecardCsvTemplate(teamA, teamB)], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `scorecard-${teamA.id}-v-${teamB.id}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+  return (
+    <div className="flex flex-wrap gap-2">
+      <label className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700 px-3 py-1.5 text-xs font-bold text-slate-200 cursor-pointer">
+        <Upload className="w-4 h-4" /> Upload CSV
+        <input type="file" accept=".csv,text/csv,text/plain" className="sr-only" onChange={e => { read(e.target.files?.[0]); e.target.value = ''; }} data-testid="scorecard-csv" />
+      </label>
+      <Button size="sm" variant="ghost" icon={<Download className="w-4 h-4" />} onClick={download}>CSV template</Button>
+    </div>
+  );
+}
+
+export function ScorecardEditor({ value, onChange, teamA, teamB, onCsvErrors }: { value: MatchScorecard | undefined; onChange: (s: MatchScorecard) => void; teamA: Team; teamB: Team; onCsvErrors?: (errors: string[]) => void }) {
   const card = value || {};
   const first = card.innings1?.teamId === teamB.id ? teamB : teamA;
   const second = first.id === teamA.id ? teamB : teamA;
@@ -73,6 +182,7 @@ export function ScorecardEditor({ value, onChange, teamA, teamB }: { value: Matc
   const swap = () => onChange({ innings1: { ...inn2, teamId: second.id }, innings2: { ...inn1, teamId: first.id } });
   return (
     <div className="space-y-3">
+      <CsvTools teamA={teamA} teamB={teamB} onLoad={(c, errors) => { onChange(c); onCsvErrors?.(errors); }} />
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm font-bold text-white">1st innings: {first.name}</p>
         <Button size="sm" variant="ghost" onClick={swap}>Swap batting order</Button>

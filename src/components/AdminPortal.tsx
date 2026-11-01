@@ -28,6 +28,7 @@ import { EnvVariablesSection } from './admin/EnvVariablesSection';
 import { SquadEditorSection } from './admin/SquadEditorSection';
 import { FanClubsSection } from './admin/FanClubsSection';
 import { InstagramSection } from './admin/InstagramSection';
+import { ScorecardsSection } from './admin/ScorecardsSection';
 
 export type { AdminSectionId } from './admin/shared';
 
@@ -139,6 +140,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = props => {
         {section === 'squads' && <SquadEditorSection teams={scopedTeams} onRefreshAll={onRefreshAll} />}
         {section === 'handles' && <HandlesSection handles={handles} teams={scopedTeams} approvals={approvals} onRefreshAll={onRefreshAll} isTeamOfficial={isTeamOfficial} />}
         {section === 'feeds' && <FeedsSection feedItems={feedItems} teams={scopedTeams} onRefreshAll={onRefreshAll} isTeamOfficial={isTeamOfficial} />}
+        {section === 'scorecards' && <ScorecardsSection matches={matches} teams={teams} onSaved={onRefreshAll} />}
         {section === 'matches' && <MatchesSection matches={matches} teams={teams} settings={settings} onRefreshAll={onRefreshAll} />}
         {section === 'contests' && <ContestsSection contests={contests} matches={matches} teams={teams} onRefreshAll={onRefreshAll} />}
         {section === 'fantasy' && <FantasySection matches={matches} teams={teams} />}

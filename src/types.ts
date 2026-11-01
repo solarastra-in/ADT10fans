@@ -114,6 +114,8 @@ export interface VenueOffer {
   badge?: string;
   perk: string;
   bonusPoints?: number;
+  /** Only for these matches (empty = all of the club's matches). */
+  matchIds?: string[];
   limit?: number;
   redeemed?: number;
   remaining?: number | null;
@@ -228,6 +230,9 @@ export interface FanClubStatusResponse {
   checkedInRecord?: FanClubVisit | null;
   checkIns?: FanClubVisit[];
   gamesTeamId?: string | null;
+  /** Where the fan is checked in today (last 12 hours). */
+  todayVisit?: { fanClubId: string; fanClubName: string; city: string; matchId: string; matchNo: number; teamA?: string; teamB?: string; startsAt?: string; checkedInAt: string; pointsAwarded: number } | null;
+  todayOffers?: (VenueOffer & { used: boolean; clubName: string })[];
   fanClubCode?: string;
   qrPayload?: string;
   fanClubs: FanClub[];

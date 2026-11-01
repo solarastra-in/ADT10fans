@@ -11,7 +11,7 @@ import type {
   AdminFanPoints, PointsHistory, PointsEntry, PlayerWithForm, LineupPreset, MatchSwingInsights, PlayerDetail,
   ConnectionsState, GridState, StatQuestion, StatWarsResult, DuelView, FanPostView, FanPostKind, FanWallResponse, FanOfTheDayView,
   FanClub, FanClubCheckInRecord, FanClubStatusResponse, VenueOffer, FanClubAdminView, FanClubFanLookup, FanClubMatchRef, FanClubRedemption,
-  InstagramView, InstagramAdminView, TeamGamesView, Pick5View, MatchRegisteredTeamsResponse,
+  InstagramView, InstagramAdminView, TeamGamesView, Pick5View, MatchScorecard, MatchRegisteredTeamsResponse,
 } from './types';
 
 const TOKEN_KEY = 't10_auth_token';
@@ -312,6 +312,7 @@ export const api = {
   savePick5: (matchId: string, playerIds: string[], captainId: string) => post<Ok & { pick: Pick5View['pick'] }>(`/api/team-games/${encodeURIComponent(matchId)}/pick5`, { playerIds, captainId }),
   pick5Results: (matchId: string) => req<{ results: { rank: number; name: string; avatar: string; mine: boolean; points: number }[] }>(`/api/team-games/${encodeURIComponent(matchId)}/results`),
   adminScoreTeamGames: (matchId: string) => post<Ok & { settled: boolean; picksScored?: number }>(`/api/admin/team-games/${encodeURIComponent(matchId)}/score`),
+  adminSaveScorecard: (matchId: string, body: { scorecard: MatchScorecard; winner?: string; result?: string; complete?: boolean }) => post<Ok & { match: Match; fantasy?: any; teamGames?: { settled: boolean; picksScored?: number } }>(`/api/admin/matches/${encodeURIComponent(matchId)}/scorecard`, body),
   adminSeedPrizes: () => post<Ok & { added: { prizes: number; draws: number } }>('/api/admin/prizes/seed-official'),
 
   // ----- growth -----

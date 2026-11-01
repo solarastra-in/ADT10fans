@@ -1257,4 +1257,13 @@ export const hi: Record<string, string> = {
   "At a fan club? Show this to the venue admin": "फ़ैन क्लब में हैं? यह वेन्यू एडमिन को दिखाएँ",
   "Copy the post link": "पोस्ट का लिंक कॉपी करें",
   "They can confirm your Instagram and check you in. This screen moves on by itself.": "वे आपका Instagram पुष्टि करके आपका चेक-इन कर सकते हैं। यह स्क्रीन अपने आप आगे बढ़ेगी।",
+  "How Pick 5 points work": "Pick 5 के पॉइंट कैसे मिलते हैं",
+  "Scored from the official scorecard: runs, boundaries, strike rate, wickets, economy, catches, stumpings and run outs.": "आधिकारिक स्कोरकार्ड से: रन, बाउंड्री, स्ट्राइक रेट, विकेट, इकॉनमी, कैच, स्टंपिंग और रन आउट।",
+  "Pick 5 players from the team’s squad (once the playing XI is announced, only from the XI). One of them is your captain, who scores double.": "टीम के स्क्वॉड से 5 खिलाड़ी चुनें (प्लेइंग XI घोषित होने के बाद सिर्फ़ उसी से)। उनमें से एक आपका कप्तान है, जिसे दोगुने पॉइंट मिलते हैं।",
+  "Points come from the match scorecard: the live feed, or the scorecard entered by the team or league admins when live scores are not available.": "पॉइंट मैच स्कोरकार्ड से आते हैं: लाइव फ़ीड से, या लाइव स्कोर न होने पर टीम या लीग एडमिन द्वारा डाले गए स्कोरकार्ड से।",
+  "Each player’s points are added up; your fan points are the total ÷ {d}, rounded. A corrected scorecard re-scores every pick.": "हर खिलाड़ी के पॉइंट जोड़े जाते हैं; आपके फ़ैन पॉइंट = कुल ÷ {d}, राउंड करके। स्कोरकार्ड सुधरने पर हर टीम दोबारा स्कोर होती है।",
+  "Run outs: the fielder named in “run out (Name)” gets the points; two fielders share them.": "रन आउट: “run out (Name)” में लिखे फ़ील्डर को पॉइंट मिलते हैं; दो फ़ील्डर हों तो बँट जाते हैं।",
+  "Offers for you here today": "आज यहाँ आपके लिए ऑफ़र",
+  "Show your code at the desk to use it.": "इस्तेमाल करने के लिए डेस्क पर अपना कोड दिखाएँ।",
+  "No offers at this fan club for this match.": "इस मैच के लिए इस फ़ैन क्लब में कोई ऑफ़र नहीं।",
 };

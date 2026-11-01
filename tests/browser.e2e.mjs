@@ -285,7 +285,7 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
   ok(`${w}px the invited person accepts and lands in the Aces portal`, (await invitee.page.locator('[data-testid="team-portal"] h1').innerText()).includes('Arabian Aces'));
   await invitee.page.waitForSelector('[data-testid="team-overview"]');
   const portalSections = await invitee.page.locator('#team-portal-section option').evaluateAll(os => os.map(o => o.value));
-  ok(`${w}px team portal lists its sections`, portalSections.length === 10, portalSections);
+  ok(`${w}px team portal lists its sections`, portalSections.length === 11, portalSections);
   for (const s of portalSections) {
     await invitee.page.selectOption('#team-portal-section', s);
     await invitee.page.waitForTimeout(250);
@@ -412,6 +412,14 @@ for (const lang of ['ar', 'ur']) {
   await qrFan.page.waitForURL(u => new URL(u).pathname === '/team-games', { timeout: 20000 });
   await qrFan.page.waitForSelector('[data-testid="instagram-gate"]', { state: 'detached', timeout: 10000 });
   ok('the fan’s phone moves on by itself to the Aces games', qrFan.errors.length === 0, qrFan.errors);
+  await qrFan.page.waitForSelector('[data-testid="fanclub-today"]');
+  ok('the Aces page shows where the fan is checked in today', /Browser Lounge/.test(await qrFan.page.locator('[data-testid="fanclub-today"]').innerText()));
+  await qrFan.page.locator('[data-testid="pick5-rules"] button').first().click();
+  await qrFan.page.waitForTimeout(500);
+  ok('the Pick 5 rules list the scoreboard points (runs, wickets, run outs, strike rate)', /Run out/i.test(await qrFan.page.locator('[data-testid="pick5-rules"]').innerText()) && /Strike rate/i.test(await qrFan.page.locator('[data-testid="pick5-rules"]').innerText()) && (await noOverflow(qrFan.page)));
+  await go(qrFan.page, '/');
+  await qrFan.page.waitForSelector('[data-testid="aces-landing"]');
+  ok('a checked-in fan’s home page is the Arabian Aces page', (await qrFan.page.locator('[data-testid="aces-landing"]').count()) === 1 && qrFan.errors.length === 0, qrFan.errors);
   await qrFan.ctx.close();
 
   // Checked in at a fan club, the fan plays the Aces games.

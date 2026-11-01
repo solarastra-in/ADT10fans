@@ -91,10 +91,13 @@ export function currentMatch(store: AppStore, now = Date.now(), club?: FanClub |
   return { match: next, open: false, opensAt: next ? checkInWindow(store, next, now).opensAt : undefined };
 }
 
+/** Whether an offer applies to this match (offers without matches apply to all of the club's matches). */
+const offerForMatch = (o: VenueOffer, matchId?: string | null) => !o.matchIds?.length || (Boolean(matchId) && o.matchIds.includes(String(matchId)));
+
 const offerLive = (o: VenueOffer, now = Date.now()) =>
   o.active && (!o.startsAt || +new Date(o.startsAt) <= now) && (!o.expiresAt || +new Date(o.expiresAt) > now) && (!o.limit || (o.redeemed || 0) < o.limit);
 
-const publicOffer = (o: VenueOffer) => ({ id: o.id, fanClubId: o.fanClubId, title: o.title, description: o.description, badge: o.badge, perk: o.perk, bonusPoints: o.bonusPoints || 0, startsAt: o.startsAt, expiresAt: o.expiresAt, remaining: o.limit ? Math.max(0, o.limit - (o.redeemed || 0)) : null });
+const publicOffer = (o: VenueOffer) => ({ id: o.id, fanClubId: o.fanClubId, matchIds: o.matchIds || [], title: o.title, description: o.description, badge: o.badge, perk: o.perk, bonusPoints: o.bonusPoints || 0, startsAt: o.startsAt, expiresAt: o.expiresAt, remaining: o.limit ? Math.max(0, o.limit - (o.redeemed || 0)) : null });
 
 const publicClub = (c: FanClub, now = Date.now()) => ({
   id: c.id, name: c.name, city: c.city, country: c.country, address: c.address, region: c.region, capacity: c.capacity,
@@ -154,6 +157,17 @@ fanclubRouter.get('/fanclub/my-status', (req, res) => {
     checkedInRecord: cur.match ? user.fanClubCheckIns?.find(c => c.matchId === cur.match!.id) || null : null,
     checkIns: [...(user.fanClubCheckIns || [])].reverse().slice(0, 30),
     gamesTeamId: fanClubGamesTeam(store, user),
+    // Where the fan is checked in today (last 12 hours), and that club's offers for that match.
+    ...(() => {
+      const visit = store.fanClubCheckIns.find(c => c.userId === user.id && Date.now() - +new Date(c.checkedInAt) < 12 * 3600_000);
+      const club = visit && store.fanClubs.find(c => c.id === visit.fanClubId);
+      if (!visit || !club) return { todayVisit: null, todayOffers: [] };
+      const m = [...store.matches, ...(store.fanClubTestMatches || [])].find(x => x.id === visit.matchId);
+      return {
+        todayVisit: { fanClubId: club.id, fanClubName: club.name, city: club.city, matchId: visit.matchId, matchNo: visit.matchNo, teamA: m?.teamA, teamB: m?.teamB, startsAt: m?.startsAt, checkedInAt: visit.checkedInAt, pointsAwarded: visit.pointsAwarded },
+        todayOffers: club.offers.filter(o => offerLive(o, now) && offerForMatch(o, visit.matchId)).map(o => ({ ...publicOffer(o), clubName: club.name, used: claimed.has(o.id) })),
+      };
+    })(),
     activeOffers: clubs.flatMap(c => (c.offers || []).filter(o => offerLive(o, now)).map(o => ({ ...publicOffer(o), clubName: c.name, used: claimed.has(o.id) }))),
   });
 });
@@ -424,6 +438,7 @@ function readOffer(b: any, club: FanClub, existing: VenueOffer | null, by: strin
     perk: str(b.perk ?? existing?.perk, 80) || title,
     badge: str(b.badge ?? existing?.badge, 40) || undefined,
     bonusPoints: Math.max(0, Math.min(500, Math.round(num(b.bonusPoints ?? existing?.bonusPoints, 0)))),
+    matchIds: Array.isArray(b.matchIds) ? b.matchIds.map((x: unknown) => str(x, 80)).filter(Boolean).slice(0, 100) : existing?.matchIds || [],
     limit: Math.max(0, Math.round(num(b.limit ?? existing?.limit, 0))) || undefined,
     redeemed: existing?.redeemed || 0,
     startsAt,
@@ -576,7 +591,7 @@ fanclubRouter.get('/fanclub/admin/fan', requireFanClubs, (req, res) => {
     matchAtThisClub: match ? clubHasMatch(store, club, match) : false,
     checkedIn,
     checkedInHereToday: hereToday(store, fan, club.id),
-    offers: club.offers.filter(o => offerLive(o)).map(o => ({ ...publicOffer(o), used: claimed.has(o.id) })),
+    offers: club.offers.filter(o => offerLive(o) && offerForMatch(o, match?.id)).map(o => ({ ...publicOffer(o), used: claimed.has(o.id) })),
   });
 });
 
@@ -625,7 +640,7 @@ fanclubRouter.post('/fanclub/admin/checkin', requireFanClubs, wrap(async (req, r
     store.fanClubCheckIns.unshift(rec);
     if (store.fanClubCheckIns.length > 50_000) store.fanClubCheckIns.length = 50_000;
     fan.fanClubCheckIns.push({ matchId: match.id, matchNo: match.matchNo, fanClubId: club.id, fanClubName: club.name, checkedInAt: at, pointsAwarded: points });
-    return { ok: { pointsAwarded: points, fan: { id: fan.id, name: fan.name, avatar: fan.avatar, teamId: fan.teamId, points: fan.points }, match, checkInRecord: rec, offers: club.offers.filter(o => offerLive(o)).map(o => ({ ...publicOffer(o), used: (fan.claimedVenueOfferIds || []).includes(o.id) })) } };
+    return { ok: { pointsAwarded: points, fan: { id: fan.id, name: fan.name, avatar: fan.avatar, teamId: fan.teamId, points: fan.points }, match, checkInRecord: rec, offers: club.offers.filter(o => offerLive(o) && offerForMatch(o, match.id)).map(o => ({ ...publicOffer(o), used: (fan.claimedVenueOfferIds || []).includes(o.id) })) } };
   });
   if ('error' in r) return bad(res, r.error!, r.status);
   res.json({ success: true, ...r.ok });
@@ -663,13 +678,15 @@ fanclubRouter.post('/fanclub/admin/redeem-offer', requireFanClubs, wrap(async (r
     if (!offer) return { status: 404, error: 'This offer is not one of this club’s offers' };
     if (!offerLive(offer)) return { status: 409, error: 'This offer is not available now' };
     if (!hereToday(store, fan, club.id)) return { status: 409, error: `Check ${fan.name} in here first. Offers are for fans checked in at this club.` };
+    const visit = store.fanClubCheckIns.find(c => c.userId === fan.id && c.fanClubId === club.id && Date.now() - +new Date(c.checkedInAt) < 12 * 3600_000);
+    if (!offerForMatch(offer, visit?.matchId)) return { status: 409, error: 'This offer is for another match.' };
     fan.claimedVenueOfferIds ||= [];
     if (fan.claimedVenueOfferIds.includes(offer.id)) return { status: 409, error: `${fan.name} already used this offer.` };
     fan.claimedVenueOfferIds.push(offer.id);
     offer.redeemed = (offer.redeemed || 0) + 1;
     const bonus = offer.bonusPoints || 0;
     if (bonus) awardPoints(store, fan, bonus, 'fanclub-offer', `${offer.title} · ${club.name}`, offer.id, admin.email);
-    store.fanClubRedemptions.unshift({ id: 'fcr-' + crypto.randomUUID().slice(0, 10), userId: fan.id, userName: fan.name, fanClubId: club.id, offerId: offer.id, offerTitle: offer.title, matchId: currentMatch(store, Date.now(), club).match?.id, bonusPoints: bonus, adminId: admin.id, adminName: admin.name, at: new Date().toISOString() });
+    store.fanClubRedemptions.unshift({ id: 'fcr-' + crypto.randomUUID().slice(0, 10), userId: fan.id, userName: fan.name, fanClubId: club.id, offerId: offer.id, offerTitle: offer.title, matchId: visit?.matchId || currentMatch(store, Date.now(), club).match?.id, bonusPoints: bonus, adminId: admin.id, adminName: admin.name, at: new Date().toISOString() });
     if (store.fanClubRedemptions.length > 50_000) store.fanClubRedemptions.length = 50_000;
     return { ok: { message: `${offer.title}: redeemed for ${fan.name}.${bonus ? ` +${bonus} points.` : ''}`, offer: publicOffer(offer), bonusPoints: bonus, fan: { id: fan.id, name: fan.name, points: fan.points } } };
   });
