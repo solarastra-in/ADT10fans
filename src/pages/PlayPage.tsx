@@ -63,7 +63,6 @@ export default function PlayPage() {
               </div>
               <ChevronRight className="w-5 h-5 text-amber-400" />
             </div>
-            {onlyTeam && <p className="mt-3 text-xs text-amber-100">{t('You checked in at a fan club, so these are your games this season.')}</p>}
           </Card>
         </Link>
       )}

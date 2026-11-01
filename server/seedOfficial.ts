@@ -111,6 +111,12 @@ export function initializeStore(store: AppStore): boolean {
   if (removeUnverifiedSeeds(store)) changed = true;
   if (upgradeSignedBatPrizes(store)) changed = true;
   if (raisePrizeFloorOnce(store, now)) changed = true;
+  // November 2026: fan club check-in opens 45 minutes before the first ball (was 90).
+  if (!store.jobLog['fanclub:checkin-45']) {
+    if (!store.settings.fanClubCheckInOpensMins || store.settings.fanClubCheckInOpensMins === 90) store.settings.fanClubCheckInOpensMins = 45;
+    store.jobLog['fanclub:checkin-45'] = now;
+    changed = true;
+  }
   if (ensureMatchPredictions(store)) changed = true;
   if (ensureTeamGames(store)) changed = true;
   if (!store.jobLog['game-secret'] && !process.env.GAME_SECRET) {

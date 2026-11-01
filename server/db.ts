@@ -628,6 +628,10 @@ export interface SystemSettings {
   instagramHideVerifyComments?: boolean;
   /** Fan club check-in opens this many minutes before the first ball. */
   fanClubCheckInOpensMins?: number;
+  /** Offers can be redeemed from this many minutes after the first ball… */
+  fanClubOfferOpensAfterMins?: number;
+  /** …until the match ends: this long after the first ball (longer while it is still live). */
+  fanClubMatchMins?: number;
   /** The team whose games fan club fans get (the club's own franchise). */
   fanClubTeamId?: string;
 }
@@ -817,7 +821,11 @@ export interface VenueOffer {
   bonusPoints?: number;
   /** Only for these matches (empty = every match of the club). */
   matchIds?: string[];
-  /** How many fans may redeem it in total (0 or unset = no limit). */
+  /** How many times one fan can redeem it (default 1). */
+  perUserLimit?: number;
+  /** A picture of the offer (uploaded on the desk). */
+  imageUrl?: string;
+  /** How many times it can be redeemed in total at the venue (0 or unset = no limit). */
   limit?: number;
   redeemed?: number;
   startsAt?: string;
@@ -1155,7 +1163,9 @@ export function defaultSettings(): SystemSettings {
     instagramVerifyPostUrl: '',
     instagramHideVerifyComments: false,
     instagramWelcomePoints: 25,
-    fanClubCheckInOpensMins: 90,
+    fanClubCheckInOpensMins: 45,
+    fanClubOfferOpensAfterMins: 30,
+    fanClubMatchMins: 90,
     fanClubTeamId: 'aces',
     requireTwitterFollow: false,
     twitterTargetHandle: '@arabianacesT10',

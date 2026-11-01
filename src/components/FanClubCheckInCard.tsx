@@ -4,8 +4,8 @@ import { CheckCircle2, Gift, MapPin, QrCode, RefreshCw } from 'lucide-react';
 import { useApp } from '../state';
 import { api } from '../api';
 import { useT } from '../i18n';
-import { Link } from '../router';
 import { Button, Card, Countdown, Pill, Spinner, cx, useFormat } from './ui';
+import { FanOffers } from './FanOffers';
 import type { FanClubStatusResponse } from '../types';
 
 /**
@@ -56,7 +56,6 @@ export const FanClubCheckInCard: React.FC<{ compact?: boolean }> = ({ compact = 
   const m = status.openMatch;
   const a = m ? teamById(m.teamA) : null;
   const b = m ? teamById(m.teamB) : null;
-  const gamesTeam = status.gamesTeamId ? teamById(status.gamesTeamId) : null;
 
   return (
     <Card className="p-4 sm:p-5 space-y-4" data-testid="fanclub-card">
@@ -110,11 +109,11 @@ export const FanClubCheckInCard: React.FC<{ compact?: boolean }> = ({ compact = 
         </div>
       )}
 
-      {gamesTeam && (
-        <p className="text-xs rounded-xl border border-amber-400/30 bg-amber-400/10 text-amber-100 p-3">
-          {t('As a fan club member you play the {team} games.', { team: gamesTeam.name })}{' '}
-          <Link to="/play/team" className="font-bold underline">{t('Open them')}</Link>
-        </p>
+      {status.todayVisit && !!status.todayOffers?.length && (
+        <section className="space-y-2">
+          <h3 className="text-xs font-black uppercase tracking-wider text-slate-400">{t('Offers for you here today')}</h3>
+          <FanOffers offers={status.todayOffers} onChanged={load} />
+        </section>
       )}
 
       {!compact && (
@@ -146,7 +145,7 @@ export const FanClubCheckInCard: React.FC<{ compact?: boolean }> = ({ compact = 
             )}
           </section>
 
-          {!!status.activeOffers?.length && (
+          {!status.todayVisit && !!status.activeOffers?.length && (
             <section className="space-y-2">
               <h3 className="text-xs font-black uppercase tracking-wider text-slate-400">{t('Offers')}</h3>
               <ul className="space-y-2">
@@ -157,7 +156,7 @@ export const FanClubCheckInCard: React.FC<{ compact?: boolean }> = ({ compact = 
                       {o.used ? <Pill>{t('Used')}</Pill> : o.bonusPoints ? <Pill tone="amber">+{o.bonusPoints}</Pill> : null}
                     </div>
                     {o.description && <p className="text-xs text-slate-400 mt-1">{o.description}</p>}
-                    <p className="text-[11px] text-slate-500 mt-1">{o.clubName}{o.expiresAt ? ` · ${t('until {d}', { d: f.date(o.expiresAt) })}` : ''}</p>
+                    <p className="text-[11px] text-slate-500 mt-1">{o.clubName} · {t('Check in at the fan club to use it.')}</p>
                   </li>
                 ))}
               </ul>

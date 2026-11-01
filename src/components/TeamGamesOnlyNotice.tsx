@@ -1,19 +1,30 @@
-import React from 'react';
+import { useEffect } from 'react';
 import { api } from '../api';
 import { useApp, useLoad } from '../state';
-import { useT } from '../i18n';
-import { Link } from '../router';
+import { navigate } from '../router';
 
-/** Shown on other game pages to fans who checked in at a fan club: their games are the team games. */
-export function TeamGamesOnlyNotice() {
+/**
+ * Whether this fan plays only the team games right now: from their fan club check-in until that
+ * match ends. Other game links are hidden while it is true.
+ */
+export function useTeamGamesOnly(): boolean {
   const { user } = useApp();
-  const t = useT();
   const v = useLoad(() => (user?.fanClubCheckIns?.length ? api.teamGames() : Promise.resolve(null)), [user?.id, user?.fanClubCheckIns?.length]);
-  if (!v.data?.onlyTeamGames || !v.data.team) return null;
-  return (
-    <div className="rounded-2xl border border-amber-400/40 bg-amber-400/10 p-4 text-sm text-amber-100" data-testid="team-games-only-notice">
-      {t('As a fan club member you play the {team} games.', { team: v.data.team.name })}{' '}
-      <Link to="/team-games" className="font-black underline">{t('Go to the {team} games', { team: v.data.team.short })}</Link>
-    </div>
-  );
+  // Check again every minute, so the other games come back when the match ends.
+  useEffect(() => {
+    if (!user?.fanClubCheckIns?.length) return;
+    const id = setInterval(() => v.reload(), 60_000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.fanClubCheckIns?.length]);
+  return Boolean(v.data?.onlyTeamGames && v.data.team);
+}
+
+/** On other game pages: a fan checked in at a fan club goes to the team games instead. */
+export function TeamGamesOnlyNotice() {
+  const only = useTeamGamesOnly();
+  useEffect(() => {
+    if (only) navigate('/team-games', { replace: true });
+  }, [only]);
+  return null;
 }
