@@ -163,10 +163,26 @@ adminRouter.post('/admin/settings', requireAdmin('settings'), (req, res) => {
   if (b.fanWallReview !== undefined && ['photos', 'all', 'none'].includes(b.fanWallReview)) s.fanWallReview = b.fanWallReview;
   if (b.curatorApiKey !== undefined && b.curatorApiKey !== '********') s.curatorApiKey = str(b.curatorApiKey, 200);
   if (b.requireInstagramFollow !== undefined) s.requireInstagramFollow = Boolean(b.requireInstagramFollow);
-  if (b.instagramTargetHandle !== undefined) s.instagramTargetHandle = str(b.instagramTargetHandle, 80);
+  if (b.instagramTargetHandle !== undefined) {
+    const h = str(b.instagramTargetHandle, 80).replace(/^@/, '').toLowerCase();
+    if (h && !/^[a-z0-9._]{1,30}$/.test(h)) return bad(res, 'The Instagram account must be a username like @arabianacesofficial');
+    s.instagramTargetHandle = h ? '@' + h : '';
+  }
+  if (b.instagramVerifyPostUrl !== undefined) {
+    const u = str(b.instagramVerifyPostUrl, 300);
+    if (u && !/^https:\/\/(www\.)?instagram\.com\/(?:[\w.]+\/)?(p|reel|reels|tv)\/[A-Za-z0-9_-]+/i.test(u)) return bad(res, 'Paste the link of a post or reel, like https://www.instagram.com/p/ABC123/');
+    s.instagramVerifyPostUrl = u;
+  }
+  if (b.instagramHideVerifyComments !== undefined) s.instagramHideVerifyComments = Boolean(b.instagramHideVerifyComments);
+  if (b.fanClubCheckInOpensMins !== undefined) s.fanClubCheckInOpensMins = Math.max(15, Math.min(1440, Math.round(num(b.fanClubCheckInOpensMins, 90))));
+  if (b.fanClubTeamId !== undefined) {
+    const t = str(b.fanClubTeamId, 60);
+    if (t && !db.get().teams.some(x => x.id === t)) return bad(res, 'Choose one of the teams');
+    s.fanClubTeamId = t || 'aces';
+  }
   if (b.requireTwitterFollow !== undefined) s.requireTwitterFollow = Boolean(b.requireTwitterFollow);
   if (b.twitterTargetHandle !== undefined) s.twitterTargetHandle = str(b.twitterTargetHandle, 80);
-  if (b.fanClubCheckInPoints !== undefined) s.fanClubCheckInPoints = Math.max(10, Math.min(1000, Math.round(num(b.fanClubCheckInPoints, 100))));
+  if (b.fanClubCheckInPoints !== undefined) s.fanClubCheckInPoints = Math.max(0, Math.min(1000, Math.round(num(b.fanClubCheckInPoints, 100))));
   if (b.adminEmails !== undefined) {
     if (!isSuperAdmin(userOf(req))) return bad(res, 'Only a super admin can change who is an admin', 403);
     const list = (Array.isArray(b.adminEmails) ? b.adminEmails : String(b.adminEmails).split(','))
@@ -246,14 +262,15 @@ adminRouter.post('/admin/smtp/test', requireAdmin('settings'), wrap(async (req, 
 }));
 
 // ---------- admins (super admin only) ----------
-const ROLES: AdminRole[] = ['superadmin', 'league_admin', 'contest_admin', 'winner_admin', 'social_admin', 'team_official', 'custom'];
+const ROLES: AdminRole[] = ['superadmin', 'league_admin', 'contest_admin', 'winner_admin', 'social_admin', 'team_official', 'fanclub_admin', 'custom'];
 const ROLE_PRESETS: Record<AdminRole, AdminPermission[]> = {
   superadmin: ['all'],
-  league_admin: ['leagues', 'matches', 'teams', 'contests', 'fantasy', 'games', 'notifications', 'fanspaces', 'growth', 'community'],
+  league_admin: ['leagues', 'matches', 'teams', 'contests', 'fantasy', 'games', 'notifications', 'fanspaces', 'growth', 'community', 'fanclubs'],
   contest_admin: ['contests', 'fantasy', 'games'],
   winner_admin: ['winners', 'draws', 'prizes'],
   social_admin: ['feeds', 'social', 'community'],
   team_official: TEAM_OFFICIAL_PERMISSIONS,
+  fanclub_admin: ['fanclubs'],
   custom: [],
 };
 
@@ -273,7 +290,12 @@ adminRouter.post('/admin/admins', requireSuperAdmin, (req, res) => {
   const store = db.get();
   let permissions: AdminPermission[];
   let teamId: string | null = null;
-  if (role === 'team_official') {
+  let fanClubIds: string[] | undefined;
+  if (role === 'fanclub_admin') {
+    fanClubIds = (Array.isArray(req.body?.fanClubIds) ? req.body.fanClubIds : []).map((x: unknown) => str(x, 80)).filter((id: string) => store.fanClubs.some(c => c.id === id));
+    if (!fanClubIds!.length) return bad(res, 'Choose the fan club(s) this admin runs');
+    permissions = ['fanclubs'];
+  } else if (role === 'team_official') {
     teamId = str(req.body?.teamId, 60) || null;
     if (!teamId || !store.teams.some(t => t.id === teamId)) return bad(res, 'Choose the team this official manages');
     permissions = (Array.isArray(req.body?.permissions) ? req.body.permissions : TEAM_OFFICIAL_PERMISSIONS).filter((p: AdminPermission) => TEAM_OFFICIAL_PERMISSIONS.includes(p));
@@ -289,7 +311,7 @@ adminRouter.post('/admin/admins', requireSuperAdmin, (req, res) => {
   const caller = userOf(req);
   const now = new Date().toISOString();
   const idx = store.adminUsers.findIndex(a => a.email.toLowerCase() === email);
-  const rec = { email, name: str(req.body?.name, 80) || email.split('@')[0], role, permissions, teamId, isSuperAdmin: role === 'superadmin', addedBy: idx >= 0 ? store.adminUsers[idx].addedBy : caller.email, addedAt: idx >= 0 ? store.adminUsers[idx].addedAt : now, updatedAt: now };
+  const rec = { email, name: str(req.body?.name, 80) || email.split('@')[0], role, permissions, teamId, ...(fanClubIds ? { fanClubIds } : {}), isSuperAdmin: role === 'superadmin', addedBy: idx >= 0 ? store.adminUsers[idx].addedBy : caller.email, addedAt: idx >= 0 ? store.adminUsers[idx].addedAt : now, updatedAt: now };
   if (idx >= 0) store.adminUsers[idx] = rec;
   else store.adminUsers.push(rec);
   store.settings.adminEmails = (store.settings.adminEmails || []).filter(e => e !== email);

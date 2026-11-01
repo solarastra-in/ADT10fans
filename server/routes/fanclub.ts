@@ -1,303 +1,552 @@
 import crypto from 'crypto';
 import { Router } from 'express';
-import { db, FanClub, FanClubCheckInRecord, VenueOffer } from '../db';
-import { getAuthUser, requireAdmin, requireUser, selfUser } from '../auth';
-import { bad, str, userOf, wrap } from '../http';
+import { db, AppStore, FanClub, FanClubCheckInRecord, Match, User, VenueOffer } from '../db';
+import { canManageFanClub, fanClubScopeOf, getAuthUser, hasPermission, requireAdmin, requireUser } from '../auth';
+import { bad, num, str, userOf, wrap } from '../http';
 import { awardPoints } from '../points';
-import { OFFICIAL_FAN_CLUBS } from '../data/officialVenues';
+import { gateSettings, isVerified, needsInstagram } from '../instagramGate';
 
+/**
+ * Fan clubs: places where fans watch matches together (a venue, a supporters' chapter).
+ *
+ * Nothing is built in: league admins (permission 'fanclubs') add the clubs, by hand or by importing
+ * a list, and name each club's fan club admins. A fan club admin runs only their own clubs: they
+ * edit the club and its offers, check fans in on matchdays (each check-in gives the fan points) and
+ * redeem offers.
+ *
+ * A fan checks in by showing their fan club code (or its QR). One check-in per fan per match, during
+ * the check-in window (opens fanClubCheckInOpensMins before the first ball, closes when the match is
+ * over). Every fan must have passed the Instagram check first.
+ */
 export const fanclubRouter = Router();
 
-/**
- * Returns deterministic or existing 6-character fan club check-in code.
- */
-export function getOrCreateFanClubCode(userId: string, existing?: string): string {
-  if (existing && existing.length >= 6) return existing.toUpperCase();
-  const hash = crypto.createHash('md5').update(userId + 'aces-fanclub').digest('hex').toUpperCase();
-  return (hash.slice(0, 2) + hash.slice(4, 8)); // e.g. "AA8F2B"
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const QR_PREFIX = 'ADT10FC:';
+
+function randomCode() {
+  return Array.from(crypto.randomBytes(6), b => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
 }
 
-/**
- * Returns all active fan clubs across Hyderabad, UAE, and international chapters.
- */
-fanclubRouter.get('/fanclub/clubs', (_req, res) => {
-  const store = db.get();
-  const clubs = store.fanClubs.length > 0 ? store.fanClubs : OFFICIAL_FAN_CLUBS;
-  res.json({ clubs: clubs.filter(c => c.active) });
+/** The fan's check-in code, created on first use. Random, so it can't be worked out from the account. */
+export function ensureFanClubCode(store: AppStore, user: User): string {
+  if (user.fanClubCode && /^[A-Z2-9]{6}$/.test(user.fanClubCode) && !legacyCode(user)) return user.fanClubCode;
+  let code = randomCode();
+  while (store.users.some(u => u.fanClubCode === code)) code = randomCode();
+  user.fanClubCode = code;
+  return code;
+}
+/** Codes from an earlier build were derived from the account id (guessable): replace them. */
+function legacyCode(user: User) {
+  const h = crypto.createHash('md5').update(user.id + 'aces-fanclub').digest('hex').toUpperCase();
+  return user.fanClubCode === h.slice(0, 2) + h.slice(4, 8);
+}
+
+const codeFrom = (raw: unknown) => {
+  const s = String(raw ?? '').trim().toUpperCase();
+  const m = s.startsWith(QR_PREFIX) ? s.slice(QR_PREFIX.length) : s;
+  return /^[A-Z2-9]{6}$/.test(m) ? m : null;
+};
+
+const opensMins = (store: AppStore) => Math.max(15, Math.min(24 * 60, store.settings.fanClubCheckInOpensMins || 90));
+
+/** Whether check-in is open for this match now. */
+export function checkInWindow(store: AppStore, m: Match, now = Date.now()) {
+  const start = +new Date(m.startsAt);
+  const opensAt = start - opensMins(store) * 60_000;
+  const closesAt = m.status === 'completed' ? (m.updatedAt ? +new Date(m.updatedAt) : start) + 30 * 60_000 : start + 4 * 3600_000;
+  return { open: now >= opensAt && now <= closesAt && m.status !== 'abandoned', opensAt: new Date(opensAt).toISOString(), closesAt: new Date(closesAt).toISOString() };
+}
+
+/** The match fans would check in for now: the one whose window is open (earliest first), else the next one. */
+export function currentMatch(store: AppStore, now = Date.now()): { match: Match | null; open: boolean; opensAt?: string } {
+  const sorted = [...store.matches].sort((a, b) => +new Date(a.startsAt) - +new Date(b.startsAt));
+  const open = sorted.find(m => checkInWindow(store, m, now).open);
+  if (open) return { match: open, open: true };
+  const next = sorted.find(m => +new Date(m.startsAt) > now && m.status !== 'completed' && m.status !== 'abandoned') || null;
+  return { match: next, open: false, opensAt: next ? checkInWindow(store, next, now).opensAt : undefined };
+}
+
+const offerLive = (o: VenueOffer, now = Date.now()) =>
+  o.active && (!o.startsAt || +new Date(o.startsAt) <= now) && (!o.expiresAt || +new Date(o.expiresAt) > now) && (!o.limit || (o.redeemed || 0) < o.limit);
+
+const publicOffer = (o: VenueOffer) => ({ id: o.id, fanClubId: o.fanClubId, title: o.title, description: o.description, badge: o.badge, perk: o.perk, bonusPoints: o.bonusPoints || 0, startsAt: o.startsAt, expiresAt: o.expiresAt, remaining: o.limit ? Math.max(0, o.limit - (o.redeemed || 0)) : null });
+
+const publicClub = (c: FanClub, now = Date.now()) => ({
+  id: c.id, name: c.name, city: c.city, country: c.country, address: c.address, region: c.region, capacity: c.capacity,
+  checkInPoints: pointsFor(db.get(), c), gamesMode: c.gamesMode || 'team',
+  offers: (c.offers || []).filter(o => offerLive(o, now)).map(publicOffer),
 });
 
+export const pointsFor = (store: AppStore, c: FanClub) => Math.max(0, Math.round(c.checkInPoints ?? store.settings.fanClubCheckInPoints ?? 100));
+
 /**
- * Fan's personal check-in status, open match window (90 mins prior to match start),
- * QR code payload, and available venue offers.
+ * The team whose games this fan plays, when they are a fan club fan: anyone who has checked in at a
+ * club with gamesMode 'team' gets only that team's games (Admin → Settings → fan club team). null =
+ * every game.
  */
+export function fanClubGamesTeam(store: AppStore, user: User | null | undefined): string | null {
+  if (!user || user.role === 'admin' || !user.fanClubCheckIns?.length) return null;
+  const teamId = store.settings.fanClubTeamId || 'aces';
+  if (!store.teams.some(t => t.id === teamId)) return null;
+  const clubs = new Map(store.fanClubs.map(c => [c.id, c]));
+  return user.fanClubCheckIns.some(ci => (clubs.get(ci.fanClubId)?.gamesMode || 'team') === 'team') ? teamId : null;
+}
+
+// ---------- Fans ----------
+
+fanclubRouter.get('/fanclub/clubs', (_req, res) => {
+  const now = Date.now();
+  res.json({ clubs: db.get().fanClubs.filter(c => c.active).map(c => publicClub(c, now)) });
+});
+
+/** The fan's code, the match they can check in for, their check-ins and the offers they can use. */
 fanclubRouter.get('/fanclub/my-status', (req, res) => {
   const user = getAuthUser(req);
   const store = db.get();
   const now = Date.now();
-  const fanClubs = store.fanClubs.length > 0 ? store.fanClubs : OFFICIAL_FAN_CLUBS;
-
-  // Find the next upcoming or live match
-  const upcomingMatches = [...store.matches]
-    .filter(m => m.status === 'upcoming' || m.status === 'live')
-    .sort((a, b) => +new Date(a.startsAt) - +new Date(b.startsAt));
-
-  const targetMatch = upcomingMatches[0] || store.matches[0] || null;
-
-  let checkInWindowActive = false;
-  let minutesToMatch: number | null = null;
-
-  if (targetMatch) {
-    const matchStartMs = +new Date(targetMatch.startsAt);
-    minutesToMatch = Math.round((matchStartMs - now) / 60_000);
-    // Window opens 90 minutes before scheduled start time and stays open while match is live (up to 3 hours after start)
-    checkInWindowActive = minutesToMatch <= 90 && minutesToMatch >= -180;
-  }
-
-  const fanClubCode = user ? getOrCreateFanClubCode(user.id, user.fanClubCode) : 'GUEST1';
-  if (user && !user.fanClubCode) {
-    user.fanClubCode = fanClubCode;
+  const cur = currentMatch(store, now);
+  const clubs = store.fanClubs.filter(c => c.active);
+  const base = {
+    openMatch: cur.match,
+    checkInWindowActive: cur.open,
+    opensAt: cur.opensAt || null,
+    opensMinutesBefore: opensMins(store),
+    fanClubs: clubs.map(c => publicClub(c, now)),
+  };
+  if (!user) return res.json({ ...base, signedIn: false });
+  if (needsInstagram(store, user)) return res.json({ ...base, signedIn: true, instagramRequired: true });
+  let code = user.fanClubCode;
+  if (!code || !/^[A-Z2-9]{6}$/.test(code) || legacyCode(user)) {
+    code = ensureFanClubCode(store, user);
     db.save();
   }
-
-  const qrPayload = JSON.stringify({
-    type: 'adt10-fanclub-checkin',
-    userId: user?.id || 'guest',
-    code: fanClubCode,
-    name: user?.name || 'Fan',
-    issuedAt: now,
-  });
-
-  const checkedInRecord = user && targetMatch
-    ? user.fanClubCheckIns?.find(c => c.matchId === targetMatch.id) || null
-    : null;
-
-  const claimedOfferIds = new Set(user?.claimedVenueOfferIds || []);
-
-  const allOffers: (VenueOffer & { redeemed: boolean })[] = fanClubs.flatMap(fc =>
-    (fc.offers || []).map(o => ({
-      ...o,
-      redeemed: claimedOfferIds.has(o.id),
-    }))
-  );
-
+  const claimed = new Set(user.claimedVenueOfferIds || []);
   res.json({
-    openMatch: targetMatch,
-    checkInWindowActive,
-    minutesToMatch,
-    checkedIn: Boolean(checkedInRecord),
-    checkedInRecord,
-    fanClubCode,
-    qrPayload,
-    fanClubs: fanClubs.filter(c => c.active),
-    activeOffers: allOffers,
+    ...base,
+    signedIn: true,
+    fanClubCode: code,
+    qrPayload: QR_PREFIX + code,
+    checkedIn: Boolean(cur.match && user.fanClubCheckIns?.some(c => c.matchId === cur.match!.id)),
+    checkedInRecord: cur.match ? user.fanClubCheckIns?.find(c => c.matchId === cur.match!.id) || null : null,
+    checkIns: [...(user.fanClubCheckIns || [])].reverse().slice(0, 30),
+    gamesTeamId: fanClubGamesTeam(store, user),
+    activeOffers: clubs.flatMap(c => (c.offers || []).filter(o => offerLive(o, now)).map(o => ({ ...publicOffer(o), clubName: c.name, redeemed: claimed.has(o.id) }))),
   });
 });
 
-/**
- * Records when a user follows the official Instagram or X account, awarding welcome points.
- */
-fanclubRouter.post('/fanclub/social-verify', requireUser, wrap(async (req, res) => {
+/** A fan asks for a new code (e.g. a screenshot of theirs was shared). */
+fanclubRouter.post('/fanclub/my-code/renew', requireUser, (req, res) => {
   const user = userOf(req);
   const store = db.get();
-  const platform = str(req.body?.platform, 20); // 'instagram' | 'twitter'
-  const handle = str(req.body?.handle, 80);
-
-  if (!handle) return bad(res, 'Please provide your social handle');
-
-  let awarded = 0;
-  if (!user.badges) user.badges = [];
-
-  if (platform === 'instagram') {
-    user.instagramFollowed = true;
-    user.instagramHandle = handle.startsWith('@') ? handle : `@${handle}`;
-    if (!user.badges.includes('social-instagram')) {
-      user.badges.push('social-instagram');
-      awarded = 25;
-      awardPoints(store, user, awarded, 'social-follow', 'Welcome to Arabian Aces on Instagram', user.id);
-    }
-  } else if (platform === 'twitter' || platform === 'x') {
-    user.xFollowed = true;
-    user.xHandle = handle.startsWith('@') ? handle : `@${handle}`;
-    if (!user.badges.includes('social-twitter')) {
-      user.badges.push('social-twitter');
-      awarded = 25;
-      awardPoints(store, user, awarded, 'social-follow', 'Welcome to Arabian Aces on X', user.id);
-    }
-  }
-
+  user.fanClubCode = undefined;
+  const code = ensureFanClubCode(store, user);
   db.save();
-  res.json({ success: true, pointsAwarded: awarded, user: selfUser(user) });
-}));
+  res.json({ fanClubCode: code, qrPayload: QR_PREFIX + code });
+});
 
-/**
- * Fan Club Venue Admin checks in a fan via scanned QR payload or 6-char code.
- */
-fanclubRouter.post('/fanclub/admin/checkin', requireUser, wrap(async (req, res) => {
-  const admin = userOf(req);
+// ---------- Fan club admins ----------
+
+const requireFanClubs = requireAdmin('fanclubs');
+const leagueWide = (u: User) => hasPermission(u, 'fanclubs') && fanClubScopeOf(u) === null;
+
+function clubFor(req: any, res: any, id: unknown): FanClub | null {
+  const user = userOf(req);
+  const club = db.get().fanClubs.find(c => c.id === String(id || ''));
+  if (!club) {
+    bad(res, 'Fan club not found', 404);
+    return null;
+  }
+  if (!canManageFanClub(user, club.id)) {
+    bad(res, 'You do not run this fan club', 403);
+    return null;
+  }
+  return club;
+}
+
+const adminsOf = (store: AppStore, clubId: string) =>
+  store.adminUsers.filter(a => a.role === 'fanclub_admin' && (a.fanClubIds || []).includes(clubId)).map(a => ({ email: a.email, name: a.name || a.email }));
+
+/** The clubs this admin runs (every club for league admins), with offers, admins and today's numbers. */
+fanclubRouter.get('/fanclub/admin/clubs', requireFanClubs, (req, res) => {
+  const user = userOf(req);
   const store = db.get();
-  const { qrPayload, code, fanClubId, matchId: explicitMatchId } = req.body || {};
+  const scope = fanClubScopeOf(user);
+  const clubs = store.fanClubs.filter(c => scope === null || scope.includes(c.id));
+  const today = new Date().toISOString().slice(0, 10);
+  const cur = currentMatch(store);
+  res.json({
+    leagueWide: scope === null,
+    defaultCheckInPoints: store.settings.fanClubCheckInPoints ?? 100,
+    opensMinutesBefore: opensMins(store),
+    currentMatch: cur.match,
+    checkInOpen: cur.open,
+    opensAt: cur.opensAt || null,
+    matches: [...store.matches].sort((a, b) => +new Date(a.startsAt) - +new Date(b.startsAt)).map(m => ({ id: m.id, matchNo: m.matchNo, teamA: m.teamA, teamB: m.teamB, startsAt: m.startsAt, status: m.status, open: checkInWindow(store, m).open })),
+    clubs: clubs.map(c => ({
+      ...c,
+      checkInPoints: c.checkInPoints ?? null,
+      effectiveCheckInPoints: pointsFor(store, c),
+      gamesMode: c.gamesMode || 'team',
+      admins: adminsOf(store, c.id),
+      totalCheckIns: store.fanClubCheckIns.filter(x => x.fanClubId === c.id).length,
+      todayCheckIns: store.fanClubCheckIns.filter(x => x.fanClubId === c.id && x.checkedInAt.slice(0, 10) === today).length,
+    })),
+  });
+});
 
-  const selectedFanClubId = str(fanClubId, 80);
-  if (!selectedFanClubId) return bad(res, 'Please select your active fan club station');
-
-  const fanClubs = store.fanClubs.length > 0 ? store.fanClubs : OFFICIAL_FAN_CLUBS;
-  const club = fanClubs.find(c => c.id === selectedFanClubId);
-  if (!club) return bad(res, 'Fan club station not recognized');
-
-  // Resolve fan from QR payload or 6-char code
-  let targetUserId: string | null = null;
-  let targetCode = str(code, 20)?.toUpperCase();
-
-  if (qrPayload) {
-    try {
-      const parsed = typeof qrPayload === 'string' ? JSON.parse(qrPayload) : qrPayload;
-      if (parsed.userId) targetUserId = parsed.userId;
-      if (parsed.code) targetCode = String(parsed.code).toUpperCase();
-    } catch {
-      // If raw payload is simply the 6-character code
-      targetCode = str(qrPayload, 20)?.toUpperCase();
-    }
-  }
-
-  const fan = store.users.find(u =>
-    (targetUserId && u.id === targetUserId) ||
-    (targetCode && u.fanClubCode && u.fanClubCode.toUpperCase() === targetCode) ||
-    (targetCode && getOrCreateFanClubCode(u.id) === targetCode)
-  );
-
-  if (!fan) {
-    return bad(res, 'Fan not found. Please verify the QR code or 6-character code.');
-  }
-
-  // Find target match
-  let match = explicitMatchId ? store.matches.find(m => m.id === explicitMatchId) : null;
-  if (!match) {
-    const upcoming = [...store.matches]
-      .filter(m => m.status === 'upcoming' || m.status === 'live')
-      .sort((a, b) => +new Date(a.startsAt) - +new Date(b.startsAt));
-    match = upcoming[0] || store.matches[0];
-  }
-
-  if (!match) return bad(res, 'No active match scheduled for check-in');
-
-  // Check 90-minute window
-  const now = Date.now();
-  const matchStartMs = +new Date(match.startsAt);
-  const minutesToMatch = Math.round((matchStartMs - now) / 60_000);
-
-  // Allow check-in if within 90 minutes before match or during live match
-  if (minutesToMatch > 90) {
-    return bad(res, `Check-in window opens 90 minutes before the match (in ${minutesToMatch - 90} minutes).`);
-  }
-
-  if (minutesToMatch < -240 && match.status === 'completed') {
-    return bad(res, 'Check-in window for this match has already concluded.');
-  }
-
-  // Check if fan has already checked in for this match
-  if (!fan.fanClubCheckIns) fan.fanClubCheckIns = [];
-  const alreadyCheckedIn = fan.fanClubCheckIns.some(c => c.matchId === match!.id);
-  if (alreadyCheckedIn) {
-    return bad(res, `${fan.name} is already checked in for Match ${match.matchNo} at ${club.name}.`);
-  }
-
-  // Award check-in points (100 pts default or admin-configured)
-  const points = store.settings.fanClubCheckInPoints || 100;
-  awardPoints(store, fan, points, 'fanclub-checkin', `Fan Club Matchday Check-In (${club.name}) · Match ${match.matchNo}`, match.id);
-
-  const checkInRecord: FanClubCheckInRecord = {
-    id: 'fcc-' + crypto.randomUUID().slice(0, 10),
-    userId: fan.id,
-    userName: fan.name,
-    userAvatar: fan.avatar,
-    userTeamId: fan.teamId,
-    fanClubId: club.id,
-    fanClubName: club.name,
-    matchId: match.id,
-    matchNo: match.matchNo,
-    adminId: admin.id,
-    adminName: admin.name,
-    pointsAwarded: points,
-    checkedInAt: new Date().toISOString(),
+function readClub(b: any, existing: FanClub | null, by: string): FanClub | string {
+  const name = str(b.name ?? existing?.name, 120);
+  const city = str(b.city ?? existing?.city, 60);
+  const country = str(b.country ?? existing?.country, 60);
+  const address = str(b.address ?? existing?.address, 200);
+  if (!name || !city || !country) return 'Name, city and country are required';
+  const pts = b.checkInPoints === '' || b.checkInPoints === null ? undefined : b.checkInPoints !== undefined ? Math.max(0, Math.min(1000, Math.round(num(b.checkInPoints, 0)))) : existing?.checkInPoints;
+  const now = new Date().toISOString();
+  return {
+    id: existing?.id || `fc-${(city + '-' + name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40)}-${crypto.randomUUID().slice(0, 6)}`,
+    name, city, country, address,
+    region: str(b.region ?? existing?.region, 40) || undefined,
+    capacity: b.capacity !== undefined && b.capacity !== '' ? Math.max(0, Math.round(num(b.capacity, 0))) || undefined : existing?.capacity,
+    contactPerson: str(b.contactPerson ?? existing?.contactPerson, 100) || undefined,
+    active: b.active !== undefined ? Boolean(b.active) : existing?.active ?? true,
+    offers: existing?.offers || [],
+    checkInPoints: pts,
+    gamesMode: b.gamesMode === 'all' ? 'all' : b.gamesMode === 'team' ? 'team' : existing?.gamesMode || 'team',
+    createdBy: existing?.createdBy || by,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
   };
+}
 
-  if (!store.fanClubCheckIns) store.fanClubCheckIns = [];
-  store.fanClubCheckIns.unshift(checkInRecord);
-
-  fan.fanClubCheckIns.push({
-    matchId: match.id,
-    matchNo: match.matchNo,
-    fanClubId: club.id,
-    fanClubName: club.name,
-    checkedInAt: checkInRecord.checkedInAt,
-    pointsAwarded: points,
-  });
-
-  db.save();
-
-  res.json({
-    success: true,
-    pointsAwarded: points,
-    fan: {
-      id: fan.id,
-      name: fan.name,
-      avatar: fan.avatar,
-      teamId: fan.teamId,
-      points: fan.points,
-      fanClubCode: fan.fanClubCode,
-    },
-    fanClub: club,
-    match,
-    checkInRecord,
-  });
-}));
-
-/**
- * Redeems a one-time venue offer for a fan. Once claimed, it cannot be redeemed again.
- */
-fanclubRouter.post('/fanclub/admin/redeem-offer', requireUser, wrap(async (req, res) => {
+/** Add a club (league admins) or edit one (league admins, or that club's own admins). */
+fanclubRouter.post('/fanclub/admin/clubs', requireFanClubs, (req, res) => {
+  const user = userOf(req);
   const store = db.get();
-  const { userId, offerId, fanClubId } = req.body || {};
+  const b = req.body || {};
+  let existing: FanClub | null = null;
+  if (b.id) {
+    existing = clubFor(req, res, b.id);
+    if (!existing) return;
+  } else if (!leagueWide(user)) return bad(res, 'Only league admins can add fan clubs', 403);
+  const club = readClub(b, existing, user.email);
+  if (typeof club === 'string') return bad(res, club);
+  // A fan club admin may not change how their club's fans play.
+  if (existing && !leagueWide(user)) club.gamesMode = existing.gamesMode || 'team';
+  if (existing) store.fanClubs[store.fanClubs.indexOf(existing)] = club;
+  else store.fanClubs.push(club);
+  db.save();
+  res.json({ success: true, club });
+});
 
-  const fan = store.users.find(u => u.id === userId);
-  if (!fan) return bad(res, 'Fan not found', 404);
-
-  const fanClubs = store.fanClubs.length > 0 ? store.fanClubs : OFFICIAL_FAN_CLUBS;
-  const club = fanClubs.find(c => c.id === fanClubId);
-  const offer = club?.offers.find(o => o.id === offerId) || fanClubs.flatMap(c => c.offers).find(o => o.id === offerId);
-
-  if (!offer) return bad(res, 'Venue offer not found', 404);
-
-  if (!fan.claimedVenueOfferIds) fan.claimedVenueOfferIds = [];
-  if (fan.claimedVenueOfferIds.includes(offer.id)) {
-    return bad(res, 'This offer has already been claimed by this fan and cannot be used again.');
+fanclubRouter.delete('/fanclub/admin/clubs/:id', requireFanClubs, (req, res) => {
+  const user = userOf(req);
+  if (!leagueWide(user)) return bad(res, 'Only league admins can remove fan clubs', 403);
+  const store = db.get();
+  const club = store.fanClubs.find(c => c.id === req.params.id);
+  if (!club) return bad(res, 'Fan club not found', 404);
+  if (store.fanClubCheckIns.some(c => c.fanClubId === club.id)) {
+    // Keep the history of check-ins (and the points they gave) intact.
+    club.active = false;
+    db.save();
+    return res.json({ success: true, deactivated: true, note: 'Fans have checked in here, so the club was switched off instead of deleted.' });
   }
-
-  fan.claimedVenueOfferIds.push(offer.id);
+  store.fanClubs = store.fanClubs.filter(c => c !== club);
+  for (const a of store.adminUsers) if (a.fanClubIds) a.fanClubIds = a.fanClubIds.filter(id => id !== club.id);
   db.save();
-
-  res.json({
-    success: true,
-    message: `Offer "${offer.title}" verified and redeemed for ${fan.name}!`,
-    offer,
-    fan: selfUser(fan),
-  });
-}));
+  res.json({ success: true });
+});
 
 /**
- * Returns recent check-ins and stats for a specific venue station.
+ * Import or update clubs in one go (league admins): a JSON list, or CSV with a header row
+ * name,city,country,address,region,capacity,contactPerson,checkInPoints,gamesMode. A row whose name
+ * and city match an existing club updates it. Offers may be given per club in JSON.
  */
-fanclubRouter.get('/fanclub/admin/stats', requireUser, wrap(async (req, res) => {
+fanclubRouter.post('/fanclub/admin/import', requireFanClubs, (req, res) => {
+  const user = userOf(req);
+  if (!leagueWide(user)) return bad(res, 'Only league admins can import fan clubs', 403);
   const store = db.get();
-  const fanClubId = str(req.query.fanClubId, 80);
+  let rows: any[] = [];
+  if (Array.isArray(req.body?.clubs)) rows = req.body.clubs;
+  else if (typeof req.body?.csv === 'string') rows = parseCsv(req.body.csv);
+  else return bad(res, 'Send a list of clubs or CSV text');
+  if (!rows.length) return bad(res, 'Nothing to import');
+  if (rows.length > 500) return bad(res, 'Import at most 500 clubs at a time');
+  const errors: string[] = [];
+  let added = 0;
+  let updated = 0;
+  let offers = 0;
+  rows.forEach((r, i) => {
+    const key = `${String(r.name || '').trim().toLowerCase()}|${String(r.city || '').trim().toLowerCase()}`;
+    const existing = store.fanClubs.find(c => (r.id && c.id === r.id) || `${c.name.toLowerCase()}|${c.city.toLowerCase()}` === key) || null;
+    const club = readClub(r, existing, user.email);
+    if (typeof club === 'string') return errors.push(`Row ${i + 1}: ${club}`);
+    if (Array.isArray(r.offers)) {
+      for (const o of r.offers) {
+        const offer = readOffer(o, club, null, user.email);
+        if (typeof offer === 'string') errors.push(`Row ${i + 1} offer: ${offer}`);
+        else if (!club.offers.some(x => x.title.toLowerCase() === offer.title.toLowerCase())) {
+          club.offers.push(offer);
+          offers++;
+        }
+      }
+    }
+    if (existing) {
+      store.fanClubs[store.fanClubs.indexOf(existing)] = club;
+      updated++;
+    } else {
+      store.fanClubs.push(club);
+      added++;
+    }
+  });
+  db.save();
+  res.json({ success: true, added, updated, offers, errors });
+});
 
-  const checkIns = (store.fanClubCheckIns || []).filter(c => !fanClubId || c.fanClubId === fanClubId);
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const todayCount = checkIns.filter(c => c.checkedInAt.slice(0, 10) === todayStr).length;
+/** Every club with its offers, in the import format (a backup, or a starting point for another season). */
+fanclubRouter.get('/fanclub/admin/export', requireFanClubs, (req, res) => {
+  const user = userOf(req);
+  if (!leagueWide(user)) return bad(res, 'Only league admins can export fan clubs', 403);
+  res.json({
+    clubs: db.get().fanClubs.map(c => ({
+      id: c.id, name: c.name, city: c.city, country: c.country, address: c.address, region: c.region, capacity: c.capacity,
+      contactPerson: c.contactPerson, active: c.active, checkInPoints: c.checkInPoints, gamesMode: c.gamesMode || 'team',
+      offers: c.offers.map(o => ({ title: o.title, description: o.description, perk: o.perk, badge: o.badge, bonusPoints: o.bonusPoints || 0, limit: o.limit || 0, startsAt: o.startsAt, expiresAt: o.expiresAt, active: o.active })),
+    })),
+  });
+});
 
+export function parseCsv(text: string): Record<string, string>[] {
+  const lines: string[][] = [];
+  let row: string[] = [];
+  let cell = '';
+  let q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) {
+      if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+      else if (ch === '"') q = false;
+      else cell += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ',') { row.push(cell); cell = ''; }
+    else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      row.push(cell); cell = '';
+      if (row.some(c => c.trim())) lines.push(row);
+      row = [];
+    } else cell += ch;
+  }
+  row.push(cell);
+  if (row.some(c => c.trim())) lines.push(row);
+  if (lines.length < 2) return [];
+  const head = lines[0].map(h => h.trim());
+  return lines.slice(1).map(cells => Object.fromEntries(head.map((h, i) => [h, (cells[i] ?? '').trim()])));
+}
+
+/** Name or remove the fan club admins of a club (league admins). The person signs in with that email. */
+fanclubRouter.post('/fanclub/admin/clubs/:id/admins', requireFanClubs, (req, res) => {
+  const user = userOf(req);
+  if (!leagueWide(user)) return bad(res, 'Only league admins can choose fan club admins', 403);
+  const store = db.get();
+  const club = store.fanClubs.find(c => c.id === req.params.id);
+  if (!club) return bad(res, 'Fan club not found', 404);
+  const email = str(req.body?.email, 200).toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return bad(res, 'Enter a valid email');
+  const remove = Boolean(req.body?.remove);
+  const now = new Date().toISOString();
+  const rec = store.adminUsers.find(a => a.email.toLowerCase() === email);
+  if (remove) {
+    if (rec?.role === 'fanclub_admin') {
+      rec.fanClubIds = (rec.fanClubIds || []).filter(id => id !== club.id);
+      if (!rec.fanClubIds.length) store.adminUsers = store.adminUsers.filter(a => a !== rec);
+    }
+  } else if (rec && rec.role !== 'fanclub_admin') {
+    return bad(res, 'This email already has another admin role. A super admin can change it in Admin → Admins.', 409);
+  } else if (rec) {
+    rec.fanClubIds = Array.from(new Set([...(rec.fanClubIds || []), club.id]));
+    rec.updatedAt = now;
+  } else {
+    store.adminUsers.push({ email, name: str(req.body?.name, 80) || email.split('@')[0], role: 'fanclub_admin', permissions: ['fanclubs'], fanClubIds: [club.id], addedBy: user.email, addedAt: now });
+  }
+  db.save();
+  res.json({ success: true, admins: adminsOf(store, club.id) });
+});
+
+function readOffer(b: any, club: FanClub, existing: VenueOffer | null, by: string): VenueOffer | string {
+  const title = str(b.title ?? existing?.title, 120);
+  if (!title) return 'Give the offer a title';
+  const date = (v: unknown, fallback?: string) => {
+    if (v === '' || v === null) return undefined;
+    if (v === undefined) return fallback;
+    const d = new Date(String(v));
+    return isNaN(+d) ? fallback : d.toISOString();
+  };
+  const startsAt = date(b.startsAt, existing?.startsAt);
+  const expiresAt = date(b.expiresAt, existing?.expiresAt);
+  if (startsAt && expiresAt && +new Date(expiresAt) <= +new Date(startsAt)) return 'The offer must end after it starts';
+  return {
+    id: existing?.id || 'off-' + crypto.randomUUID().slice(0, 10),
+    fanClubId: club.id,
+    title,
+    description: str(b.description ?? existing?.description, 400),
+    perk: str(b.perk ?? existing?.perk, 80) || title,
+    badge: str(b.badge ?? existing?.badge, 40) || undefined,
+    bonusPoints: Math.max(0, Math.min(500, Math.round(num(b.bonusPoints ?? existing?.bonusPoints, 0)))),
+    limit: Math.max(0, Math.round(num(b.limit ?? existing?.limit, 0))) || undefined,
+    redeemed: existing?.redeemed || 0,
+    startsAt,
+    expiresAt,
+    active: b.active !== undefined ? Boolean(b.active) : existing?.active ?? true,
+    createdBy: existing?.createdBy || by,
+    createdAt: existing?.createdAt || new Date().toISOString(),
+  };
+}
+
+/** Add or edit an offer at a club this admin runs. */
+fanclubRouter.post('/fanclub/admin/clubs/:id/offers', requireFanClubs, (req, res) => {
+  const club = clubFor(req, res, req.params.id);
+  if (!club) return;
+  const b = req.body || {};
+  const existing = b.id ? club.offers.find(o => o.id === b.id) || null : null;
+  if (b.id && !existing) return bad(res, 'Offer not found', 404);
+  const offer = readOffer(b, club, existing, userOf(req).email);
+  if (typeof offer === 'string') return bad(res, offer);
+  if (existing) club.offers[club.offers.indexOf(existing)] = offer;
+  else club.offers.push(offer);
+  club.updatedAt = new Date().toISOString();
+  db.save();
+  res.json({ success: true, offer, offers: club.offers });
+});
+
+fanclubRouter.delete('/fanclub/admin/clubs/:id/offers/:offerId', requireFanClubs, (req, res) => {
+  const club = clubFor(req, res, req.params.id);
+  if (!club) return;
+  const offer = club.offers.find(o => o.id === req.params.offerId);
+  if (!offer) return bad(res, 'Offer not found', 404);
+  // An offer fans already used is switched off, so their redemption history stays readable.
+  if (offer.redeemed) offer.active = false;
+  else club.offers = club.offers.filter(o => o !== offer);
+  db.save();
+  res.json({ success: true, offers: club.offers });
+});
+
+function fanByCode(store: AppStore, raw: unknown): User | null {
+  const code = codeFrom(raw);
+  return code ? store.users.find(u => u.fanClubCode === code && !legacyCode(u)) || null : null;
+}
+
+function matchFor(store: AppStore, matchId: unknown): Match | null {
+  if (matchId) return store.matches.find(m => m.id === String(matchId)) || null;
+  return currentMatch(store).match;
+}
+
+/** Look a fan up by code before checking them in: who they are, whether they can check in, their offers. */
+fanclubRouter.get('/fanclub/admin/fan', requireFanClubs, (req, res) => {
+  const club = clubFor(req, res, req.query.fanClubId);
+  if (!club) return;
+  const store = db.get();
+  const fan = fanByCode(store, req.query.code);
+  if (!fan) return bad(res, 'No fan has this code. Ask the fan to open Fan Club on ADT10fans.com and show their code.', 404);
+  const match = matchFor(store, req.query.matchId);
+  const checkedIn = match ? fan.fanClubCheckIns?.find(c => c.matchId === match.id) || null : null;
+  const claimed = new Set(fan.claimedVenueOfferIds || []);
+  res.json({
+    fan: { id: fan.id, name: fan.name, avatar: fan.avatar, teamId: fan.teamId, points: fan.points, instagramVerified: isVerified(fan) || !gateSettings(store).required, instagramHandle: fan.instagramHandle || null },
+    match,
+    window: match ? checkInWindow(store, match) : null,
+    checkedIn,
+    checkedInHereToday: hereToday(store, fan, club.id),
+    offers: club.offers.filter(o => offerLive(o)).map(o => ({ ...publicOffer(o), redeemed: claimed.has(o.id) })),
+  });
+});
+
+const hereToday = (store: AppStore, fan: User, clubId: string) =>
+  store.fanClubCheckIns.some(c => c.userId === fan.id && c.fanClubId === clubId && Date.now() - +new Date(c.checkedInAt) < 12 * 3600_000);
+
+/** Check a fan in for a match at this club: one per fan per match, during the window. Gives the fan points. */
+fanclubRouter.post('/fanclub/admin/checkin', requireFanClubs, wrap(async (req, res) => {
+  const admin = userOf(req);
+  const b = req.body || {};
+  const r = await db.mutate(store => {
+    const club = store.fanClubs.find(c => c.id === String(b.fanClubId || ''));
+    if (!club) return { status: 404, error: 'Fan club not found' };
+    if (!canManageFanClub(admin, club.id)) return { status: 403, error: 'You do not run this fan club' };
+    if (!club.active) return { status: 409, error: 'This fan club is switched off' };
+    const fan = fanByCode(store, b.code ?? b.qrPayload);
+    if (!fan) return { status: 404, error: 'No fan has this code. Ask the fan to show the code on their Fan Club page.' };
+    if (needsInstagram(store, fan)) return { status: 409, error: `${fan.name} has not verified Instagram yet. They can do it on ADT10fans.com now, then check in.` };
+    const match = matchFor(store, b.matchId);
+    if (!match) return { status: 409, error: 'There is no match to check in for' };
+    const w = checkInWindow(store, match);
+    if (!w.open) {
+      const opens = new Date(w.opensAt);
+      return { status: 409, error: Date.now() < +opens ? `Check-in for Match ${match.matchNo} opens ${opensMins(store)} minutes before the first ball.` : `Check-in for Match ${match.matchNo} has closed.` };
+    }
+    fan.fanClubCheckIns ||= [];
+    const prev = fan.fanClubCheckIns.find(c => c.matchId === match.id);
+    if (prev) return { status: 409, error: `${fan.name} already checked in for Match ${match.matchNo} at ${prev.fanClubName}.` };
+    const points = pointsFor(store, club);
+    const at = new Date().toISOString();
+    if (points) awardPoints(store, fan, points, 'fanclub-checkin', `${club.name} · Match ${match.matchNo}`, match.id, admin.email);
+    const rec: FanClubCheckInRecord = {
+      id: 'fcc-' + crypto.randomUUID().slice(0, 10),
+      userId: fan.id, userName: fan.name, userAvatar: fan.avatar, userTeamId: fan.teamId,
+      fanClubId: club.id, fanClubName: club.name, matchId: match.id, matchNo: match.matchNo,
+      adminId: admin.id, adminName: admin.name, pointsAwarded: points, checkedInAt: at,
+    };
+    store.fanClubCheckIns.unshift(rec);
+    if (store.fanClubCheckIns.length > 50_000) store.fanClubCheckIns.length = 50_000;
+    fan.fanClubCheckIns.push({ matchId: match.id, matchNo: match.matchNo, fanClubId: club.id, fanClubName: club.name, checkedInAt: at, pointsAwarded: points });
+    return { ok: { pointsAwarded: points, fan: { id: fan.id, name: fan.name, avatar: fan.avatar, teamId: fan.teamId, points: fan.points }, match, checkInRecord: rec, offers: club.offers.filter(o => offerLive(o)).map(o => ({ ...publicOffer(o), redeemed: (fan.claimedVenueOfferIds || []).includes(o.id) })) } };
+  });
+  if ('error' in r) return bad(res, r.error!, r.status);
+  res.json({ success: true, ...r.ok });
+}));
+
+/** Redeem an offer of this club for a fan who checked in here today. Once per fan; gives any bonus points. */
+fanclubRouter.post('/fanclub/admin/redeem-offer', requireFanClubs, wrap(async (req, res) => {
+  const admin = userOf(req);
+  const b = req.body || {};
+  const r = await db.mutate(store => {
+    const club = store.fanClubs.find(c => c.id === String(b.fanClubId || ''));
+    if (!club) return { status: 404, error: 'Fan club not found' };
+    if (!canManageFanClub(admin, club.id)) return { status: 403, error: 'You do not run this fan club' };
+    const fan = b.code ? fanByCode(store, b.code) : store.users.find(u => u.id === String(b.userId || '')) || null;
+    if (!fan) return { status: 404, error: 'Fan not found' };
+    const offer = club.offers.find(o => o.id === String(b.offerId || ''));
+    if (!offer) return { status: 404, error: 'This offer is not one of this club’s offers' };
+    if (!offerLive(offer)) return { status: 409, error: 'This offer is not available now' };
+    if (!hereToday(store, fan, club.id)) return { status: 409, error: `Check ${fan.name} in here first. Offers are for fans checked in at this club.` };
+    fan.claimedVenueOfferIds ||= [];
+    if (fan.claimedVenueOfferIds.includes(offer.id)) return { status: 409, error: `${fan.name} already used this offer.` };
+    fan.claimedVenueOfferIds.push(offer.id);
+    offer.redeemed = (offer.redeemed || 0) + 1;
+    const bonus = offer.bonusPoints || 0;
+    if (bonus) awardPoints(store, fan, bonus, 'fanclub-offer', `${offer.title} · ${club.name}`, offer.id, admin.email);
+    store.fanClubRedemptions.unshift({ id: 'fcr-' + crypto.randomUUID().slice(0, 10), userId: fan.id, userName: fan.name, fanClubId: club.id, offerId: offer.id, offerTitle: offer.title, matchId: currentMatch(store).match?.id, bonusPoints: bonus, adminId: admin.id, adminName: admin.name, at: new Date().toISOString() });
+    if (store.fanClubRedemptions.length > 50_000) store.fanClubRedemptions.length = 50_000;
+    return { ok: { message: `${offer.title}: redeemed for ${fan.name}.${bonus ? ` +${bonus} points.` : ''}`, offer: publicOffer(offer), bonusPoints: bonus, fan: { id: fan.id, name: fan.name, points: fan.points } } };
+  });
+  if ('error' in r) return bad(res, r.error!, r.status);
+  res.json({ success: true, ...r.ok });
+}));
+
+/** Check-ins and redemptions at a club (or every club this admin runs). */
+fanclubRouter.get('/fanclub/admin/stats', requireFanClubs, (req, res) => {
+  const user = userOf(req);
+  const store = db.get();
+  const scope = fanClubScopeOf(user);
+  const id = str(req.query.fanClubId, 80);
+  if (id && !canManageFanClub(user, id)) return bad(res, 'You do not run this fan club', 403);
+  const inScope = (clubId: string) => (id ? clubId === id : scope === null || scope.includes(clubId));
+  const checkIns = store.fanClubCheckIns.filter(c => inScope(c.fanClubId));
+  const redemptions = store.fanClubRedemptions.filter(c => inScope(c.fanClubId));
+  const today = new Date().toISOString().slice(0, 10);
   res.json({
     totalCheckIns: checkIns.length,
-    todayCheckIns: todayCount,
-    recentCheckIns: checkIns.slice(0, 30),
+    todayCheckIns: checkIns.filter(c => c.checkedInAt.slice(0, 10) === today).length,
+    pointsGiven: checkIns.reduce((s, c) => s + (c.pointsAwarded || 0), 0) + redemptions.reduce((s, r) => s + (r.bonusPoints || 0), 0),
+    totalRedemptions: redemptions.length,
+    recentCheckIns: checkIns.slice(0, 50),
+    recentRedemptions: redemptions.slice(0, 50),
   });
-}));
+});

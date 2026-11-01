@@ -8,6 +8,7 @@ export const SUPER_ADMIN_EMAIL = 'solarastra.in@gmail.com';
 
 export type AdminPermission =
   | 'all'
+  | 'fanclubs'
   | 'leagues'
   | 'matches'
   | 'teams'
@@ -29,7 +30,7 @@ export type AdminPermission =
 
 export const ALL_PERMISSIONS: AdminPermission[] = [
   'all', 'leagues', 'matches', 'teams', 'contests', 'fantasy', 'games', 'winners', 'draws', 'prizes',
-  'feeds', 'social', 'community', 'notifications', 'fanspaces', 'growth', 'settings', 'admins',
+  'feeds', 'social', 'community', 'notifications', 'fanspaces', 'growth', 'settings', 'admins', 'fanclubs',
 ];
 
 /** What a team official may do: only for their own franchise. */
@@ -42,6 +43,7 @@ export type AdminRole =
   | 'winner_admin'
   | 'social_admin'
   | 'team_official'
+  | 'fanclub_admin'
   | 'custom';
 
 export interface AdminUserRecord {
@@ -51,6 +53,8 @@ export interface AdminUserRecord {
   permissions: AdminPermission[];
   /** team_official only: the franchise they manage. */
   teamId?: string | null;
+  /** fanclub_admin only: the fan clubs they run (check-ins and offers). */
+  fanClubIds?: string[];
   isSuperAdmin?: boolean;
   addedBy?: string;
   addedAt: string;
@@ -99,6 +103,8 @@ export interface User {
   permissions?: AdminPermission[];
   /** Set for team officials: the one team they can manage. */
   adminTeamId?: string | null;
+  /** Set for fan club admins: the fan clubs they run. */
+  adminFanClubIds?: string[];
   /** Optional, self-declared; used for the Fan Base map. */
   country?: string;
   city?: string;
@@ -108,9 +114,21 @@ export interface User {
   referralRewardedAt?: string | null;
   /** Set when this friend joined after the inviter reached the invite-reward limit. */
   referralInviterUnpaid?: boolean;
+  /** Code a fan shows at a fan club to be checked in (random, can be renewed). */
   fanClubCode?: string;
+  /** True once the Instagram check passed (see instagramGate.ts). */
   instagramFollowed?: boolean;
+  /** Without @, lower case. */
   instagramHandle?: string;
+  instagramStatus?: 'none' | 'code' | 'review' | 'verified' | 'rejected';
+  /** The code the fan comments on the verification post. */
+  instagramCode?: string;
+  instagramCodeAt?: string;
+  instagramVerifiedAt?: string;
+  /** 'comment' for the automatic check, otherwise the approving admin's email. */
+  instagramVerifiedBy?: string;
+  instagramReviewNote?: string;
+  instagramRequestedAt?: string;
   xFollowed?: boolean;
   xHandle?: string;
   claimedVenueOfferIds?: string[];
@@ -414,7 +432,23 @@ export interface Contest {
   instant?: boolean;
   /** Created and settled by the site (one prediction set per match; see predictions.ts). */
   auto?: boolean;
+  /** A team's own game (e.g. Aces predictions): the only kind fan club fans play. See teamGames.ts. */
+  teamId?: string | null;
   createdAt: string;
+}
+
+/** Pick 5: five players from one team for one match, one of them captain (double points). */
+export interface TeamPick {
+  userId: string;
+  matchId: string;
+  teamId: string;
+  playerIds: string[];
+  captainId: string;
+  points?: number;
+  breakdown?: FantasyBreakdownLine[];
+  scoredAt?: string;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface ContestEntry {
@@ -577,6 +611,14 @@ export interface SystemSettings {
   requireTwitterFollow?: boolean;
   twitterTargetHandle?: string;
   fanClubCheckInPoints?: number;
+  /** The pinned post fans comment their code on (link to a post on the account above). */
+  instagramVerifyPostUrl?: string;
+  /** Hide verification comments on the post once they are checked. */
+  instagramHideVerifyComments?: boolean;
+  /** Fan club check-in opens this many minutes before the first ball. */
+  fanClubCheckInOpensMins?: number;
+  /** The team whose games fan club fans get (the club's own franchise). */
+  fanClubTeamId?: string;
 }
 
 export type ReactionEmoji = '👏' | '🔥' | '😂' | '😮' | '💯';
@@ -587,7 +629,7 @@ export type PointsSource =
   | 'forum-thread' | 'forum-reply' | 'forum-removed' | 'badge' | 'referral'
   | 'prize' | 'prize-refund' | 'admin'
   | 'connections' | 'grid' | 'statwars' | 'duel' | 'fan-post' | 'fan-of-day'
-  | 'fanclub-checkin' | 'social-follow';
+  | 'fanclub-checkin' | 'fanclub-offer' | 'social-follow' | 'aces-pick5';
 
 /** One change to a fan's points (see server/points.ts). */
 export interface PointsEntry {
@@ -760,8 +802,16 @@ export interface VenueOffer {
   description: string;
   badge?: string;
   perk: string;
+  /** Extra points the fan gets when the offer is redeemed (0 = none). */
+  bonusPoints?: number;
+  /** How many fans may redeem it in total (0 or unset = no limit). */
+  limit?: number;
+  redeemed?: number;
+  startsAt?: string;
   expiresAt?: string;
   active: boolean;
+  createdBy?: string;
+  createdAt?: string;
 }
 
 export interface FanClub {
@@ -770,12 +820,33 @@ export interface FanClub {
   city: string;
   country: string;
   address: string;
-  region: 'hyderabad' | 'uae' | 'international';
+  /** Free text, e.g. 'UAE', 'India', 'UK'. */
+  region?: string;
   capacity?: number;
   contactPerson?: string;
   active: boolean;
   offers: VenueOffer[];
+  /** Points for checking in here; unset = the site default (Admin → Settings). */
+  checkInPoints?: number;
+  /** 'team' (default): fans checked in here play only their team's games. 'all': every game. */
+  gamesMode?: 'team' | 'all';
+  createdBy?: string;
   createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface FanClubRedemption {
+  id: string;
+  userId: string;
+  userName: string;
+  fanClubId: string;
+  offerId: string;
+  offerTitle: string;
+  matchId?: string;
+  bonusPoints: number;
+  adminId: string;
+  adminName?: string;
+  at: string;
 }
 
 export interface FanClubCheckInRecord {
@@ -977,6 +1048,7 @@ export interface AppStore {
   contests: Contest[];
   contestEntries: ContestEntry[];
   fantasyTeams: FantasyTeam[];
+  teamPicks: TeamPick[];
   fantasyLeagues: FantasyLeague[];
   gamePlays: GamePlay[];
   draws: PrizeDraw[];
@@ -1005,9 +1077,10 @@ export interface AppStore {
   adminUsers: AdminUserRecord[];
   fanClubs: FanClub[];
   fanClubCheckIns: FanClubCheckInRecord[];
+  fanClubRedemptions: FanClubRedemption[];
 }
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export function superAdminRecord(): AdminUserRecord {
   return {
@@ -1055,7 +1128,11 @@ export function defaultSettings(): SystemSettings {
     cricbuzzSeriesId: '13307',
     cricbuzzSeriesUrl: 'https://www.cricbuzz.com/cricket-series/13307/abu-dhabi-t10-league-2026',
     requireInstagramFollow: true,
-    instagramTargetHandle: '@ArabianAcesofficial',
+    instagramTargetHandle: '@arabianacesofficial',
+    instagramVerifyPostUrl: '',
+    instagramHideVerifyComments: false,
+    fanClubCheckInOpensMins: 90,
+    fanClubTeamId: 'aces',
     requireTwitterFollow: false,
     twitterTargetHandle: '@arabianacesT10',
     fanClubCheckInPoints: 100,
@@ -1105,6 +1182,7 @@ export function emptyStore(): AppStore {
     contests: [],
     contestEntries: [],
     fantasyTeams: [],
+    teamPicks: [],
     fantasyLeagues: [],
     gamePlays: [],
     draws: [],
@@ -1132,6 +1210,7 @@ export function emptyStore(): AppStore {
     adminUsers: [superAdminRecord()],
     fanClubs: [],
     fanClubCheckIns: [],
+    fanClubRedemptions: [],
   };
 }
 
@@ -1252,6 +1331,22 @@ export function migrate(raw: any): AppStore {
     for (const h of out.handles as any[]) {
       if (h.meta?.channelId && !/^UC[\w-]{22}$/.test(h.meta.channelId)) delete h.meta.channelId;
     }
+  }
+  if (version < 6) {
+    // Before November 2026 the Instagram "check" accepted whatever username a fan typed. Those fans
+    // keep their username (pre-filled) but take the real check; their welcome points stay.
+    for (const u of out.users as any[]) {
+      if (u.instagramFollowed && !u.instagramVerifiedBy) {
+        u.instagramFollowed = false;
+        u.instagramStatus = 'none';
+      }
+      if (u.instagramHandle) u.instagramHandle = String(u.instagramHandle).replace(/^@/, '').toLowerCase();
+    }
+    for (const c of out.fanClubs as any[]) {
+      if (!['team', 'all'].includes(c.gamesMode)) c.gamesMode = 'team';
+      if (!Array.isArray(c.offers)) c.offers = [];
+    }
+    if (out.settings.instagramTargetHandle === '@ArabianAcesofficial') out.settings.instagramTargetHandle = '@arabianacesofficial';
   }
   for (const u of out.users as any[]) {
     if (u.avatar && STOCK_IMAGE.test(u.avatar)) u.avatar = '';

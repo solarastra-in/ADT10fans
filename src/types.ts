@@ -195,12 +195,6 @@ export interface Player {
   cricketdataId?: string;
   linkSources?: Partial<Record<PlayerLinkKey, 'admin' | 'cricsheet' | 'wikidata' | 'squad'>>;
   linksCheckedAt?: string;
-  socials?: PlayerSocialHandles;
-  stats?: {
-    t10?: PlayerFormatStats;
-    t20_2025_2026?: PlayerFormatStats;
-    t20_career?: PlayerFormatStats;
-  };
 }
 
 export type PlayerLinkKey = 'espncricinfo' | 'cricbuzz' | 'wikipedia' | 'instagram' | 'x' | 'facebook' | 'youtube' | 'tiktok' | 'threads';

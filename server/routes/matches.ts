@@ -1,4 +1,5 @@
 import { ensureMatchPredictions, settleMatchPredictions } from '../predictions';
+import { ensureTeamGames, settleTeamGames } from '../teamGames';
 import { Router } from 'express';
 import { db, Match, NotificationItem } from '../db';
 import { requireAdmin } from '../auth';
@@ -104,7 +105,8 @@ export async function onMatchCompleted(matchId: string, notify = true) {
   if (claim.input) notification = await dispatchNotification(claim.input);
   const fantasy = await afterMatchCompleted(matchId);
   const predictions = await settleMatchPredictions(matchId).catch(e => ({ settled: false, error: String(e?.message || e) }));
-  return { notification, fantasy, predictions };
+  const teamGames = await settleTeamGames(matchId).catch(e => ({ settled: false, error: String(e?.message || e) }));
+  return { notification, fantasy, predictions, teamGames };
 }
 
 matchesRouter.post('/matches', requireAdmin('matches'), wrap(async (req, res) => {
@@ -157,6 +159,7 @@ matchesRouter.post('/matches', requireAdmin('matches'), wrap(async (req, res) =>
   if (idx >= 0) store.matches[idx] = match;
   else store.matches.push(match);
   ensureMatchPredictions(store);
+  ensureTeamGames(store);
   db.save();
   let notification: NotificationItem | undefined;
   let fantasy: any = null;

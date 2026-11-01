@@ -21,6 +21,10 @@ import { adminRouter } from './routes/admin';
 import { scraperRouter } from './routes/scraper';
 import { fanWallRouter, serveLocalPhoto } from './routes/fanwall';
 import { fanclubRouter } from './routes/fanclub';
+import { instagramRouter } from './routes/instagram';
+import { instagramGate } from './instagramGate';
+import { teamGamesRouter } from './routes/teamGames';
+import { teamGamesOnly } from './teamGames';
 import { injectIntoTemplate, renderPage, robotsTxt, sitemapXml } from './seo';
 import { ogPng, type OgKind } from './ogImage';
 
@@ -79,7 +83,9 @@ app.use((req, res, next) => {
   next();
 });
 app.use('/api', referralCheckMiddleware);
-for (const r of [coreRouter, teamsRouter, feedsRouter, matchesRouter, playRouter, prizesRouter, communityRouter, notificationsRouter, fanSpacesRouter, adminRouter, scraperRouter, fanWallRouter, teamPortalRouter, fanclubRouter]) app.use('/api', r);
+app.use('/api', instagramGate);
+app.use('/api', teamGamesOnly);
+for (const r of [coreRouter, teamsRouter, feedsRouter, matchesRouter, playRouter, prizesRouter, communityRouter, notificationsRouter, fanSpacesRouter, adminRouter, scraperRouter, fanWallRouter, teamPortalRouter, fanclubRouter, instagramRouter, teamGamesRouter]) app.use('/api', r);
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
 
 function baseUrl(req: Request) {

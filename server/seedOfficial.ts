@@ -4,13 +4,12 @@ import { OFFICIAL_2026_TEAMS } from './data/officialTeams';
 import { OFFICIAL_SQUAD_IDS_BEFORE_2026_10_27 } from './data/previousSquadIds';
 import { normName } from './fantasy';
 import { ensureMatchPredictions } from './predictions';
+import { ensureTeamGames } from './teamGames';
 import { OFFICIAL_SOCIAL_POSTS } from './data/officialSocialPosts';
 import { OFFICIAL_2026_MATCHES } from './data/officialMatches';
 import { OFFICIAL_ARABIAN_ACES_PRIZES, OFFICIAL_ARABIAN_ACES_DRAWS } from './data/officialPrizes';
-import { generateOfficialMatchContests } from './data/officialContests';
-import { OFFICIAL_FAN_CLUBS } from './data/officialVenues';
 
-export { OFFICIAL_2026_TEAMS, OFFICIAL_SOCIAL_POSTS, OFFICIAL_2026_MATCHES, OFFICIAL_ARABIAN_ACES_PRIZES, OFFICIAL_ARABIAN_ACES_DRAWS, generateOfficialMatchContests, OFFICIAL_FAN_CLUBS };
+export { OFFICIAL_2026_TEAMS, OFFICIAL_SOCIAL_POSTS, OFFICIAL_2026_MATCHES, OFFICIAL_ARABIAN_ACES_PRIZES, OFFICIAL_ARABIAN_ACES_DRAWS };
 
 type HandleSeed = Omit<SocialHandle, 'id' | 'verifiedAt' | 'foundAt' | 'status' | 'source'> & { evidence: string };
 
@@ -149,11 +148,11 @@ export function initializeStore(store: AppStore): boolean {
   if (!process.env.FEED_FIXTURES_DIR && process.env.NODE_ENV !== 'test') {
     if (seedOfficialMatches(store, now)) changed = true;
     if (seedOfficialPrizesAndDraws(store, now)) changed = true;
-    if (seedOfficialContests(store, now)) changed = true;
-    if (seedOfficialFanClubs(store, now)) changed = true;
   }
+  if (removeUnverifiedSeeds(store)) changed = true;
   if (upgradeSignedBatPrizes(store)) changed = true;
   if (ensureMatchPredictions(store)) changed = true;
+  if (ensureTeamGames(store)) changed = true;
   if (!store.jobLog['game-secret'] && !process.env.GAME_SECRET) {
     store.jobLog['game-secret'] = crypto.randomBytes(24).toString('hex');
     changed = true;
@@ -339,52 +338,23 @@ export function seedOfficialMatches(store: AppStore, now = new Date().toISOStrin
 }
 
 /**
- * Seeds prediction contests for all official tournament matches.
- * Allows fans to make predictions for all 2 or 3 matches scheduled on the match day.
+ * An earlier build seeded nine fan clubs (with addresses, contacts and offers nobody confirmed) and
+ * a second set of match prediction contests (contest-mN) that duplicated the automatic ones
+ * (auto-mN). Fan clubs and offers now come only from admins, so remove those seeds wherever no fan
+ * has used them yet.
  */
-export function seedOfficialContests(store: AppStore, now = new Date().toISOString(), overwrite = false): boolean {
-  if (!overwrite && store.contests && store.contests.length > 0) return false;
-  const officialContests = generateOfficialMatchContests();
-  const existingIds = new Set((store.contests || []).map(c => c.id));
-  let changed = false;
-  if (!store.contests) store.contests = [];
+const UNVERIFIED_FAN_CLUB_IDS = new Set(['fc-hyd-banjara', 'fc-hyd-cyberabad', 'fc-hyd-charminar', 'fc-hyd-gachibowli', 'fc-hyd-secunderabad', 'fc-uae-zayed', 'fc-uae-corniche', 'fc-uae-dubai', 'fc-uk-london']);
 
-  for (const c of officialContests) {
-    if (!existingIds.has(c.id)) {
-      store.contests.push(c);
-      existingIds.add(c.id);
-      changed = true;
-    }
-  }
-  if (changed) {
-    store.jobLog['seed:contests'] = now;
-  }
+export function removeUnverifiedSeeds(store: AppStore): boolean {
+  let changed = false;
+  const usedClubs = new Set((store.fanClubCheckIns || []).map(c => c.fanClubId));
+  const clubs = (store.fanClubs || []).filter(c => !UNVERIFIED_FAN_CLUB_IDS.has(c.id) || usedClubs.has(c.id) || c.createdBy);
+  if (clubs.length !== (store.fanClubs || []).length) { store.fanClubs = clubs; changed = true; }
+  const entered = new Set((store.contestEntries || []).map(e => e.contestId));
+  const contests = (store.contests || []).filter(c => !/^contest-m\d+$/.test(c.id) || entered.has(c.id));
+  if (contests.length !== (store.contests || []).length) { store.contests = contests; changed = true; }
   return changed;
 }
-
-/**
- * Seeds official fan club chapters across Hyderabad, India, UAE, and international hubs.
- */
-export function seedOfficialFanClubs(store: AppStore, now = new Date().toISOString(), overwrite = false): boolean {
-  if (!overwrite && store.fanClubs && store.fanClubs.length > 0) return false;
-  let changed = false;
-  if (!store.fanClubs) store.fanClubs = [];
-
-  const existingIds = new Set(store.fanClubs.map(c => c.id));
-  for (const fc of OFFICIAL_FAN_CLUBS) {
-    if (!existingIds.has(fc.id)) {
-      store.fanClubs.push({ ...fc, createdAt: now });
-      existingIds.add(fc.id);
-      changed = true;
-    }
-  }
-
-  if (changed) {
-    store.jobLog['seed:fanclubs'] = now;
-  }
-  return changed;
-}
-
 
 /**
  * Accounts someone proposed for the other teams (October 2026) but that could not be confirmed.

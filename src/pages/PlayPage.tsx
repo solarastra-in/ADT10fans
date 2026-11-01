@@ -16,7 +16,6 @@ export default function PlayPage() {
   const hub = useLoad(() => api.getFantasyHub(), [user?.id]);
   const games = useLoad(() => api.getGamesToday(), [user?.id]);
   const contests = useLoad(() => api.getContests(), [user?.id]);
-  const f = useFormat();
   // Every match that is open now (today's and tomorrow's: each opens at midnight UAE time the day before).
   const openMatches = (hub.data?.matches || []).filter(m => !m.locked && m.open !== false);
   const nextMatch = openMatches[0];

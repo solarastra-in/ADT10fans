@@ -1,3 +1,4 @@
+import { fanClubGamesTeam } from './fanclub';
 import crypto from 'crypto';
 import { Router } from 'express';
 import { Contest, db } from '../db';
@@ -33,11 +34,13 @@ playRouter.get('/contests', (req, res) => {
   const isAdmin = Boolean(user && hasPermission(user, 'contests'));
   const entryCounts: Record<string, number> = {};
   for (const e of store.contestEntries) entryCounts[e.contestId] = (entryCounts[e.contestId] || 0) + 1;
-  const contests = store.contests.map(c => {
+  // Fan club fans play only their team's games.
+  const onlyTeam = fanClubGamesTeam(store, user);
+  const contests = store.contests.filter(c => !onlyTeam || c.teamId === onlyTeam).map(c => {
     const view = stripAnswers(c, isAdmin);
     return c.status === 'open' && c.locksAt && +new Date(c.locksAt) <= Date.now() ? { ...view, status: 'locked' as const } : view;
   });
-  res.json({ contests, myEntries: user ? store.contestEntries.filter(e => e.userId === user.id) : [], entryCounts });
+  res.json({ contests, onlyTeamGames: onlyTeam, myEntries: user ? store.contestEntries.filter(e => e.userId === user.id) : [], entryCounts });
 });
 
 playRouter.post('/contests/:id/enter', requireUser, rateLimit('contest', 30, 60_000), (req, res) => {

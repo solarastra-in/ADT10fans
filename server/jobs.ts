@@ -101,7 +101,8 @@ export async function runScheduledJobs(opts: { only?: string[]; force?: boolean 
   // Match predictions for every match whose games just opened (midnight in Abu Dhabi, the day before).
   try {
     const { ensureMatchPredictions } = await import('./predictions');
-    const added = await db.mutate(s => ensureMatchPredictions(s));
+    const { ensureTeamGames } = await import('./teamGames');
+    const added = await db.mutate(s => ensureMatchPredictions(s) + ensureTeamGames(s));
     if (added) out.predictions = { added };
   } catch (e: any) {
     out.predictions = { error: e?.message || String(e) };
