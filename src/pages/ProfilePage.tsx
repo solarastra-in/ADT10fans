@@ -12,7 +12,7 @@ import { FanClubCheckInCard } from '../components/FanClubCheckInCard';
 const ICONS: Record<string, React.FC<{ className?: string }>> = { Target, Award, Users, CalendarCheck, Trophy, Gamepad2, Search, Flame, MessageSquare, MessagesSquare, UserPlus, Zap, Crown, Gift };
 
 export default function ProfilePage() {
-  const { user, setUser, teamById, openAuth, openTeamPicker, openInstaModal, logout, toast, config } = useApp();
+  const { user, setUser, teamById, openAuth, openTeamPicker, logout, toast, config } = useApp();
   const t = useT();
   const f = useFormat();
   usePageMeta(t('My profile'), undefined, config?.brandName);
@@ -129,24 +129,13 @@ export default function ProfilePage() {
             )}
             {team && (user.teamChanges || 0) < 1 && <button type="button" onClick={openTeamPicker} className="text-xs text-slate-400 underline">{t('Switch team')}</button>}
             {user.role === 'admin' && <Pill tone="amber">{user.adminRole === 'team_official' ? t('Team official') : t('Admin')}</Pill>}
-            {user.instagramHandle ? (
+            {user.instagramFollowed && user.instagramHandle && (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-pink-500/15 border border-pink-500/30 text-xs font-bold text-pink-300">
                 <svg className="w-3.5 h-3.5 fill-current text-pink-400" viewBox="0 0 24 24">
                   <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069z"/>
                 </svg>
-                {user.instagramHandle} · Verified Fan
+                @{user.instagramHandle.replace(/^@/, '')} · {t('Instagram verified!')}
               </span>
-            ) : (
-              <button
-                type="button"
-                onClick={openInstaModal}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gradient-to-r from-pink-500/20 to-amber-500/20 hover:from-pink-500/30 hover:to-amber-500/30 border border-pink-500/40 text-xs font-bold text-pink-300 transition-colors"
-              >
-                <svg className="w-3.5 h-3.5 fill-current text-pink-400" viewBox="0 0 24 24">
-                  <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069z"/>
-                </svg>
-                Link Instagram (+25 pts)
-              </button>
             )}
           </div>
         </div>

@@ -198,7 +198,7 @@ function Shell() {
       </main>
       <Footer />
       <BottomNav route={route} />
-      <FloatingQRButton />
+      <FloatingQRButton route={route} />
       <QuickQRPassModal isOpen={qrPassOpen} onClose={closeQrPass} />
       <InstagramGate />
       <AuthModal />
