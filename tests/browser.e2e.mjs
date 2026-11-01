@@ -375,6 +375,19 @@ for (const lang of ['ar', 'ur']) {
   ok('the Matches tab ticks the Aces matches by default and fits a phone', states.some(x => x.id === soon.id && x.on) && states.some(x => !x.on) && (await noOverflow(desk.page)), states);
   await desk.ctx.close();
 
+  // A super admin starts a test match at the desk to try check-in, then removes it.
+  const boss = await newPage(390, 844, A);
+  await go(boss.page, '/venue');
+  await boss.page.waitForSelector('[data-testid="desk-test-start"]');
+  await boss.page.locator('[data-testid="desk-test-start"]').click();
+  await boss.page.waitForSelector('[data-testid="desk-test-remove"]');
+  const testOption = await boss.page.locator('[data-testid="desk-match"] option', { hasText: /TEST MATCH/ }).count();
+  ok('a super admin starts a test match from the desk and can pick it for check-in', testOption === 1 && (await noOverflow(boss.page)) && boss.errors.length === 0, { testOption, errors: boss.errors });
+  await boss.page.locator('[data-testid="desk-test-remove"]').click();
+  await boss.page.waitForSelector('[data-testid="desk-test-start"]');
+  ok('and removes it again', (await boss.page.locator('[data-testid="desk-match"] option', { hasText: /TEST MATCH/ }).count()) === 0);
+  await boss.ctx.close();
+
   // Checked in at a fan club, the fan plays the Aces games.
   await go(fan.page, '/play');
   await fan.page.waitForSelector('[data-testid="play-team-games"]');

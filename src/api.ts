@@ -287,6 +287,8 @@ export const api = {
   fanClubSave: (club: Partial<FanClub> & { checkInPoints?: number | string | null }) => post<Ok & { club: FanClub }>('/api/fanclub/admin/clubs', club),
   fanClubDelete: (id: string) => del<Ok & { deactivated?: boolean; note?: string }>(`/api/fanclub/admin/clubs/${encodeURIComponent(id)}`),
   fanClubSaveOffer: (clubId: string, offer: Partial<VenueOffer>) => post<Ok & { offer: VenueOffer; offers: VenueOffer[] }>(`/api/fanclub/admin/clubs/${encodeURIComponent(clubId)}/offers`, offer),
+  fanClubTestMatchStart: () => post<Ok & { match: FanClubMatchRef }>('/api/fanclub/admin/test-match'),
+  fanClubTestMatchRemove: (id: string) => del<Ok & { undone: number }>(`/api/fanclub/admin/test-match/${encodeURIComponent(id)}`),
   fanClubSetMatch: (clubId: string, body: { matchId?: string; include?: boolean; reset?: boolean }) => post<Ok & { matchIds: string[] }>(`/api/fanclub/admin/clubs/${encodeURIComponent(clubId)}/matches`, body),
   fanClubDeleteOffer: (clubId: string, offerId: string) => del<Ok & { offers: VenueOffer[] }>(`/api/fanclub/admin/clubs/${encodeURIComponent(clubId)}/offers/${encodeURIComponent(offerId)}`),
   fanClubSetAdmin: (clubId: string, email: string, opts: { name?: string; remove?: boolean } = {}) => post<Ok & { admins: { email: string; name: string }[] }>(`/api/fanclub/admin/clubs/${encodeURIComponent(clubId)}/admins`, { email, ...opts }),

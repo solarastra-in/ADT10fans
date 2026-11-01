@@ -1062,6 +1062,21 @@ ok('robots.txt blocks admin and API', /Disallow: \/admin/.test((await html('/rob
   ok('the desk counts check-ins, offers and points given', stats.totalCheckIns === 2 && stats.totalRedemptions === 1 && stats.pointsGiven === 255, stats);
   ok('a fan club admin cannot read another club’s numbers', (await get(`/api/fanclub/admin/stats?fanClubId=${cafe.id}`, CA)).status === 403);
 
+  // --- Test match: league admins try check-in without a real match; removing it takes the points back ---
+  ok('a fan club admin cannot start a test match', (await post('/api/fanclub/admin/test-match', {}, CA)).status === 403);
+  const tm = (await post('/api/fanclub/admin/test-match', {}, A)).json.match;
+  ok('a league admin starts a test match: the fan club team, check-in open now', tm?.test === true && tm.teamA === 'aces' && (await get('/api/fanclub/admin/clubs', CA)).json.matches.find(m => m.id === tm.id)?.open === true, tm);
+  ok('only one test match at a time', (await post('/api/fanclub/admin/test-match', {}, A)).status === 409);
+  ok('fans never see the test match in matches, games or predictions', !(await get('/api/matches')).json.matches.some(m => m.id === tm.id) && !(await get('/api/fantasy')).json.matches.some(m => m.matchId === tm.id) && !(await get('/api/contests', F1)).json.contests.some(c => c.matchId === tm.id));
+  const f1Code = (await get('/api/fanclub/my-status', F1)).json.fanClubCode;
+  const f1Before = (await me(F1)).points;
+  const tci = await post('/api/fanclub/admin/checkin', { fanClubId: lounge.id, code: f1Code, matchId: tm.id }, CA);
+  ok('a fan checks in for the test match at the desk', tci.status === 200 && (await me(F1)).points === f1Before + 120, tci.json);
+  const rm = (await del(`/api/fanclub/admin/test-match/${tm.id}`, A)).json;
+  const f1After = await me(F1);
+  ok('removing the test match takes back its check-in and points', rm.undone === 1 && f1After.points === f1Before && !(f1After.fanClubCheckIns || []).some(c => c.matchId === tm.id), { rm, points: f1After.points, f1Before });
+  ok('and the fan is not a fan club fan any more', (await get('/api/team-games', F1)).json.onlyTeamGames === false);
+
   // --- Team games: Pick 5 and team predictions ---
   const tg = (await get('/api/team-games', IG)).json;
   ok('fan club fans play only the team games', tg.onlyTeamGames === true && tg.team.id === 'aces', tg);

@@ -58,11 +58,17 @@ export function checkInWindow(store: AppStore, m: Match, now = Date.now()) {
 }
 
 const clubTeam = (store: AppStore) => store.settings.fanClubTeamId || 'aces';
+/** The season's matches plus any fan club test match (test matches exist only for the fan club desk). */
+const allMatches = (store: AppStore): Match[] => [...store.matches, ...(store.fanClubTestMatches || [])];
+const isTest = (m: Match) => Boolean((m as any).test);
+/** The day in Abu Dhabi, e.g. 2026-11-07. */
+export const uaeDay = (d: string | number | Date) => new Date(d).toLocaleDateString('en-CA', { timeZone: 'Asia/Dubai' });
 const byStart = (a: Match, b: Match) => +new Date(a.startsAt) - +new Date(b.startsAt);
 
 /** Whether fans can check in for this match at this club (default: the fan club team's matches). */
 export function clubHasMatch(store: AppStore, club: FanClub | null | undefined, m: Match): boolean {
-  if (!club) return m.teamA === clubTeam(store) || m.teamB === clubTeam(store);
+  if (!club) return isTest(m) || m.teamA === clubTeam(store) || m.teamB === clubTeam(store);
+  if (isTest(m)) return true;
   if ((club.excludedMatchIds || []).includes(m.id)) return false;
   if ((club.extraMatchIds || []).includes(m.id)) return true;
   return m.teamA === clubTeam(store) || m.teamB === clubTeam(store);
@@ -71,7 +77,7 @@ export function clubHasMatch(store: AppStore, club: FanClub | null | undefined, 
 /** The matches of a club; with no club, the matches of any active club. */
 export function clubMatches(store: AppStore, club?: FanClub | null): Match[] {
   const clubs = club ? [club] : store.fanClubs.filter(c => c.active);
-  const list = clubs.length ? store.matches.filter(m => clubs.some(c => clubHasMatch(store, c, m))) : store.matches.filter(m => clubHasMatch(store, null, m));
+  const list = clubs.length ? allMatches(store).filter(m => clubs.some(c => clubHasMatch(store, c, m))) : allMatches(store).filter(m => clubHasMatch(store, null, m) || isTest(m));
   return list.sort(byStart);
 }
 
@@ -200,7 +206,11 @@ fanclubRouter.get('/fanclub/admin/clubs', requireFanClubs, (req, res) => {
     checkInOpen: cur.open,
     opensAt: cur.opensAt || null,
     fanClubTeamId: clubTeam(store),
-    matches: [...store.matches].sort(byStart).map(m => ({ id: m.id, matchNo: m.matchNo, teamA: m.teamA, teamB: m.teamB, startsAt: m.startsAt, status: m.status, open: checkInWindow(store, m).open })),
+    today: uaeDay(Date.now()),
+    matches: allMatches(store).sort(byStart).map(m => {
+      const w = checkInWindow(store, m);
+      return { id: m.id, matchNo: m.matchNo, teamA: m.teamA, teamB: m.teamB, startsAt: m.startsAt, status: m.status, open: w.open, opensAt: w.opensAt, day: uaeDay(m.startsAt), test: isTest(m) };
+    }),
     clubs: clubs.map(c => ({
       ...c,
       matchIds: clubMatches(store, c).map(m => m.id),
@@ -450,6 +460,67 @@ fanclubRouter.post('/fanclub/admin/clubs/:id/matches', requireFanClubs, (req, re
   res.json({ success: true, matchIds: clubMatches(store, club).map(m => m.id) });
 });
 
+/**
+ * A test match for trying check-in (league admins): the fan club team against another team, starting
+ * in 30 minutes, so check-in is open at once. It is kept apart from the season's fixtures, so fans
+ * never see it in matches, games or predictions. Removing it takes back any points it gave.
+ */
+fanclubRouter.post('/fanclub/admin/test-match', requireFanClubs, wrap(async (req, res) => {
+  const user = userOf(req);
+  if (!leagueWide(user)) return bad(res, 'Only league admins can start a test match', 403);
+  const r = await db.mutate(store => {
+    store.fanClubTestMatches ||= [];
+    if (store.fanClubTestMatches.length) return { error: 'A test match is already running. Remove it first.', status: 409 };
+    const team = clubTeam(store);
+    const opp = store.teams.find(t => t.id !== team)?.id;
+    if (!opp || !store.teams.some(t => t.id === team)) return { error: 'The fan club team is not set up', status: 409 };
+    const now = new Date();
+    const m = {
+      id: 'test-' + crypto.randomUUID().slice(0, 8), matchNo: 0, stage: 'Test', teamA: team, teamB: opp,
+      startsAt: new Date(now.getTime() + 30 * 60_000).toISOString(), venue: 'Test', status: 'upcoming' as const,
+      updatedAt: now.toISOString(), test: true as const, createdBy: user.email,
+    };
+    store.fanClubTestMatches.push(m as any);
+    return { ok: m };
+  });
+  if ('error' in r) return bad(res, r.error!, r.status);
+  res.json({ success: true, match: r.ok });
+}));
+
+fanclubRouter.delete('/fanclub/admin/test-match/:id', requireFanClubs, wrap(async (req, res) => {
+  const user = userOf(req);
+  if (!leagueWide(user)) return bad(res, 'Only league admins can remove a test match', 403);
+  const r = await db.mutate(store => {
+    const m = (store.fanClubTestMatches || []).find(x => x.id === req.params.id);
+    if (!m) return { error: 'Test match not found', status: 404 };
+    let undone = 0;
+    // Take back the check-in points and offers of the test.
+    for (const rec of store.fanClubCheckIns.filter(c => c.matchId === m.id)) {
+      const fan = store.users.find(u => u.id === rec.userId);
+      if (fan) {
+        if (rec.pointsAwarded) awardPoints(store, fan, -rec.pointsAwarded, 'fanclub-checkin', 'Test check-in removed', m.id, user.email);
+        fan.fanClubCheckIns = (fan.fanClubCheckIns || []).filter(c => c.matchId !== m.id);
+      }
+      undone++;
+    }
+    store.fanClubCheckIns = store.fanClubCheckIns.filter(c => c.matchId !== m.id);
+    for (const red of store.fanClubRedemptions.filter(x => x.matchId === m.id)) {
+      const fan = store.users.find(u => u.id === red.userId);
+      if (fan) {
+        if (red.bonusPoints) awardPoints(store, fan, -red.bonusPoints, 'fanclub-offer', 'Test offer removed', red.offerId, user.email);
+        fan.claimedVenueOfferIds = (fan.claimedVenueOfferIds || []).filter(id => id !== red.offerId);
+      }
+      const offer = store.fanClubs.flatMap(c => c.offers).find(o => o.id === red.offerId);
+      if (offer) offer.redeemed = Math.max(0, (offer.redeemed || 0) - 1);
+    }
+    store.fanClubRedemptions = store.fanClubRedemptions.filter(x => x.matchId !== m.id);
+    store.fanClubTestMatches = store.fanClubTestMatches.filter(x => x.id !== m.id);
+    return { ok: { undone } };
+  });
+  if ('error' in r) return bad(res, r.error!, r.status);
+  res.json({ success: true, ...r.ok });
+}));
+
 /** Add or edit an offer at a club this admin runs. */
 fanclubRouter.post('/fanclub/admin/clubs/:id/offers', requireFanClubs, (req, res) => {
   const club = clubFor(req, res, req.params.id);
@@ -484,7 +555,7 @@ function fanByCode(store: AppStore, raw: unknown): User | null {
 }
 
 function matchFor(store: AppStore, matchId: unknown, club: FanClub): Match | null {
-  if (matchId) return store.matches.find(m => m.id === String(matchId)) || null;
+  if (matchId) return allMatches(store).find(m => m.id === String(matchId)) || null;
   return currentMatch(store, Date.now(), club).match;
 }
 
