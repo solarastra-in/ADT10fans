@@ -1257,4 +1257,13 @@ export const ur: Record<string, string> = {
   "At a fan club? Show this to the venue admin": "فین کلب میں ہیں؟ یہ وینیو ایڈمن کو دکھائیں",
   "Copy the post link": "پوسٹ کا لنک کاپی کریں",
   "They can confirm your Instagram and check you in. This screen moves on by itself.": "وہ آپ کا Instagram تصدیق کر کے آپ کا چیک اِن کر سکتے ہیں۔ یہ اسکرین خود آگے بڑھے گی۔",
+  "How Pick 5 points work": "Pick 5 کے پوائنٹس کیسے ملتے ہیں",
+  "Scored from the official scorecard: runs, boundaries, strike rate, wickets, economy, catches, stumpings and run outs.": "سرکاری اسکور کارڈ سے: رنز، باؤنڈریز، اسٹرائیک ریٹ، وکٹیں، اکانومی، کیچ، اسٹمپنگ اور رن آؤٹ۔",
+  "Pick 5 players from the team’s squad (once the playing XI is announced, only from the XI). One of them is your captain, who scores double.": "ٹیم کے اسکواڈ سے 5 کھلاڑی چنیں (پلیئنگ XI کے اعلان کے بعد صرف اسی سے)۔ ان میں سے ایک آپ کا کپتان ہے جسے دگنے پوائنٹس ملتے ہیں۔",
+  "Points come from the match scorecard: the live feed, or the scorecard entered by the team or league admins when live scores are not available.": "پوائنٹس میچ اسکور کارڈ سے آتے ہیں: لائیو فیڈ سے، یا لائیو اسکور نہ ہونے پر ٹیم یا لیگ ایڈمن کے درج کردہ اسکور کارڈ سے۔",
+  "Each player’s points are added up; your fan points are the total ÷ {d}, rounded. A corrected scorecard re-scores every pick.": "ہر کھلاڑی کے پوائنٹس جمع ہوتے ہیں؛ آپ کے فین پوائنٹس = کل ÷ {d}، راؤنڈ کر کے۔ اسکور کارڈ درست ہونے پر ہر ٹیم دوبارہ اسکور ہوتی ہے۔",
+  "Run outs: the fielder named in “run out (Name)” gets the points; two fielders share them.": "رن آؤٹ: “run out (Name)” میں درج فیلڈر کو پوائنٹس ملتے ہیں؛ دو فیلڈر ہوں تو بٹ جاتے ہیں۔",
+  "Offers for you here today": "آج یہاں آپ کے لیے آفرز",
+  "Show your code at the desk to use it.": "استعمال کے لیے ڈیسک پر اپنا کوڈ دکھائیں۔",
+  "No offers at this fan club for this match.": "اس میچ کے لیے اس فین کلب میں کوئی آفر نہیں۔",
 };

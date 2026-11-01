@@ -6,10 +6,54 @@ import { useT } from '../i18n';
 import { Link, usePageMeta } from '../router';
 import { Button, Card, Countdown, EmptyState, ErrorBox, PageHeader, Pill, Spinner, TeamBadge, cx, useFormat, ROLE_SHORT } from '../components/ui';
 import { ContestCard } from './ContestsPage';
+import { Pick5Rules } from '../components/Pick5Rules';
+import type { FanClubStatusResponse } from '../types';
 
 /** The team games: Pick 5 and the team predictions for each of the fan club team's matches. */
+/** Where the fan is checked in today and that club's offers for the match (the fan club landing). */
+function FanClubToday({ status }: { status: FanClubStatusResponse }) {
+  const { teamById } = useApp();
+  const t = useT();
+  const f = useFormat();
+  const v = status.todayVisit;
+  if (!v) return null;
+  return (
+    <Card className="p-4 space-y-3 border-emerald-500/40 bg-emerald-500/5" data-testid="fanclub-today">
+      <p className="text-sm font-black text-emerald-300">
+        {t('Checked in at {club} · +{n} points', { club: v.fanClubName, n: v.pointsAwarded })}
+      </p>
+      {v.teamA && v.teamB && (
+        <p className="text-xs text-slate-300">
+          {v.matchNo ? t('Match {n}', { n: v.matchNo }) : t('TEST MATCH')}: {teamById(v.teamA)?.short || v.teamA} vs {teamById(v.teamB)?.short || v.teamB}
+          {v.startsAt ? ` · ${f.dateTime(v.startsAt)}` : ''}
+        </p>
+      )}
+      {status.todayOffers?.length ? (
+        <div className="space-y-2">
+          <p className="text-xs font-black uppercase tracking-wider text-slate-400">{t('Offers for you here today')}</p>
+          <ul className="space-y-2" data-testid="fanclub-today-offers">
+            {status.todayOffers.map(o => (
+              <li key={o.id} className={cx('rounded-xl border p-3 text-sm', o.used ? 'border-slate-800 opacity-60' : 'border-emerald-500/30 bg-slate-950/60')}>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-white flex-1">{o.title}</span>
+                  {o.used ? <Pill>{t('Used')}</Pill> : o.bonusPoints ? <Pill tone="amber">+{o.bonusPoints}</Pill> : null}
+                </div>
+                {o.description && <p className="text-xs text-slate-400 mt-1">{o.description}</p>}
+                {!o.used && <p className="text-[11px] text-slate-500 mt-1">{t('Show your code at the desk to use it.')}</p>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <p className="text-xs text-slate-400">{t('No offers at this fan club for this match.')}</p>
+      )}
+    </Card>
+  );
+}
+
 export default function TeamGamesPage() {
   const { user, config, teamById } = useApp();
+  const fc = useLoad(() => (user ? api.getFanClubStatus() : Promise.resolve(null)), [user?.id]);
   const t = useT();
   const f = useFormat();
   const games = useLoad(() => api.teamGames(), [user?.id]);
@@ -34,11 +78,13 @@ export default function TeamGamesPage() {
         title={t('{team} games', { team: team.name })}
         subtitle={t('Pick 5 of the {team} players for each match, and predict their total, score after 5 overs, sixes, fours and wickets. Free for every fan.', { team: team.short || team.name })}
       />
+      {fc.data && <FanClubToday status={fc.data} />}
       {games.data.onlyTeamGames && (
         <p className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-100" data-testid="team-games-only">
           {t('You checked in at a fan club, so these are your games this season.')}
         </p>
       )}
+      <Pick5Rules divisor={games.data.fanPointsDivisor} />
 
       <section className="space-y-3" data-testid="team-games-upcoming">
         <h2 className="text-sm font-black uppercase tracking-wider text-slate-400">{t('Matches')}</h2>
@@ -206,6 +252,7 @@ export function Pick5Page({ id }: { id: string }) {
           </ol>
         </section>
       ) : null}
+      <Pick5Rules />
       <Link to="/team-games" className="text-sm text-amber-300 underline">{t('All {team} games', { team: team?.short || '' })}</Link>
     </div>
   );

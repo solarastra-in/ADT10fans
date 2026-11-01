@@ -10,6 +10,7 @@ export type AdminSectionId =
   | 'handles'
   | 'feeds'
   | 'matches'
+  | 'scorecards'
   | 'contests'
   | 'fantasy'
   | 'prizes'
@@ -38,6 +39,7 @@ export const ADMIN_SECTIONS: { id: AdminSectionId; label: string }[] = [
   { id: 'handles', label: 'Handles' },
   { id: 'feeds', label: 'Feeds' },
   { id: 'matches', label: 'Matches' },
+  { id: 'scorecards', label: 'Scorecards' },
   { id: 'contests', label: 'Predictions' },
   { id: 'fantasy', label: 'Pick XI' },
   { id: 'prizes', label: 'Prizes & claims' },
@@ -76,7 +78,7 @@ export function can(user: { isSuperAdmin?: boolean; adminRole?: string; permissi
 }
 
 export const SECTION_PERMISSION: Partial<Record<AdminSectionId, string | 'super'>> = {
-  tools: 'teams', env: 'super', admins: 'super', teams: 'teams', squads: 'teams', handles: 'social', feeds: 'social', matches: 'matches',
+  tools: 'teams', env: 'super', admins: 'super', teams: 'teams', squads: 'teams', handles: 'social', feeds: 'social', matches: 'matches', scorecards: 'matches',
   contests: 'contests', fantasy: 'fantasy', prizes: 'prizes', draws: 'draws', forum: 'community', polls: 'community', fanwall: 'community', notifications: 'notifications',
   fanspaces: 'fanspaces', checkin: 'fanspaces', growth: 'growth', fanclubs: 'fanclubs', instagram: 'instagram-review', approvals: 'social', marketing: 'social', settings: 'settings', proposal: 'settings',
 };

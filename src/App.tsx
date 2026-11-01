@@ -8,7 +8,7 @@ import { TeamPickerModal } from './components/TeamPickerModal';
 import { PlayerCardHost } from './components/PlayerCard';
 import { ErrorBox, Spinner } from './components/ui';
 
-import HomePage from './pages/HomePage';
+import HomeOrAces from './pages/HomeOrAces';
 import NotFoundPage from './pages/NotFoundPage';
 import { QuickQRPassModal } from './components/QuickQRPassModal';
 
@@ -77,7 +77,7 @@ function Page() {
   const route = useRoute();
   const p = route.params;
   switch (route.name) {
-    case 'home': return <HomePage />;
+    case 'home': return <HomeOrAces />;
     case 'matches': return <MatchesPage />;
     case 'match': return <MatchPage id={p.id} />;
     case 'teams': return <TeamsPage />;

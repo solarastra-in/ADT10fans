@@ -815,6 +815,8 @@ export interface VenueOffer {
   perk: string;
   /** Extra points the fan gets when the offer is redeemed (0 = none). */
   bonusPoints?: number;
+  /** Only for these matches (empty = every match of the club). */
+  matchIds?: string[];
   /** How many fans may redeem it in total (0 or unset = no limit). */
   limit?: number;
   redeemed?: number;

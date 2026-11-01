@@ -1093,6 +1093,27 @@ ok('robots.txt blocks admin and API', /Disallow: \/admin/.test((await html('/rob
   ok('removing the test match takes back its check-in and points', rm.undone === 1 && f1After.points === f1Before && !(f1After.fanClubCheckIns || []).some(c => c.matchId === tm.id), { rm, points: f1After.points, f1Before });
   ok('and the fan is not a fan club fan any more', (await get('/api/team-games', F1)).json.onlyTeamGames === false);
 
+  // --- Offers for particular matches; where the fan is checked in today ---
+  const offAces = (await post(`/api/fanclub/admin/clubs/${lounge.id}/offers`, { title: 'Aces match samosa', matchIds: [mAces.id] }, CA)).json.offer;
+  const offAll = (await post(`/api/fanclub/admin/clubs/${lounge.id}/offers`, { title: 'Matchday poster' }, CA)).json.offer;
+  ok('an offer can be for one match only', offAces.matchIds.length === 1 && offAces.matchIds[0] === mAces.id);
+  const lkOther = (await get(`/api/fanclub/admin/fan?fanClubId=${lounge.id}&code=${st1.fanClubCode}&matchId=${other.id}`, CA)).json;
+  const lkAces = (await get(`/api/fanclub/admin/fan?fanClubId=${lounge.id}&code=${st1.fanClubCode}&matchId=${mAces.id}`, CA)).json;
+  ok('the desk shows a match’s own offers only for that match', !lkOther.offers.some(o => o.id === offAces.id) && lkAces.offers.some(o => o.id === offAces.id));
+  const today = (await get('/api/fanclub/my-status', IG)).json;
+  ok('the fan sees where they are checked in today and that match’s offers', today.todayVisit?.fanClubId === lounge.id && today.todayVisit.matchId === other.id && !today.todayOffers.some(o => o.id === offAces.id) && today.todayOffers.some(o => o.id === offAll.id), today.todayOffers);
+  ok('an offer for another match cannot be redeemed', /another match/.test((await post('/api/fanclub/admin/redeem-offer', { fanClubId: lounge.id, offerId: offAces.id, code: st1.fanClubCode }, CA)).json.error || ''));
+
+  // --- Scorecards entered by team admins or league admins when live scores are not available ---
+  const scard = { innings1: { teamId: 'aces', totalRuns: 98, wickets: 3, overs: '10', batting: [{ batsman: 'Moeen Ali', dismissal: 'not out', runs: 40, balls: 20, fours: 3, sixes: 2 }], bowling: [] }, innings2: { teamId: 'eagles', totalRuns: 90, wickets: 5, overs: '10', batting: [], bowling: [] } };
+  ok('fans cannot enter scorecards', (await post(`/api/admin/matches/${far.id}/scorecard`, { scorecard: scard }, F1)).status === 403);
+  ok('a team admin cannot enter another team’s scorecard', (await post(`/api/admin/matches/${other.id}/scorecard`, { scorecard: scard }, S)).status === 403);
+  const sv = await post(`/api/admin/matches/${far.id}/scorecard`, { scorecard: scard }, S);
+  ok('the Aces team admin saves the scorecard of an Aces match', sv.status === 200 && sv.json.match.scorecard.innings1.batting[0].batsman === 'Moeen Ali' && sv.json.match.scoreA === '98/3' && sv.json.match.status !== 'completed', sv.json);
+  ok('finishing needs a winner from the two teams', (await post(`/api/admin/matches/${far.id}/scorecard`, { scorecard: scard, winner: 'bulls', complete: true }, S)).status === 400);
+  const fin2 = await post(`/api/admin/matches/${far.id}/scorecard`, { scorecard: scard, winner: 'aces', result: 'Arabian Aces won by 8 runs', complete: true }, A);
+  ok('a super admin finishes the match from the scorecard, which scores the games', fin2.status === 200 && fin2.json.match.status === 'completed' && fin2.json.teamGames !== undefined, fin2.json);
+
   // --- Team games: Pick 5 and team predictions ---
   const tg = (await get('/api/team-games', IG)).json;
   ok('fan club fans play only the team games', tg.onlyTeamGames === true && tg.team.id === 'aces', tg);

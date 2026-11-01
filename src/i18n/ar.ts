@@ -1257,4 +1257,13 @@ export const ar: Record<string, string> = {
   "At a fan club? Show this to the venue admin": "في نادي المشجعين؟ اعرض هذا على مسؤول المكان",
   "Copy the post link": "انسخ رابط المنشور",
   "They can confirm your Instagram and check you in. This screen moves on by itself.": "يمكنه تأكيد حسابك على إنستغرام وتسجيل حضورك. ستنتقل هذه الشاشة تلقائيًا.",
+  "How Pick 5 points work": "كيف تُحسب نقاط Pick 5",
+  "Scored from the official scorecard: runs, boundaries, strike rate, wickets, economy, catches, stumpings and run outs.": "تُحسب من بطاقة النتائج الرسمية: الأشواط والحدود ومعدل الضرب والويكتات والاقتصاد والمسكات والستمبينغ والرن آوت.",
+  "Pick 5 players from the team’s squad (once the playing XI is announced, only from the XI). One of them is your captain, who scores double.": "اختر 5 لاعبين من تشكيلة الفريق (بعد إعلان التشكيلة الأساسية، منها فقط). أحدهم قائدك ويحصل على ضعف النقاط.",
+  "Points come from the match scorecard: the live feed, or the scorecard entered by the team or league admins when live scores are not available.": "تأتي النقاط من بطاقة المباراة: البث المباشر للنتائج، أو البطاقة التي يدخلها مسؤولو الفريق أو الدوري عند عدم توفر النتائج المباشرة.",
+  "Each player’s points are added up; your fan points are the total ÷ {d}, rounded. A corrected scorecard re-scores every pick.": "تُجمع نقاط كل لاعب؛ ونقاطك كمشجع هي المجموع ÷ {d} مقرّبة. تصحيح البطاقة يعيد احتساب كل الاختيارات.",
+  "Run outs: the fielder named in “run out (Name)” gets the points; two fielders share them.": "الرن آوت: يحصل الفيلدر المذكور في «run out (Name)» على النقاط، ويتقاسمها فيلدران إن وُجدا.",
+  "Offers for you here today": "عروض لك هنا اليوم",
+  "Show your code at the desk to use it.": "اعرض رمزك عند المكتب لاستخدامه.",
+  "No offers at this fan club for this match.": "لا عروض في هذا النادي لهذه المباراة.",
 };
