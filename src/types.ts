@@ -577,10 +577,30 @@ export interface TeamMatchStats {
   dotBalls: number;
 }
 
+/** Runs and wickets in one over, entered by an admin when there is no ball-by-ball feed. */
+export interface OverTally {
+  innings: 1 | 2;
+  /** 1-based over number. */
+  over: number;
+  runs: number;
+  wickets: number;
+}
+
+/** A score update during the match (live sync or an admin), for the run charts. */
+export interface ScoreSnapshot {
+  innings: 1 | 2;
+  overs: string;
+  runs: number;
+  wickets: number;
+  at: string;
+}
+
 export interface MatchScorecard {
   innings1?: InningsScorecard;
   innings2?: InningsScorecard;
   ballByBall?: BallEvent[];
+  /** Over-by-over runs and wickets (admin entry). */
+  overs?: OverTally[];
 }
 
 export interface Match {
@@ -608,6 +628,8 @@ export interface Match {
   toss?: string;
   playerOfTheMatch?: string;
   scorecard?: MatchScorecard;
+  /** Score updates while the match was played (see server/matchProgress.ts). */
+  progress?: ScoreSnapshot[];
   streamUrl?: string;
   externalId?: string;
   scoreSource?: 'manual' | 'cricketdata' | 'scraper';

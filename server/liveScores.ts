@@ -1,6 +1,7 @@
 import { AppStore, db, InningsScorecard, Match } from './db';
 import { fetchText } from './feeds';
 import { normName } from './fantasy';
+import { recordProgress } from './matchProgress';
 
 /**
  * Optional automatic live scores from CricketData.org (https://cricketdata.org).
@@ -107,7 +108,7 @@ export function applyScorecard(store: AppStore, match: Match, data: any): boolea
       })),
     };
   });
-  match.scorecard = { innings1: innings[0], innings2: innings[1] };
+  match.scorecard = { ...match.scorecard, innings1: innings[0], innings2: innings[1] };
   const all = innings.flatMap(i => i.batting);
   const top = [...all].sort((a, b) => b.runs - a.runs)[0];
   if (top) match.topScorer = `${top.batsman} ${top.runs}${top.isNotOut ? '*' : ''} (${top.balls})`;
@@ -145,6 +146,7 @@ export async function syncLiveMatch(matchId: string): Promise<LiveSyncResult> {
     if (!m) throw new Error('Match not found');
     const justCompleted = applyMatchInfo(store, m, info);
     const scorecard = card ? applyScorecard(store, m, card) : false;
+    recordProgress(m);
     return { matchId, status: m.status, justCompleted, scorecard, scorecardNote };
   });
 }

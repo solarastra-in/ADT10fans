@@ -162,6 +162,7 @@ export const api = {
   // ----- matches -----
   getMatches: (params?: { teamId?: string; status?: string }) => pub<{ matches: Match[] }>(`/api/matches${qs(params)}`),
   getLiveMatch: () => req<{ hasLive: boolean; match: Match | null; nextMatch: Match | null; recentMatch: Match | null; teams: Team[]; serverTime: string }>('/api/matches/live'),
+  liveRefresh: (id: string) => post<Ok & { synced: boolean; liveSyncedAt: string | null }>(`/api/live/${encodeURIComponent(id)}/refresh`, {}),
   getMatch: (id: string) => pub<MatchDetail>(`/api/matches/${encodeURIComponent(id)}`),
   saveMatch: (match: Partial<Match> & { notify?: boolean }) => post<Ok & { matches: Match[]; targetMatch: Match; notification?: NotificationItem; fantasy?: any }>('/api/matches', match),
   deleteMatch: (id: string) => del<Ok & { matches: Match[] }>(`/api/matches/${id}`),

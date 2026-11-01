@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Crown, ExternalLink, Eye, Globe, MapPin, MessageSquarePlus, Sparkles, Trophy, Target, Users } from 'lucide-react';
+import { Activity, Crown, ExternalLink, Eye, Globe, MapPin, MessageSquarePlus, Sparkles, Trophy, Target, Users } from 'lucide-react';
 import { api } from '../api';
 import { useApp, useLoad } from '../state';
 import { useT } from '../i18n';
@@ -145,6 +145,11 @@ export default function MatchPage({ id }: { id: string }) {
           {m.status === 'upcoming' && (
             <ButtonLink to={`/fantasy/${m.id}`}>
               <Trophy className="w-4 h-4" /> {t('Pick your Pick XI')}
+            </ButtonLink>
+          )}
+          {m.status !== 'upcoming' && (
+            <ButtonLink to={`/live/${m.id}`} variant="secondary">
+              <Activity className="w-4 h-4" /> {t('Live score and stats')}
             </ButtonLink>
           )}
           {data.contests.some(c => c.status === 'open') && (

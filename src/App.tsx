@@ -68,6 +68,7 @@ const TeamPortalPage = safeLazy(() => import('./pages/TeamPortalPage'));
 const TeamInvitePage = safeLazy(() => import('./pages/TeamInvitePage'));
 const ProposalPage = safeLazy(() => import('./pages/ProposalPage'));
 const TeamGamesPage = safeLazy(() => import('./pages/TeamGamesPage'));
+const LivePage = safeLazy(() => import('./pages/LivePage'));
 const Pick5Page = safeLazy(() => import('./pages/TeamGamesPage').then(m => ({ default: m.Pick5Page })));
 const FanClubPage = safeLazy(() => import('./pages/FanClubPage'));
 const StaffPage = safeLazy(() => import('./pages/StaffPage'));
@@ -89,6 +90,7 @@ function Page() {
     case 'news': return <SocialPage mode="news" />;
     case 'play': return <PlayPage />;
     case 'teamGames': return <TeamGamesPage />;
+    case 'live': return <LivePage key={route.params.id || 'live'} id={route.params.id} />;
     case 'pick5': return <Pick5Page id={p.id} />;
     case 'fanclub': return <FanClubPage />;
     case 'staff': return <StaffPage />;

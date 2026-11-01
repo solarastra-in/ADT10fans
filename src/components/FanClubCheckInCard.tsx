@@ -5,7 +5,7 @@ import { useApp } from '../state';
 import { api } from '../api';
 import { useT } from '../i18n';
 import { Button, Card, Countdown, Pill, Spinner, cx, useFormat } from './ui';
-import { FanOffers } from './FanOffers';
+import { Link } from '../router';
 import type { FanClubStatusResponse } from '../types';
 
 /**
@@ -13,7 +13,7 @@ import type { FanClubStatusResponse } from '../types';
  * can check in for, the clubs and their offers, and the fan's past check-ins.
  */
 export const FanClubCheckInCard: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
-  const { user, openAuth, teamById, toast } = useApp();
+  const { user, openAuth, teamById, toast, config } = useApp();
   const t = useT();
   const f = useFormat();
   const [status, setStatus] = useState<FanClubStatusResponse | null>(null);
@@ -112,7 +112,19 @@ export const FanClubCheckInCard: React.FC<{ compact?: boolean }> = ({ compact = 
       {status.todayVisit && !!status.todayOffers?.length && (
         <section className="space-y-2">
           <h3 className="text-xs font-black uppercase tracking-wider text-slate-400">{t('Offers for you here today')}</h3>
-          <FanOffers offers={status.todayOffers} onChanged={load} />
+          {/* Offers are redeemed in one place only: the Arabian Aces page. */}
+          <ul className="space-y-1.5" data-testid="pass-offers">
+            {status.todayOffers.map(o => (
+              <li key={o.id} className="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2 text-sm">
+                <Gift className="w-4 h-4 text-emerald-300 shrink-0" />
+                <span className="flex-1 min-w-0 truncate text-white font-bold">{o.title}</span>
+                {o.usedUp ? <Pill>{t('Used')}</Pill> : o.remaining === 0 ? <Pill>{t('Run out')}</Pill> : o.canRedeem ? <Pill tone="green">{t('Ready')}</Pill> : o.opensAt && !o.reason ? <span className="text-[11px] text-slate-400">{t('Opens at {time}', { time: f.time(o.opensAt) })}</span> : null}
+              </li>
+            ))}
+          </ul>
+          <Link to="/team-games" className="inline-flex items-center gap-1 text-xs font-black text-amber-300 underline" data-testid="pass-offers-link">
+            {t('Redeem them on the {team} page', { team: teamById(config?.fanClubTeamId || 'aces')?.name || t('team games') })}
+          </Link>
         </section>
       )}
 

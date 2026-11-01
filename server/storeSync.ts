@@ -38,7 +38,7 @@ export function installStoreSync(app: Express) {
  * (email, feeds, scheduled jobs). They run without a request context, so each write is its own transaction.
  */
 const SELF_MANAGED = ['/api/cron/', '/api/auth/otp/request', '/api/feeds/pull', '/api/admin/feeds/sync', '/api/admin/feeds/harvest', '/api/admin/players/links/resolve',
-  '/api/admin/players/career/refresh', '/api/fanwall/new', '/api/fanclub/admin/offer-image'];
+  '/api/admin/players/career/refresh', '/api/fanwall/new', '/api/fanclub/admin/offer-image', '/api/live/'];
 
 async function handleSelfManaged(req: Request, res: Response, next: NextFunction) {
   try {

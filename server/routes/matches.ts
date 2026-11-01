@@ -1,8 +1,9 @@
 import { ensureMatchPredictions, settleMatchPredictions } from '../predictions';
+import { recordProgress, sanitizeOvers } from '../matchProgress';
 import { ensureTeamGames, settleTeamGames } from '../teamGames';
 import { Router } from 'express';
 import { db, Match, NotificationItem } from '../db';
-import { requireAdmin, teamScopeOf } from '../auth';
+import { rateLimit, requireAdmin, teamScopeOf } from '../auth';
 import { bad, isHttpsUrl, isoOrEmpty, newId, num, str, userOf, wrap } from '../http';
 import { dispatchNotification } from '../notify';
 import { afterMatchCompleted } from '../reminders';
@@ -126,7 +127,9 @@ matchesRouter.post('/matches', requireAdmin('matches'), wrap(async (req, res) =>
   const streamUrl = b.streamUrl !== undefined ? str(b.streamUrl, 500) : prev?.streamUrl || '';
   if (streamUrl && !isHttpsUrl(streamUrl)) return bad(res, 'Stream link must start with https://');
   const opt = (k: keyof Match, max = 200) => (b[k] !== undefined ? str(b[k], max) || undefined : (prev?.[k] as any));
-  const scorecard = b.scorecard !== undefined ? sanitizeScorecard(b.scorecard, teamA, teamB) : prev?.scorecard;
+  const sc = b.scorecard !== undefined ? sanitizeScorecard(b.scorecard, teamA, teamB) : undefined;
+  // Keep the over-by-over tally when a save does not send it.
+  const scorecard = b.scorecard !== undefined ? (sc ? { ...sc, overs: b.scorecard?.overs !== undefined ? sc.overs : prev?.scorecard?.overs } : undefined) : prev?.scorecard;
   const match: Match = {
     ...(prev || {}),
     id: prev?.id || newId('m'),
@@ -153,9 +156,11 @@ matchesRouter.post('/matches', requireAdmin('matches'), wrap(async (req, res) =>
     totalSixes: b.totalSixes !== undefined && b.totalSixes !== '' ? Math.max(0, Math.round(num(b.totalSixes))) : prev?.totalSixes,
     streamUrl: streamUrl || undefined,
     externalId: b.externalId !== undefined ? str(b.externalId, 80) || undefined : prev?.externalId,
+    firstInnings: b.firstInnings === 1 || b.firstInnings === 2 ? b.firstInnings : prev?.firstInnings,
     scoreSource: b.scoreA !== undefined || b.scoreB !== undefined || b.scorecard !== undefined ? 'manual' : prev?.scoreSource,
     updatedAt: new Date().toISOString(),
   };
+  if (match.status === 'live' || match.status === 'completed') recordProgress(match);
   if (idx >= 0) store.matches[idx] = match;
   else store.matches.push(match);
   ensureMatchPredictions(store);
@@ -193,7 +198,7 @@ function sanitizeScorecard(raw: any, teamA: string, teamB: string) {
       fallOfWickets: Array.isArray(x.fallOfWickets) ? x.fallOfWickets.slice(0, 10).map((f: any) => ({ wicket: n(f.wicket), score: n(f.score), over: str(f.over, 8), player: str(f.player, 60) })) : undefined,
     };
   };
-  return { innings1: inn(raw.innings1), innings2: inn(raw.innings2) };
+  return { innings1: inn(raw.innings1), innings2: inn(raw.innings2), overs: sanitizeOvers(raw.overs) };
 }
 
 /**
@@ -209,8 +214,9 @@ matchesRouter.post('/admin/matches/:id/scorecard', requireAdmin(['matches', 'tea
   const scope = teamScopeOf(user);
   if (scope !== null && m.teamA !== scope && m.teamB !== scope) return bad(res, 'You can only enter scorecards for your own team’s matches', 403);
   const b = req.body || {};
-  const card = sanitizeScorecard(b.scorecard, m.teamA, m.teamB);
-  if (!card?.innings1?.batting.length && !card?.innings2?.batting.length) return bad(res, 'Add at least one batter to the scorecard');
+  const card0 = sanitizeScorecard(b.scorecard, m.teamA, m.teamB);
+  const card = card0 && { ...card0, overs: b.scorecard?.overs !== undefined ? card0.overs : m.scorecard?.overs };
+  if (!card?.innings1?.batting.length && !card?.innings2?.batting.length && !card?.overs?.length) return bad(res, 'Add at least one batter, or the over-by-over runs');
   const winner = b.winner !== undefined ? str(b.winner, 60) : m.winner || '';
   if (winner && winner !== m.teamA && winner !== m.teamB) return bad(res, 'Winner must be one of the two teams');
   const wasCompleted = m.status === 'completed';
@@ -232,6 +238,8 @@ matchesRouter.post('/admin/matches/:id/scorecard', requireAdmin(['matches', 'tea
     status: b.complete ? 'completed' : m.status === 'upcoming' && +new Date(m.startsAt) <= Date.now() ? 'live' : m.status,
     updatedAt: new Date().toISOString(),
   });
+  if (card.innings1?.teamId) m.firstInnings = card.innings1.teamId === m.teamA ? 1 : 2;
+  recordProgress(m);
   db.save();
   let completed: any = null;
   if (m.status === 'completed') completed = await onMatchCompleted(m.id, !wasCompleted);
@@ -246,6 +254,33 @@ matchesRouter.delete('/matches/:id', requireAdmin('matches'), (req, res) => {
   db.save();
   res.json({ success: true, matches: store.matches });
 });
+
+/**
+ * The live centre asks for fresh scores while a match is on. At most one fetch from CricketData per
+ * match every 30 seconds, whoever is watching; otherwise it answers with what is stored.
+ */
+const LIVE_REFRESH_MS = 30_000;
+const liveInFlight = new Set<string>();
+matchesRouter.post('/live/:id/refresh', rateLimit('live-refresh', 12, 60_000), wrap(async (req, res) => {
+  const m = db.get().matches.find(x => x.id === req.params.id);
+  if (!m) return bad(res, 'Match not found', 404);
+  const near = m.status === 'live' || (m.status === 'upcoming' && Math.abs(+new Date(m.startsAt) - Date.now()) < 30 * 60_000);
+  const fresh = m.liveSyncedAt && Date.now() - +new Date(m.liveSyncedAt) < LIVE_REFRESH_MS;
+  if (!liveScoresConfigured() || !m.externalId || !near || fresh || liveInFlight.has(m.id)) {
+    return res.json({ success: true, synced: false, liveSyncedAt: m.liveSyncedAt || null });
+  }
+  liveInFlight.add(m.id);
+  try {
+    const r = await syncLiveMatch(m.id);
+    if (r.justCompleted) await onMatchCompleted(m.id);
+    res.json({ success: true, synced: true, liveSyncedAt: db.get().matches.find(x => x.id === m.id)?.liveSyncedAt || null });
+  } catch (e: any) {
+    console.warn('[LIVE] refresh failed:', e?.message || e);
+    res.json({ success: true, synced: false, liveSyncedAt: m.liveSyncedAt || null });
+  } finally {
+    liveInFlight.delete(m.id);
+  }
+}));
 
 matchesRouter.post('/admin/matches/:id/live-sync', requireAdmin('matches'), wrap(async (req, res) => {
   if (!liveScoresConfigured()) return bad(res, 'Live scores are off. Set CRICKET_API_KEY (CricketData.org) to turn them on.', 400);

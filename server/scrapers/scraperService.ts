@@ -1,4 +1,5 @@
 import { db, Match, InningsScorecard, AppStore } from '../db';
+import { recordProgress } from '../matchProgress';
 import { normName, computePlayerPoints } from '../fantasy';
 import { afterMatchCompleted } from '../reminders';
 import { ScrapedMatchSummary, ScrapedScorecard, ScrapedTeamSquad } from './types';
@@ -181,6 +182,7 @@ export class ScraperService {
       });
 
       match.scorecard = {
+        ...match.scorecard,
         innings1: mappedInnings[0],
         innings2: mappedInnings[1],
       };
@@ -194,6 +196,7 @@ export class ScraperService {
       if (winnerId) match.winner = winnerId;
     }
 
+    recordProgress(match);
     match.scoreSource = 'scraper';
     match.externalId = externalId;
     match.liveSyncedAt = new Date().toISOString();

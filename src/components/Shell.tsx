@@ -27,7 +27,7 @@ export function BrandMark({ compact }: { compact?: boolean }) {
 }
 
 const SECTION_OF: Partial<Record<RouteName, string>> = {
-  home: 'home', matches: 'matches', match: 'matches', teams: 'teams', team: 'teams', players: 'teams', player: 'teams',
+  home: 'home', live: 'live', matches: 'matches', match: 'matches', teams: 'teams', team: 'teams', players: 'teams', player: 'teams',
   social: 'social', videos: 'social', news: 'social', play: 'play', fantasy: 'play', fantasyMatch: 'play', games: 'play', contests: 'play',
   prizes: 'prizes', leaderboard: 'fans', fans: 'fans', forum: 'forum', thread: 'forum', fanspaces: 'fanspaces', profile: 'profile', admin: 'admin',
   duel: 'play', fanwall: 'fanwall', fanPost: 'fanwall', teamGames: 'play', pick5: 'play', fanclub: 'play', adminFanclub: 'admin',
@@ -242,6 +242,7 @@ export function Header({ route }: { route: Route }) {
 
   const links: [string, string, string][] = [
     ['/matches', t('Matches'), 'matches'],
+    ['/live', t('Live'), 'live'],
     ['/teams', t('Teams'), 'teams'],
     ['/play', t('Play'), 'play'],
     ['/social', t('Social'), 'social'],
@@ -306,6 +307,7 @@ export function BottomNav({ route }: { route: Route }) {
     ['/social', t('Social'), Share2, 'social'],
   ];
   const moreLinks: [string, string][] = [
+    ['/live', t('Live score & stats')],
     ['/teams', t('Teams & squads')],
     ['/players', t('Players')],
     ['/videos', t('Videos')],
@@ -412,7 +414,7 @@ export function Footer() {
   const teamOnly = useTeamGamesOnly();
   const year = new Date().getFullYear();
   const cols: [string, [string, string][]][] = [
-    [t('Season'), [['/matches', t('Matches')], ['/teams', t('Teams')], ['/players', t('Players')], ['/videos', t('Videos')], ['/news', t('News')]]],
+    [t('Season'), [['/matches', t('Matches')], ['/live', t('Live score & stats')], ['/teams', t('Teams')], ['/players', t('Players')], ['/videos', t('Videos')], ['/news', t('News')]]],
     [t('Play'), ([['/team-games', t('Team games')], ['/fanclub', t('Fan club pass')], ['/fantasy', t('Pick XI')], ['/games', t('Daily games')], ['/contests', t('Predictions')], ['/prizes', t('Prizes & draws')], ['/leaderboard', t('Leaderboard')]] as [string, string][]).filter(([to]) => !teamOnly || !HIDDEN_WHEN_TEAM_ONLY.has(to))],
     [t('Community'), [['/fanwall', t('Fan wall')], ['/forum', t('Forum')], ['/fans', t('Fan base')], ['/fanspaces', t('Fan Spaces')], ['/social', t('Social')]]],
     [t('About'), [['/rules', t('Rules')], ['/privacy', t('Privacy')], ['/terms', t('Terms')], ['/staff', t('Staff sign-in')]]],
