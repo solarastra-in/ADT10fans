@@ -168,7 +168,10 @@ export async function mountFrontend() {
   // SERVE_BUILD=1 serves the built client from a dev server (used by the browser tests).
   if (!IS_PROD && !process.env.VERCEL && !process.env.SERVE_BUILD) {
     const { createServer } = await import('vite');
-    const vite = await createServer({ server: { middlewareMode: true }, appType: 'custom' });
+    const vite = await createServer({
+      server: { middlewareMode: true, hmr: false },
+      appType: 'custom',
+    });
     app.use(vite.middlewares);
     loadTemplate = async url => vite.transformIndexHtml(url, fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf-8'));
   } else {
