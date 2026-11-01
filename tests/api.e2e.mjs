@@ -1070,16 +1070,21 @@ ok('robots.txt blocks admin and API', /Disallow: \/admin/.test((await html('/rob
   ok('an Instagram account confirmed for one fan cannot be used by another', (await post('/api/fanclub/admin/verify-instagram', { fanClubId: lounge.id, code: (await get('/api/fanclub/my-status', unv.token)).json.fanClubCode, handle: 'venue.fan' }, CA)).status === 409);
   const hist = (await get('/api/me/points', IG)).json;
   ok('the check-in is in the fan’s points history', JSON.stringify(hist).includes('fanclub-checkin'));
+  ok('(the Aces match moves to 40 minutes from now)', (await post('/api/matches', { id: mAces.id, startsAt: inMinutes(40) }, A)).status === 200);
+  mAces.startsAt = inMinutes(40);
+  ok('(the other match the fan checked in for moves to 40 minutes from now too)', (await post('/api/matches', { id: other.id, startsAt: inMinutes(40) }, A)).status === 200);
   const tooSoon = await post('/api/fanclub/admin/redeem-offer', { fanClubId: lounge.id, offerId: offer.id, code: st1.fanClubCode }, CA);
-  ok('offers open 30 minutes after the first ball', tooSoon.status === 409 && /30 minutes after the first ball/.test(tooSoon.json.error), tooSoon.json);
+  ok('offers open 30 minutes before the first ball', tooSoon.status === 409 && /30 minutes before the first ball/.test(tooSoon.json.error), tooSoon.json);
   {
     const v = (await get(`/api/fanclub/admin/fan?fanClubId=${lounge.id}&code=${st1.fanClubCode}&matchId=${mAces.id}`, CA)).json.offers.find(o => o.id === offer.id);
-    ok('the fan sees when the offer opens: 30 minutes after the start', v && !v.canRedeem && !v.reason && +new Date(v.opensAt) === +new Date(mAces.startsAt) + 30 * 60_000, v);
+    ok('the fan sees when the offer opens: 30 minutes before the start', v && !v.canRedeem && !v.reason && Math.abs(+new Date(v.opensAt) - (+new Date(mAces.startsAt) - 30 * 60_000)) < 5_000, v);
   }
-  // The Aces match started 40 minutes ago.
-  ok('(the match moves to 40 minutes ago)', (await post('/api/matches', { id: mAces.id, startsAt: inMinutes(-40) }, A)).status === 200);
+  // 20 minutes before the first ball the offer is open.
+  ok('(the match moves to 20 minutes from now)', (await post('/api/matches', { id: mAces.id, startsAt: inMinutes(20) }, A)).status === 200);
   const red = await post('/api/fanclub/admin/redeem-offer', { fanClubId: lounge.id, offerId: offer.id, code: st1.fanClubCode }, CA);
   ok('redeeming an offer gives its bonus points', red.status === 200 && red.json.bonusPoints === 15 && (await me(IG)).points === before + 255, red.json);
+  // The Aces match started 40 minutes ago (still on: offers stay open until it ends).
+  ok('(the match moves to 40 minutes ago)', (await post('/api/matches', { id: mAces.id, startsAt: inMinutes(-40) }, A)).status === 200);
   ok('each offer once per fan', (await post('/api/fanclub/admin/redeem-offer', { fanClubId: lounge.id, offerId: offer.id, code: st1.fanClubCode }, CA)).status === 409);
   ok('an unverified fan cannot be checked in', (await post('/api/fanclub/admin/checkin', { fanClubId: lounge.id, code: 'ZZZZZZ', matchId: mAces.id }, CA)).status === 404);
   const stats = (await get(`/api/fanclub/admin/stats?fanClubId=${lounge.id}`, CA)).json;

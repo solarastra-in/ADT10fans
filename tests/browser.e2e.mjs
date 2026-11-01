@@ -467,12 +467,12 @@ for (const lang of ['ar', 'ur']) {
   ok('the offer is saved', /20/.test(await desk3.page.locator('[data-testid="offer-row"]:has-text("Free Aces scarf")').innerText()) && desk3.errors.length === 0, desk3.errors);
   await desk3.ctx.close();
 
-  // Before 30 minutes into the match the offer shows when it opens.
+  // More than 30 minutes before the first ball the offer shows when it opens.
   await go(fan.page, '/team-games');
   await fan.page.waitForSelector('[data-testid="fan-offer-opens"]');
   ok('before it opens, the fan sees when it opens', (await fan.page.locator('[data-testid="fan-offer-redeem"]').count()) === 0);
-  // 40 minutes into the match: the fan redeems it on their phone, in front of the staff.
-  await api('POST', '/api/matches', { id: soon.id, startsAt: new Date(Date.now() - 40 * 60_000).toISOString() }, A);
+  // 20 minutes before the first ball: the fan redeems it on their phone, in front of the staff.
+  await api('POST', '/api/matches', { id: soon.id, startsAt: new Date(Date.now() + 20 * 60_000).toISOString() }, A);
   await go(fan.page, '/team-games');
   await fan.page.waitForSelector('[data-testid="fan-offer-redeem"]');
   await fan.page.locator('[data-testid="fan-offer-redeem"]').first().click();

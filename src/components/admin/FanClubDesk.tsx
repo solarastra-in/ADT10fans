@@ -395,7 +395,7 @@ function Offers({ club, view, onChange }: { club: FanClubAdminClub; view: NonNul
   const [edit, setEdit] = useState<Partial<VenueOffer> | null>(null);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const opensAfter = view.offerOpensAfterMins ?? 30;
+  const opensBefore = view.offerOpensBeforeMins ?? 30;
   const length = view.matchMins ?? 90;
 
   const pickImage = async (file?: File | null) => {
@@ -440,7 +440,7 @@ function Offers({ club, view, onChange }: { club: FanClubAdminClub; view: NonNul
   return (
     <div className="space-y-3">
       <Button onClick={() => setEdit({ ...emptyOffer })} data-testid="offer-add"><Plus className="w-4 h-4" /> {t('Add an offer')}</Button>
-      <p className="text-xs text-slate-400" data-testid="offer-timing">{t('Fans checked in for the match can redeem offers from {a} minutes after the first ball until the match ends ({b} minutes after the start). The times come from the match.', { a: opensAfter, b: length })}</p>
+      <p className="text-xs text-slate-400" data-testid="offer-timing">{t('Fans checked in for the match can redeem offers from {a} minutes before the first ball until the match ends ({b} minutes after the start). The times come from the match.', { a: opensBefore, b: length })}</p>
       {club.offers.length === 0 && <p className="text-sm text-slate-400">{t('No offers yet. Offers are perks for fans checked in here, like a free drink or a discount. An offer can also give bonus points.')}</p>}
       {club.offers.map(o => (
         <Card key={o.id} className="p-3 flex items-start gap-3" data-testid="offer-row">
