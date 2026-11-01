@@ -158,6 +158,11 @@ export interface FanClubMatchRef {
   startsAt: string;
   status: string;
   open?: boolean;
+  opensAt?: string;
+  /** Match day in Abu Dhabi (YYYY-MM-DD). */
+  day?: string;
+  /** A fan club test match (desk only). */
+  test?: boolean;
 }
 
 export interface FanClubAdminView {
@@ -168,6 +173,8 @@ export interface FanClubAdminView {
   checkInOpen: boolean;
   opensAt: string | null;
   fanClubTeamId: string;
+  /** Today in Abu Dhabi (YYYY-MM-DD). */
+  today: string;
   matches: FanClubMatchRef[];
   clubs: FanClubAdminClub[];
 }

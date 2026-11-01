@@ -1095,6 +1095,8 @@ export interface AppStore {
   fanClubs: FanClub[];
   fanClubCheckIns: FanClubCheckInRecord[];
   fanClubRedemptions: FanClubRedemption[];
+  /** Test matches for trying fan club check-in (Admin → fan club desk). Never shown with the real fixtures. */
+  fanClubTestMatches: (Match & { test: true; createdBy?: string })[];
 }
 
 export const SCHEMA_VERSION = 6;
@@ -1229,6 +1231,7 @@ export function emptyStore(): AppStore {
     fanClubs: [],
     fanClubCheckIns: [],
     fanClubRedemptions: [],
+    fanClubTestMatches: [],
   };
 }
 

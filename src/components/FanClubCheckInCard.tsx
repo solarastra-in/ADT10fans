@@ -75,7 +75,7 @@ export const FanClubCheckInCard: React.FC<{ compact?: boolean }> = ({ compact = 
       {m && (
         <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-sm">
           <p className="font-bold text-white">
-            {t('Match {n}', { n: m.matchNo })}: {a?.short || m.teamA} vs {b?.short || m.teamB}
+            {m.matchNo ? t('Match {n}', { n: m.matchNo }) : t('TEST MATCH')}: {a?.short || m.teamA} vs {b?.short || m.teamB}
           </p>
           <p className="text-xs text-slate-400 mt-0.5">
             {f.dateTime(m.startsAt)} ·{' '}

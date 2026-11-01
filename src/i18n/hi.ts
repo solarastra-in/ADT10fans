@@ -1253,4 +1253,5 @@ export const hi: Record<string, string> = {
   "View Full Leaderboard": "पूरा लीडरबोर्ड देखें",
   "Be the first to register a Pick XI squad for this match!": "इस मैच के लिए Pick XI टीम रजिस्टर करने वाले पहले बनें!",
   "Staff sign-in": "स्टाफ़ साइन इन",
+  "TEST MATCH": "टेस्ट मैच",
 };
