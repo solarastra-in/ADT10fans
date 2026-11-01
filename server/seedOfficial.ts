@@ -5,11 +5,10 @@ import { OFFICIAL_SQUAD_IDS_BEFORE_2026_10_27 } from './data/previousSquadIds';
 import { normName } from './fantasy';
 import { ensureMatchPredictions } from './predictions';
 import { ensureTeamGames } from './teamGames';
-import { OFFICIAL_SOCIAL_POSTS } from './data/officialSocialPosts';
 import { OFFICIAL_2026_MATCHES } from './data/officialMatches';
 import { OFFICIAL_ARABIAN_ACES_PRIZES, OFFICIAL_ARABIAN_ACES_DRAWS } from './data/officialPrizes';
 
-export { OFFICIAL_2026_TEAMS, OFFICIAL_SOCIAL_POSTS, OFFICIAL_2026_MATCHES, OFFICIAL_ARABIAN_ACES_PRIZES, OFFICIAL_ARABIAN_ACES_DRAWS };
+export { OFFICIAL_2026_TEAMS, OFFICIAL_2026_MATCHES, OFFICIAL_ARABIAN_ACES_PRIZES, OFFICIAL_ARABIAN_ACES_DRAWS };
 
 type HandleSeed = Omit<SocialHandle, 'id' | 'verifiedAt' | 'foundAt' | 'status' | 'source'> & { evidence: string };
 
@@ -60,46 +59,6 @@ function cloneTeam(t: Team, venue: string, now: string): Team {
   return { ...t, home: venue, squad: t.squad.filter(p => !isPlaceholderPlayer(p)).map(p => ({ ...p })), createdAt: now, updatedAt: now };
 }
 
-/** Seeds authentic official social media posts for all teams and links them to the verified handles. */
-export function seedOfficialSocialPosts(store: AppStore, now = new Date().toISOString()): boolean {
-  let changed = false;
-  const existingUrls = new Set(store.feedItems.map(f => f.url));
-  const existingIds = new Set(store.feedItems.map(f => f.id));
-
-  for (const post of OFFICIAL_SOCIAL_POSTS) {
-    if (existingUrls.has(post.url)) {
-      const cur = store.feedItems.find(f => f.url === post.url);
-      if (cur && !cur.handleId) {
-        const matchingHandle = store.handles.find(h =>
-          (h.teamId === post.teamId || (!h.teamId && !post.teamId)) &&
-          (h.platform === post.platform || h.handle.toLowerCase() === post.source.toLowerCase())
-        );
-        if (matchingHandle) {
-          cur.handleId = matchingHandle.id;
-          changed = true;
-        }
-      }
-      continue;
-    }
-    const matchingHandle = store.handles.find(h =>
-      (h.teamId === post.teamId || (!h.teamId && !post.teamId)) &&
-      (h.platform === post.platform || h.handle.toLowerCase() === post.source.toLowerCase())
-    );
-    const id = 'f-' + crypto.createHash('md5').update(post.url).digest('hex').slice(0, 16);
-    if (existingIds.has(id)) continue;
-
-    store.feedItems.push({
-      ...post,
-      id,
-      handleId: matchingHandle?.id,
-      createdAt: now,
-    });
-    existingUrls.add(post.url);
-    existingIds.add(id);
-    changed = true;
-  }
-  return changed;
-}
 
 /**
  * Runs on every store load. A brand-new store gets the six franchises and the checked handles.

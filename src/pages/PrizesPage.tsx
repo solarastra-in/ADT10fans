@@ -90,7 +90,7 @@ export default function PrizesPage() {
           <div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 bg-amber-400/10 border border-amber-400/30 px-2 py-0.5 rounded-full">
-                Abu Dhabi T10 Official Rewards
+                Fan rewards
               </span>
               <img
                 src="/logos/aces.svg"

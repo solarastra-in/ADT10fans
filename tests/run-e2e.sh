@@ -66,6 +66,10 @@ run_prod() {
 run_browser() {
   build
   # Browser journeys need sign-in codes, which only a non-production server returns; it serves the built client.
+  META_PORT=$((30000 + RANDOM % 9000))
+  setsid node tests/fake-meta.mjs $META_PORT > "$ROOT/meta.log" 2>&1 &
+  PIDS+=($!)
+  export META_COMMENTS_GRAPH_BASE="http://127.0.0.1:$META_PORT"
   start web "$ROOT/data-web" env SERVE_BUILD=1 npx tsx server.ts
   BASE="http://localhost:$PORT_web" node tests/browser.e2e.mjs
 }

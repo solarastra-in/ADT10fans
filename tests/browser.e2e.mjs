@@ -32,6 +32,8 @@ const dubaiDay = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/
 
 // ---------- data the journeys need (made through the admin API) ----------
 const A = await apiLogin('admin@test.dev');
+// The journeys below browse as fans; the Instagram check has its own journey at the end.
+await api('POST', '/api/admin/settings', { requireInstagramFollow: false, instagramWelcomePoints: 0, instagramVerifyPostUrl: 'https://www.instagram.com/p/TESTPOST1/' }, A);
 await api('POST', '/api/admin/feeds/sync', {}, A);
 // Games open at midnight in Abu Dhabi the day before match day: a match 20 hours away is open, one four days away is not yet.
 const match = (await api('POST', '/api/matches', { teamA: 'bulls', teamB: 'aces', startsAt: new Date(Date.now() + 20 * 3600_000).toISOString() }, A)).targetMatch;
@@ -308,6 +310,74 @@ for (const lang of ['ar', 'ur']) {
     ok(`${lang} ${p} is right-to-left, translated and fits`, dir === 'rtl' && arabicScript && (await noOverflow(rtl.page)) && rtl.errors.length === 0, { dir, arabicScript, errors: rtl.errors });
   }
   await rtl.ctx.close();
+}
+
+// The Instagram check, the fan club desk and Pick 5, at phone width.
+{
+  await api('POST', '/api/admin/settings', { requireInstagramFollow: true }, A);
+  const anon = await newPage(390, 844);
+  await go(anon.page, '/play');
+  await anon.page.waitForSelector('[data-testid="instagram-gate"]');
+  ok('visitors see the Instagram check before they can play', await anon.page.locator('[data-testid="instagram-gate"]').isVisible());
+  await go(anon.page, '/rules');
+  await anon.page.waitForSelector('main');
+  ok('the rules stay readable without it', (await anon.page.locator('[data-testid="instagram-gate"]').count()) === 0);
+  await anon.ctx.close();
+
+  const fanToken = await apiLogin('gatefan@test.dev');
+  const fan = await newPage(390, 844, fanToken);
+  await go(fan.page, '/');
+  await fan.page.waitForSelector('[data-testid="ig-handle"]');
+  await fan.page.fill('[data-testid="ig-handle"]', '@gate.fan');
+  await fan.page.locator('form:has([data-testid="ig-handle"]) button[type="submit"]').click();
+  await fan.page.waitForSelector('[data-testid="ig-code"]');
+  const code = (await fan.page.locator('[data-testid="ig-code"]').innerText()).trim();
+  ok('the fan gets a code to comment', /^ACES-[A-Z2-9]{5}$/.test(code), code);
+  ok('the check fits a phone screen', await noOverflow(fan.page));
+  await fetch(`${process.env.META_COMMENTS_GRAPH_BASE}/__comment`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'gate.fan', text: code }) });
+  await fan.page.waitForTimeout(3200);
+  await fan.page.locator('[data-testid="ig-check"]').click();
+  await fan.page.waitForSelector('[data-testid="instagram-gate"]', { state: 'detached', timeout: 15000 });
+  ok('after commenting the code the fan is in', (await fan.page.locator('[data-testid="instagram-gate"]').count()) === 0 && fan.errors.length === 0, fan.errors);
+
+  // A league admin adds a club and its admin; the club admin checks the fan in at the desk.
+  await api('POST', '/api/fanclub/admin/import', { csv: 'name,city,country,checkInPoints\nBrowser Lounge,Abu Dhabi,UAE,80' }, A);
+  const club = (await api('GET', '/api/fanclub/admin/clubs', null, A)).clubs.find(c => c.name === 'Browser Lounge');
+  await api('POST', `/api/fanclub/admin/clubs/${club.id}/admins`, { email: 'desk@test.dev' }, A);
+  const soon = (await api('POST', '/api/matches', { teamA: 'aces', teamB: 'eagles', startsAt: new Date(Date.now() + 45 * 60_000).toISOString() }, A)).targetMatch;
+  await go(fan.page, '/fanclub');
+  await fan.page.waitForSelector('[data-testid="fanclub-code"]');
+  const fanCode = (await fan.page.locator('[data-testid="fanclub-code"]').innerText()).trim();
+  ok('the fan sees their fan club pass', /^[A-Z2-9]{6}$/.test(fanCode) && (await noOverflow(fan.page)));
+  const desk = await newPage(390, 844, await apiLogin('desk@test.dev'));
+  await go(desk.page, '/admin/fanclub');
+  await desk.page.waitForSelector('[data-testid="desk-code"]');
+  await desk.page.selectOption('#fc-match', soon.id);
+  await desk.page.fill('[data-testid="desk-code"]', fanCode);
+  await desk.page.locator('[data-testid="desk-find"]').click();
+  await desk.page.waitForSelector('[data-testid="desk-checkin"]');
+  await desk.page.locator('[data-testid="desk-checkin"]').click();
+  await desk.page.waitForSelector('[data-testid="desk-checked-in"]');
+  ok('the fan club admin checks the fan in at the desk', desk.errors.length === 0 && (await noOverflow(desk.page)), desk.errors);
+  await desk.ctx.close();
+
+  // Checked in at a fan club, the fan plays the Aces games.
+  await go(fan.page, '/play');
+  await fan.page.waitForSelector('[data-testid="play-team-games"]');
+  ok('the fan club fan’s Play page leads to the Aces games only', (await fan.page.locator('[data-testid="play-fantasy"]').count()) === 0);
+  await go(fan.page, `/team-games/${soon.id}`);
+  await fan.page.waitForSelector('[data-testid="pick5-player"]');
+  const players = fan.page.locator('[data-testid="pick5-player"]');
+  for (let i = 0; i < 5; i++) await players.nth(i).click();
+  await fan.page.locator('[data-testid="pick5-captain"]').first().click();
+  await fan.page.locator('[data-testid="pick5-save"]').click();
+  await fan.page.waitForTimeout(800);
+  const saved = await api('GET', `/api/team-games/${soon.id}/pick5`, null, fanToken);
+  ok('the fan saves Pick 5 on a phone', saved.pick?.playerIds.length === 5 && Boolean(saved.pick.captainId) && (await noOverflow(fan.page)) && fan.errors.length === 0, { pick: saved.pick, errors: fan.errors });
+  await go(fan.page, '/prizes');
+  await fan.page.waitForSelector('[data-testid="reward-tiers"]');
+  ok('the prize tiers come from the prizes', (await fan.page.locator('[data-testid="tier-points"]').first().innerText()).trim() === '10+');
+  await fan.ctx.close();
 }
 
 // Lock reminders still run with the browser data in place.
