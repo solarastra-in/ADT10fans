@@ -1254,4 +1254,7 @@ export const hi: Record<string, string> = {
   "Be the first to register a Pick XI squad for this match!": "इस मैच के लिए Pick XI टीम रजिस्टर करने वाले पहले बनें!",
   "Staff sign-in": "स्टाफ़ साइन इन",
   "TEST MATCH": "टेस्ट मैच",
+  "At a fan club? Show this to the venue admin": "फ़ैन क्लब में हैं? यह वेन्यू एडमिन को दिखाएँ",
+  "Copy the post link": "पोस्ट का लिंक कॉपी करें",
+  "They can confirm your Instagram and check you in. This screen moves on by itself.": "वे आपका Instagram पुष्टि करके आपका चेक-इन कर सकते हैं। यह स्क्रीन अपने आप आगे बढ़ेगी।",
 };

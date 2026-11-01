@@ -146,11 +146,26 @@ function Desk({ club, view, onChange }: { club: FanClubAdminClub; view: NonNulla
     }
   };
 
-  const checkIn = async () => {
+  const [igHandle, setIgHandle] = useState('');
+  useEffect(() => setIgHandle(fan?.fan.instagramHandle || ''), [fan?.fan.id, fan?.fan.instagramHandle]);
+  const confirmInstagramOnly = async () => {
+    setBusy('verify');
+    setError('');
+    try {
+      await api.fanClubVerifyInstagram({ fanClubId: club.id, code, handle: igHandle });
+      toast(t('Instagram confirmed for {name}', { name: fan?.fan.name || '' }));
+      await lookup(code);
+    } catch (e: any) {
+      setError(e.message);
+      setBusy('');
+    }
+  };
+
+  const checkIn = async (verifyInstagram = false) => {
     setBusy('checkin');
     setError('');
     try {
-      const r = await api.fanClubCheckIn({ fanClubId: club.id, code, matchId: matchId || undefined });
+      const r = await api.fanClubCheckIn({ fanClubId: club.id, code, matchId: matchId || undefined, ...(verifyInstagram ? { verifyInstagram: true, handle: igHandle } : {}) });
       toast(t('{name} checked in: +{n} points', { name: r.fan.name, n: r.pointsAwarded }));
       await lookup(code);
     } catch (e: any) {
@@ -297,17 +312,39 @@ function Desk({ club, view, onChange }: { club: FanClubAdminClub; view: NonNulla
             </p>
           ) : (
             <>
-            {fan.fan.instagramVerified && !fan.window?.open && (
+            {!fan.window?.open && (
               <p className="text-xs text-amber-200" data-testid="desk-not-open">
                 {(fan as any).matchAtThisClub === false ? t('This match is not one of this club’s matches.') : fan.window?.opensAt && Date.now() < +new Date(fan.window.opensAt) ? t('Check-in opens at {time}.', { time: f.dateTime(fan.window.opensAt) }) : t('Check-in for this match has closed.')}
               </p>
             )}
-            <Button onClick={checkIn} loading={busy === 'checkin'} disabled={!fan.fan.instagramVerified || !fan.window?.open || !match} data-testid="desk-checkin">
-              <UserCheck className="w-4 h-4" /> {t('Check in · +{n} points', { n: club.effectiveCheckInPoints })}
-            </Button>
+            {fan.fan.instagramVerified ? (
+              <Button onClick={() => checkIn()} loading={busy === 'checkin'} disabled={!fan.window?.open || !match} data-testid="desk-checkin">
+                <UserCheck className="w-4 h-4" /> {t('Check in · +{n} points', { n: club.effectiveCheckInPoints })}
+              </Button>
+            ) : (
+              <div className="space-y-2 rounded-xl border border-amber-400/40 bg-amber-400/5 p-3" data-testid="desk-verify">
+                <p className="text-xs text-amber-100">{t('Instagram not verified yet. Ask to see their Instagram: they follow the account and commented their code. Then confirm here.')}</p>
+                <div className="flex gap-2 items-center">
+                  <label htmlFor="desk-ig" className="sr-only">{t('Instagram username')}</label>
+                  <input id="desk-ig" className={inputCls} placeholder="@username" autoCapitalize="none" value={igHandle} onChange={e => setIgHandle(e.target.value)} data-testid="desk-ig-handle" />
+                  {igHandle.trim() && (
+                    <a href={`https://www.instagram.com/${igHandle.trim().replace(/^@/, '')}/`} target="_blank" rel="noopener noreferrer" className="shrink-0 text-xs font-bold text-amber-300 underline">{t('Open profile')}</a>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {fan.window?.open && match && (
+                    <Button onClick={() => checkIn(true)} loading={busy === 'checkin'} disabled={!igHandle.trim()} data-testid="desk-verify-checkin">
+                      <UserCheck className="w-4 h-4" /> {t('Confirm Instagram and check in · +{n}', { n: club.effectiveCheckInPoints })}
+                    </Button>
+                  )}
+                  <Button variant={fan.window?.open && match ? 'ghost' : 'primary'} onClick={confirmInstagramOnly} loading={busy === 'verify'} disabled={!igHandle.trim()} data-testid="desk-verify-only">
+                    {t('Confirm Instagram only')}
+                  </Button>
+                </div>
+              </div>
+            )}
             </>
           )}
-          {!fan.fan.instagramVerified && <p className="text-xs text-amber-200">{t('The fan must verify Instagram on ADT10fans.com before checking in.')}</p>}
           {fan.offers.length > 0 && (
             <div className="space-y-2 pt-2 border-t border-slate-800">
               <p className="text-xs font-black uppercase tracking-wider text-slate-400">{t('Offers here')}</p>

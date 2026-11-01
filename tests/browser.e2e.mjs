@@ -388,6 +388,32 @@ for (const lang of ['ar', 'ur']) {
   ok('and removes it again', (await boss.page.locator('[data-testid="desk-match"] option', { hasText: /TEST MATCH/ }).count()) === 0);
   await boss.ctx.close();
 
+  // At the venue: a fan who has not verified Instagram shows the QR on the Instagram screen; the venue
+  // admin confirms their Instagram and checks them in; the fan's phone moves on by itself.
+  const qrFan = await newPage(390, 844, await apiLogin('qrfan@test.dev'));
+  await go(qrFan.page, '/');
+  await qrFan.page.waitForSelector('[data-testid="ig-handle"]');
+  await qrFan.page.fill('[data-testid="ig-handle"]', '@qr.fan');
+  await qrFan.page.locator('form:has([data-testid="ig-handle"]) button[type="submit"]').click();
+  await qrFan.page.waitForSelector('[data-testid="ig-fanclub-code"]');
+  const qrCode = (await qrFan.page.locator('[data-testid="ig-fanclub-code"]').innerText()).trim();
+  ok('the Instagram screen shows the fan club QR and code on a phone', /^[A-Z2-9]{6}$/.test(qrCode) && (await qrFan.page.locator('[data-testid="ig-fanclub-pass"] img').count()) === 1 && (await noOverflow(qrFan.page)));
+  const desk2 = await newPage(390, 844, await apiLogin('desk@test.dev'));
+  await go(desk2.page, '/venue');
+  await desk2.page.waitForSelector('[data-testid="desk-code"]');
+  await desk2.page.selectOption('#fc-match', soon.id);
+  await desk2.page.fill('[data-testid="desk-code"]', qrCode);
+  await desk2.page.locator('[data-testid="desk-find"]').click();
+  await desk2.page.waitForSelector('[data-testid="desk-verify"]');
+  ok('the desk offers to confirm the fan’s Instagram, with their username filled in', (await desk2.page.inputValue('[data-testid="desk-ig-handle"]')) === 'qr.fan' && (await noOverflow(desk2.page)));
+  await desk2.page.locator('[data-testid="desk-verify-checkin"]').click();
+  await desk2.page.waitForSelector('[data-testid="desk-checked-in"]');
+  await desk2.ctx.close();
+  await qrFan.page.waitForURL(u => new URL(u).pathname === '/team-games', { timeout: 20000 });
+  await qrFan.page.waitForSelector('[data-testid="instagram-gate"]', { state: 'detached', timeout: 10000 });
+  ok('the fan’s phone moves on by itself to the Aces games', qrFan.errors.length === 0, qrFan.errors);
+  await qrFan.ctx.close();
+
   // Checked in at a fan club, the fan plays the Aces games.
   await go(fan.page, '/play');
   await fan.page.waitForSelector('[data-testid="play-team-games"]');
