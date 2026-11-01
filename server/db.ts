@@ -840,6 +840,12 @@ export interface FanClub {
   checkInPoints?: number;
   /** 'team' (default): fans checked in here play only their team's games. 'all': every game. */
   gamesMode?: 'team' | 'all';
+  /**
+   * Which matches fans can check in for here: by default every match of the fan club team (Admin →
+   * Settings; the Arabian Aces). Admins add other matches or take some out.
+   */
+  extraMatchIds?: string[];
+  excludedMatchIds?: string[];
   createdBy?: string;
   createdAt?: string;
   updatedAt?: string;
