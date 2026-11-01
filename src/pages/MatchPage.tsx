@@ -1,11 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { ExternalLink, Globe, MapPin, MessageSquarePlus, Trophy, Target, Users } from 'lucide-react';
+import { Crown, ExternalLink, Eye, Globe, MapPin, MessageSquarePlus, Sparkles, Trophy, Target, Users } from 'lucide-react';
 import { api } from '../api';
 import { useApp, useLoad } from '../state';
 import { useT } from '../i18n';
 import { Link, usePageMeta } from '../router';
 import { playerLinkProps } from '../components/PlayerCard';
-import { ButtonLink, Card, Countdown, ErrorBox, PageHeader, SectionTitle, Spinner, Tabs, TeamBadge, cx, useFormat, ROLE_SHORT } from '../components/ui';
+import { Avatar, ButtonLink, Card, Countdown, ErrorBox, PageHeader, SectionTitle, Spinner, Tabs, TeamBadge, cx, useFormat, ROLE_SHORT } from '../components/ui';
 import { ScoreSourceLabel, StatusPill } from '../components/matches';
 import { YouTubePlayer } from '../components/social';
 import { PollCard } from '../components/PollCard';
@@ -81,6 +81,7 @@ export default function MatchPage({ id }: { id: string }) {
   const t = useT();
   const f = useFormat();
   const { data, error, loading, reload } = useLoad(() => api.getMatch(id), [id]);
+  const regTeams = useLoad(() => api.getMatchRegisteredTeams(id), [id]);
   const polls = useLoad(() => api.getPolls({ matchId: id }), [id]);
   const m = data?.match;
   const a = teamById(m?.teamA);
@@ -183,6 +184,84 @@ export default function MatchPage({ id }: { id: string }) {
           </Card>
         </section>
       )}
+
+      {/* Registered Fan Teams & Scorecard Leaderboard */}
+      <section data-testid="match-registered-teams-section">
+        <SectionTitle
+          title={t('Registered Fan Teams & Scorecard Leaderboard')}
+          action={
+            <Link to={`/fantasy/${m.id}?tab=registered`} className="text-xs font-bold text-amber-400 hover:underline flex items-center gap-1">
+              {t('View all registered teams ({n})', { n: regTeams.data?.totalRegistered || data.fantasy.lineups || 0 })}
+            </Link>
+          }
+        />
+
+        {regTeams.data?.topTeam ? (
+          <Card className="p-4 sm:p-5 border-amber-500/40 bg-gradient-to-r from-amber-950/30 via-slate-900 to-slate-950 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <div className="rounded-full overflow-hidden border border-amber-400">
+                    <Avatar name={regTeams.data.topTeam.userName} src={regTeams.data.topTeam.userAvatar} size={46} />
+                  </div>
+                  <div className="absolute -top-1.5 -end-1.5 w-5 h-5 rounded-full bg-amber-400 text-slate-950 flex items-center justify-center font-black text-[10px] shadow">
+                    <Crown className="w-3 h-3 fill-current" />
+                  </div>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-400 text-slate-950">
+                      {regTeams.data.hasScorecard ? t('Highest Points Leader') : t('Top Seeded Squad')}
+                    </span>
+                    {regTeams.data.topTeam.userCity && (
+                      <span className="text-xs text-slate-400">{regTeams.data.topTeam.userCity}</span>
+                    )}
+                  </div>
+                  <h4 className="text-base font-black text-white mt-0.5">{regTeams.data.topTeam.userName}</h4>
+                  <p className="text-xs text-amber-300 font-semibold">
+                    {regTeams.data.topTeam.variationName} · (C) {regTeams.data.topTeam.captainName} (2x) · (VC) {regTeams.data.topTeam.viceCaptainName} (1.5x)
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4 sm:border-s sm:border-slate-800 sm:ps-4">
+                <div className="text-end">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">{t('Scorecard Points')}</span>
+                  <span className="text-2xl font-black text-amber-400 tabular-nums">
+                    {regTeams.data.topTeam.points.toLocaleString()} pts
+                  </span>
+                </div>
+                <ButtonLink to={`/fantasy/${m.id}?tab=registered`} size="sm" className="font-bold">
+                  {t('View Full Leaderboard')}
+                </ButtonLink>
+              </div>
+            </div>
+
+            {/* Quick Preview of Top 3 Registered Teams */}
+            {regTeams.data.teams.length > 1 && (
+              <div className="pt-2 border-t border-slate-800 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {regTeams.data.teams.slice(0, 3).map(tm => (
+                  <div key={tm.id} className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="w-5 h-5 rounded-md bg-slate-800 text-slate-300 font-black text-[10px] flex items-center justify-center shrink-0">
+                        #{tm.rank}
+                      </span>
+                      <span className="text-xs font-bold text-white truncate">{tm.userName}</span>
+                    </div>
+                    <span className="text-xs font-black text-amber-300 tabular-nums shrink-0">
+                      {tm.points} pts
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        ) : (
+          <Card className="p-4 text-center text-xs text-slate-400">
+            {t('Be the first to register a Pick XI squad for this match!')}
+          </Card>
+        )}
+      </section>
 
       {data.fantasy.playerPoints.length > 0 && (
         <section>

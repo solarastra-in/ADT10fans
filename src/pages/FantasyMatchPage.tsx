@@ -22,10 +22,13 @@ import {
   Trash2,
   TrendingDown,
   TrendingUp,
+  Trophy,
+  Users,
   X,
   Zap,
 } from 'lucide-react';
 import { api } from '../api';
+import { MatchRegisteredTeamsView } from '../components/MatchRegisteredTeamsView';
 import { openPlayerCard } from '../components/PlayerCard';
 import { useApp, useLoad } from '../state';
 import { useT } from '../i18n';
@@ -128,6 +131,12 @@ export default function FantasyMatchPage({ id }: { id: string }) {
   const [justSaved, setJustSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [viewTab, setViewTab] = useState<'builder' | 'registered'>(() => {
+    if (typeof window !== 'undefined' && (window.location.search.includes('tab=registered') || window.location.hash === '#registered')) {
+      return 'registered';
+    }
+    return user ? 'builder' : 'registered';
+  });
 
   const m = data?.match;
   const a = teamById(m?.teamA);
@@ -390,61 +399,134 @@ export default function FantasyMatchPage({ id }: { id: string }) {
       </Link>
       {header}
 
-      {/* Variation Switcher & Manager Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-900/80 p-2.5 border border-slate-800 text-xs">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-bold text-slate-300 inline-flex items-center gap-1">
-            <Layers className="w-3.5 h-3.5 text-amber-400" />
-            {t('Team Name')}:
-          </span>
-          <input
-            type="text"
-            value={variationName}
-            onChange={e => setVariationName(e.target.value)}
-            className="rounded bg-slate-950 px-2.5 py-1 font-bold text-white border border-slate-700 focus:border-amber-400 focus:outline-none min-w-[160px]"
-            placeholder="Unique squad name"
-          />
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={handleSuggestName}
-            className="text-amber-400 text-xs px-2 hover:bg-amber-400/10 flex items-center gap-1 cursor-pointer"
-            title={t('Suggest a unique creative cricket team name')}
-          >
-            <Dices className="w-3.5 h-3.5" />
-            <span>{t('Suggest Name')}</span>
-          </Button>
-        </div>
-
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {savedTeams.map(st => {
-            const isCur = (st.variationId || 'var-1') === variationId;
-            return (
-              <button
-                key={st.variationId || st.variationName}
-                type="button"
-                onClick={() => handleSelectVariation(st.variationId || 'var-1')}
-                className={cx(
-                  'rounded-lg px-2.5 py-1 font-bold text-xs transition-all border cursor-pointer',
-                  isCur
-                    ? 'bg-amber-400 text-slate-950 border-amber-400 shadow-sm'
-                    : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-600'
-                )}
-              >
-                {st.variationName || 'Team'}
-              </button>
-            );
-          })}
-          {savedTeams.length < 4 && (
-            <Button size="sm" variant="ghost" onClick={handleCreateNewVariation} className="text-amber-400 text-xs">
-              <Plus className="w-3.5 h-3.5" /> {t('New Slot')}
-            </Button>
+      {/* Primary Tab Switcher: Registered Teams & Performance vs Draft Lineup */}
+      <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-slate-900 border border-slate-800" data-testid="match-fantasy-tabs">
+        <button
+          type="button"
+          onClick={() => setViewTab('registered')}
+          className={cx(
+            'flex-1 py-2 px-3 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 cursor-pointer',
+            viewTab === 'registered'
+              ? 'bg-amber-400 text-slate-950 shadow-md font-black'
+              : 'text-slate-400 hover:text-white'
           )}
-        </div>
+        >
+          <Trophy className="w-4 h-4" />
+          <span>{t('Registered Teams & Scorecard Performance')}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setViewTab('builder')}
+          className={cx(
+            'flex-1 py-2 px-3 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 cursor-pointer',
+            viewTab === 'builder'
+              ? 'bg-amber-400 text-slate-950 shadow-md font-black'
+              : 'text-slate-400 hover:text-white'
+          )}
+        >
+          {user ? <Sparkles className="w-4 h-4" /> : <Lock className="w-4 h-4 text-amber-400" />}
+          <span>{t('Draft Pick XI Lineup')}</span>
+          {!user && (
+            <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold hidden sm:inline">
+              {t('Sign In Req')}
+            </span>
+          )}
+        </button>
       </div>
 
-      {!user && <Notice>{t('You can build and simulate variations now; sign in to persist your teams.')}</Notice>}
-      {err && <ErrorBox message={err} />}
+      {viewTab === 'registered' ? (
+        <MatchRegisteredTeamsView
+          matchId={id}
+          matchA={a}
+          matchB={b}
+          onDraftTeamClick={() => {
+            if (!user) {
+              openAuth(t('Sign in to draft and create your Pick XI squad.'));
+            } else {
+              setViewTab('builder');
+            }
+          }}
+        />
+      ) : !user ? (
+        /* MANDATORY AUTHENTICATION WALL FOR SQUAD BUILDER */
+        <Card className="p-6 sm:p-10 text-center space-y-4 border-2 border-amber-500/40 bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 shadow-xl" data-testid="fantasy-auth-gate">
+          <div className="w-16 h-16 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center mx-auto text-amber-400 shadow-md">
+            <Lock className="w-8 h-8" />
+          </div>
+          <div className="max-w-md mx-auto space-y-2">
+            <span className="px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-amber-400/20 text-amber-300 border border-amber-400/30">
+              {t('Authentication Mandatory')}
+            </span>
+            <h3 className="text-xl sm:text-2xl font-black text-white">{t('Sign In to Create Pick XI Teams')}</h3>
+            <p className="text-sm text-slate-300 leading-relaxed">
+              {t('Creating fantasy teams and playing in matches is restricted to authenticated fans. Sign in to draft your 11 players within 100 credits, designate Captain (2x) and Vice-Captain (1.5x), and compete on the official match scorecard leaderboard!')}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-3">
+            <Button size="lg" onClick={() => openAuth(t('Sign in to draft and create your Pick XI squad.'))} className="font-black px-6 shadow-lg shadow-amber-500/20">
+              <Sparkles className="w-4 h-4" /> {t('Sign In / Join to Create Team')}
+            </Button>
+            <Button size="lg" variant="secondary" onClick={() => setViewTab('registered')} className="font-bold">
+              <Trophy className="w-4 h-4 text-amber-400" /> {t('View Registered Teams Leaderboard')}
+            </Button>
+          </div>
+        </Card>
+      ) : (
+        <>
+          {/* Variation Switcher & Manager Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-900/80 p-2.5 border border-slate-800 text-xs">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-bold text-slate-300 inline-flex items-center gap-1">
+                <Layers className="w-3.5 h-3.5 text-amber-400" />
+                {t('Team Name')}:
+              </span>
+              <input
+                type="text"
+                value={variationName}
+                onChange={e => setVariationName(e.target.value)}
+                className="rounded bg-slate-950 px-2.5 py-1 font-bold text-white border border-slate-700 focus:border-amber-400 focus:outline-none min-w-[160px]"
+                placeholder="Unique squad name"
+              />
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleSuggestName}
+                className="text-amber-400 text-xs px-2 hover:bg-amber-400/10 flex items-center gap-1 cursor-pointer"
+                title={t('Suggest a unique creative cricket team name')}
+              >
+                <Dices className="w-3.5 h-3.5" />
+                <span>{t('Suggest Name')}</span>
+              </Button>
+            </div>
+
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {savedTeams.map(st => {
+                const isCur = (st.variationId || 'var-1') === variationId;
+                return (
+                  <button
+                    key={st.variationId || st.variationName}
+                    type="button"
+                    onClick={() => handleSelectVariation(st.variationId || 'var-1')}
+                    className={cx(
+                      'rounded-lg px-2.5 py-1 font-bold text-xs transition-all border cursor-pointer',
+                      isCur
+                        ? 'bg-amber-400 text-slate-950 border-amber-400 shadow-sm'
+                        : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-600'
+                    )}
+                  >
+                    {st.variationName || 'Team'}
+                  </button>
+                );
+              })}
+              {savedTeams.length < 4 && (
+                <Button size="sm" variant="ghost" onClick={handleCreateNewVariation} className="text-amber-400 text-xs">
+                  <Plus className="w-3.5 h-3.5" /> {t('New Slot')}
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {err && <ErrorBox message={err} />}
 
       {/* Graphical Team Swing Visualizer (Radar, Performance momentum, Star allocation, Presets) */}
       <FantasySwingVisualizer
@@ -1147,6 +1229,8 @@ export default function FantasyMatchPage({ id }: { id: string }) {
           )}
         </div>
       </div>
+      </>
+      )}
 
       {/* Historical Performance Metrics Popover Modal */}
       {(() => {

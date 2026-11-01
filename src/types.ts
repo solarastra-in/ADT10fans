@@ -46,6 +46,9 @@ export interface User {
   fanClubCode?: string;
   instagramFollowed?: boolean;
   instagramHandle?: string;
+  instagramVerificationCode?: string;
+  instagramLikedPost?: boolean;
+  instagramVerifiedAt?: string;
   xFollowed?: boolean;
   xHandle?: string;
   claimedVenueOfferIds?: string[];
@@ -61,7 +64,7 @@ export interface User {
 
 export interface VenueOffer {
   id: string;
-  fanClubId: string;
+  fanClubId?: string;
   title: string;
   description: string;
   badge?: string;
@@ -79,6 +82,7 @@ export interface FanClub {
   region: 'hyderabad' | 'uae' | 'international';
   capacity?: number;
   contactPerson?: string;
+  managerEmails?: string[];
   active: boolean;
   offers: VenueOffer[];
   createdAt?: string;
@@ -90,6 +94,7 @@ export interface FanClubCheckInRecord {
   userName: string;
   userAvatar?: string;
   userTeamId?: string | null;
+  userInstagramHandle?: string;
   fanClubId: string;
   fanClubName: string;
   matchId: string;
@@ -125,6 +130,8 @@ export interface FanClubStatusResponse {
   qrPayload: string;
   fanClubs: FanClub[];
   activeOffers: (VenueOffer & { redeemed: boolean })[];
+  isVenueManager?: boolean;
+  managedClubIds?: string[];
 }
 
 export interface UserStats {
@@ -533,6 +540,59 @@ export interface FantasyTeam {
   scoredAt?: string;
   createdAt: string;
   updatedAt?: string;
+}
+
+export interface RegisteredTeamPlayerDetail {
+  playerId: string;
+  name: string;
+  teamId: string;
+  role: string;
+  photoUrl?: string;
+  isCaptain: boolean;
+  isViceCaptain: boolean;
+  multiplier: number;
+  basePoints: number;
+  totalPoints: number;
+  detail: string;
+}
+
+export interface RegisteredFantasyTeam {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  userCity?: string;
+  userTeamId?: string | null;
+  variationId?: string;
+  variationName: string;
+  captainId: string;
+  captainName: string;
+  viceCaptainId: string;
+  viceCaptainName: string;
+  points: number;
+  rank: number;
+  isHighest: boolean;
+  playerCount: number;
+  players: RegisteredTeamPlayerDetail[];
+  updatedAt: string;
+}
+
+export interface MatchRegisteredTeamsResponse {
+  matchId: string;
+  matchNo: number;
+  status: string;
+  hasScorecard: boolean;
+  totalRegistered: number;
+  topScore: number;
+  topTeam: RegisteredFantasyTeam | null;
+  teams: RegisteredFantasyTeam[];
+  playerScorecardPoints: Array<{
+    playerId: string;
+    name: string;
+    teamId: string;
+    points: number;
+    detail: string[];
+  }>;
 }
 
 export type FormTrend = 'hot' | 'rising' | 'stable' | 'cold';
@@ -963,6 +1023,8 @@ export interface PublicConfig {
   referralMaxRewarded: number;
   requireInstagramFollow?: boolean;
   instagramTargetHandle?: string;
+  instagramPinnedPostUrl?: string;
+  instagramGatekeeperMode?: 'blocking' | 'optional';
   requireTwitterFollow?: boolean;
   twitterTargetHandle?: string;
   fanClubCheckInPoints?: number;

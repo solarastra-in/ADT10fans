@@ -90,6 +90,9 @@ export interface User {
   fanClubCode?: string;
   instagramFollowed?: boolean;
   instagramHandle?: string;
+  instagramVerificationCode?: string;
+  instagramLikedPost?: boolean;
+  instagramVerifiedAt?: string;
   xFollowed?: boolean;
   xHandle?: string;
   claimedVenueOfferIds?: string[];
@@ -538,6 +541,8 @@ export interface SystemSettings {
   cricbuzzSeriesUrl?: string;
   requireInstagramFollow?: boolean;
   instagramTargetHandle?: string;
+  instagramPinnedPostUrl?: string;
+  instagramGatekeeperMode?: 'blocking' | 'optional';
   requireTwitterFollow?: boolean;
   twitterTargetHandle?: string;
   fanClubCheckInPoints?: number;
@@ -737,6 +742,7 @@ export interface FanClub {
   region: 'hyderabad' | 'uae' | 'international';
   capacity?: number;
   contactPerson?: string;
+  managerEmails?: string[];
   active: boolean;
   offers: VenueOffer[];
   createdAt?: string;
@@ -748,6 +754,7 @@ export interface FanClubCheckInRecord {
   userName: string;
   userAvatar?: string;
   userTeamId?: string | null;
+  userInstagramHandle?: string;
   fanClubId: string;
   fanClubName: string;
   matchId: string;

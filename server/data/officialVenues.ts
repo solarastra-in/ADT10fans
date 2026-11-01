@@ -16,6 +16,7 @@ export const OFFICIAL_FAN_CLUBS: FanClub[] = [
     region: 'hyderabad',
     capacity: 350,
     contactPerson: 'Syed Imran (Hyderabad Chapter Lead)',
+    managerEmails: ['solarastra.in@gmail.com', 'admin@aces.com', 'imran.hyd@acesfanclub.com'],
     active: true,
     createdAt: '2026-10-01T00:00:00.000Z',
     offers: [
@@ -57,6 +58,7 @@ export const OFFICIAL_FAN_CLUBS: FanClub[] = [
     region: 'hyderabad',
     capacity: 500,
     contactPerson: 'Ananya Reddy (Cyberabad Hub Coordinator)',
+    managerEmails: ['solarastra.in@gmail.com', 'admin@aces.com', 'ananya.reddy@hitechfans.com'],
     active: true,
     createdAt: '2026-10-01T00:00:00.000Z',
     offers: [
@@ -78,6 +80,15 @@ export const OFFICIAL_FAN_CLUBS: FanClub[] = [
         perk: 'Buy 1 Get 1 Free Drink',
         active: true,
       },
+      {
+        id: 'off-hyd-cyberabad-3',
+        fanClubId: 'fc-hyd-cyberabad',
+        title: 'Free Aces Silicon Fan Wristband',
+        description: 'Limited edition glowing LED team wristband for live cheering at the tech hub.',
+        badge: '✨ LED Wristband',
+        perk: 'Free LED Band',
+        active: true,
+      },
     ],
   },
   {
@@ -89,6 +100,7 @@ export const OFFICIAL_FAN_CLUBS: FanClub[] = [
     region: 'hyderabad',
     capacity: 300,
     contactPerson: 'Mohammed Waseem (Old City Chapter Head)',
+    managerEmails: ['solarastra.in@gmail.com', 'admin@aces.com', 'waseem.charminar@acesfanclub.com'],
     active: true,
     createdAt: '2026-10-01T00:00:00.000Z',
     offers: [
@@ -121,6 +133,7 @@ export const OFFICIAL_FAN_CLUBS: FanClub[] = [
     region: 'hyderabad',
     capacity: 400,
     contactPerson: 'Vikram Sharma (Sports Hub Lead)',
+    managerEmails: ['solarastra.in@gmail.com', 'admin@aces.com', 'vikram.gachibowli@acesfanclub.com'],
     active: true,
     createdAt: '2026-10-01T00:00:00.000Z',
     offers: [
@@ -153,6 +166,7 @@ export const OFFICIAL_FAN_CLUBS: FanClub[] = [
     region: 'hyderabad',
     capacity: 250,
     contactPerson: 'Karan Mehra (Twin Cities Coordinator)',
+    managerEmails: ['solarastra.in@gmail.com', 'admin@aces.com', 'karan.secunderabad@acesfanclub.com'],
     active: true,
     createdAt: '2026-10-01T00:00:00.000Z',
     offers: [
@@ -163,6 +177,15 @@ export const OFFICIAL_FAN_CLUBS: FanClub[] = [
         description: 'Official commemorative metal enamel fan badge and lanyard at check-in.',
         badge: '🎖️ Free Fan Badge',
         perk: 'Free Fan Badge',
+        active: true,
+      },
+      {
+        id: 'off-hyd-sec-2',
+        fanClubId: 'fc-hyd-secunderabad',
+        title: 'Free Twin Cities Matchday Energy Drink',
+        description: 'Complimentary branded energy cooler on entry for live screening.',
+        badge: '⚡ Energy Drink',
+        perk: 'Free Energy Cooler',
         active: true,
       },
     ],
@@ -178,6 +201,7 @@ export const OFFICIAL_FAN_CLUBS: FanClub[] = [
     region: 'uae',
     capacity: 2500,
     contactPerson: 'Tariq Al Mansoori (Stadium Fan Director)',
+    managerEmails: ['solarastra.in@gmail.com', 'admin@aces.com', 'tariq.zayed@adt10stadium.ae'],
     active: true,
     createdAt: '2026-10-01T00:00:00.000Z',
     offers: [
@@ -199,6 +223,15 @@ export const OFFICIAL_FAN_CLUBS: FanClub[] = [
         perk: '50% Drink Voucher',
         active: true,
       },
+      {
+        id: 'off-uae-zayed-3',
+        fanClubId: 'fc-uae-zayed',
+        title: 'Free Miniature Signed Bat Entry Token',
+        description: 'Free physical ballot entry token for the pitch-side signed bat draw at the mid-innings show.',
+        badge: '🏏 Bat Token',
+        perk: 'Free Draw Ballot',
+        active: true,
+      },
     ],
   },
   {
@@ -210,6 +243,7 @@ export const OFFICIAL_FAN_CLUBS: FanClub[] = [
     region: 'uae',
     capacity: 1200,
     contactPerson: 'Hamad Rashid (Community Outreach)',
+    managerEmails: ['solarastra.in@gmail.com', 'admin@aces.com', 'hamad.corniche@abudhabifans.ae'],
     active: true,
     createdAt: '2026-10-01T00:00:00.000Z',
     offers: [
@@ -220,6 +254,15 @@ export const OFFICIAL_FAN_CLUBS: FanClub[] = [
         description: 'Reserved front-row deck lounger at the Corniche seaside mega LED screen.',
         badge: '🏖️ VIP Lounger',
         perk: 'Seaside Watch Seat',
+        active: true,
+      },
+      {
+        id: 'off-uae-corniche-2',
+        fanClubId: 'fc-uae-corniche',
+        title: 'Complimentary Fresh Coconut Drink at Beach Zone',
+        description: 'Redeem one complimentary chilled fresh coconut at the beach screening booth.',
+        badge: '🥥 Free Coconut',
+        perk: 'Free Fresh Drink',
         active: true,
       },
     ],
@@ -233,6 +276,7 @@ export const OFFICIAL_FAN_CLUBS: FanClub[] = [
     region: 'uae',
     capacity: 600,
     contactPerson: 'Zayn Farooq (Dubai Chapter Head)',
+    managerEmails: ['solarastra.in@gmail.com', 'admin@aces.com', 'zayn.dubai@acesfanclub.ae'],
     active: true,
     createdAt: '2026-10-01T00:00:00.000Z',
     offers: [
@@ -243,6 +287,15 @@ export const OFFICIAL_FAN_CLUBS: FanClub[] = [
         description: 'Official fan kit and refreshment voucher at Dubai Sports City Clubhouse.',
         badge: '🧣 Free Scarf Combo',
         perk: 'Free Fan Kit',
+        active: true,
+      },
+      {
+        id: 'off-uae-dubai-2',
+        fanClubId: 'fc-uae-dubai',
+        title: 'Flat AED 30 Off Official Matchday Jersey',
+        description: 'Save AED 30 on the official 2026 supporter shirt at the Dubai Sports City lounge.',
+        badge: '🏷️ AED 30 Off',
+        perk: 'AED 30 Merch Off',
         active: true,
       },
     ],
@@ -258,6 +311,7 @@ export const OFFICIAL_FAN_CLUBS: FanClub[] = [
     region: 'international',
     capacity: 200,
     contactPerson: 'Oliver Barnes (UK Fan Club Secretary)',
+    managerEmails: ['solarastra.in@gmail.com', 'admin@aces.com', 'oliver.london@acesfanclub.co.uk'],
     active: true,
     createdAt: '2026-10-01T00:00:00.000Z',
     offers: [

@@ -7,7 +7,7 @@ import type { FanClub, Match, FanClubCheckInRecord, VenueOffer } from '../types'
 const STATION_KEY = 'admin_fanclub_station';
 
 export const FanClubAdminPage: React.FC = () => {
-  const { user } = useApp();
+  const { user, openAuth } = useApp();
   const [clubs, setClubs] = useState<FanClub[]>([]);
   const [selectedClubId, setSelectedClubId] = useState<string>(() => {
     return (typeof window !== 'undefined' ? localStorage.getItem(STATION_KEY) : null) || '';
@@ -15,6 +15,12 @@ export const FanClubAdminPage: React.FC = () => {
   const [stationLocked, setStationLocked] = useState<boolean>(() => {
     return Boolean(typeof window !== 'undefined' ? localStorage.getItem(STATION_KEY) : false);
   });
+
+  // Perks management modal state
+  const [showPerksModal, setShowPerksModal] = useState(false);
+  const [editingPerk, setEditingPerk] = useState<Partial<VenueOffer> | null>(null);
+  const [perkSaving, setPerkSaving] = useState(false);
+  const [perkNotice, setPerkNotice] = useState<string | null>(null);
 
   // Scanner state
   const [scanning, setScanning] = useState(false);
@@ -44,9 +50,20 @@ export const FanClubAdminPage: React.FC = () => {
     recentCheckIns: [],
   });
 
+  // Instagram verified fans audit list (for Super Admin)
+  const [instaFans, setInstaFans] = useState<any[]>([]);
+
   // Offer redemption
   const [redeemingOfferId, setRedeemingOfferId] = useState<string | null>(null);
   const [offerSuccessMsg, setOfferSuccessMsg] = useState<string | null>(null);
+
+  // Authorization check for venue managers and super admin
+  const isSuperAdmin = user?.role === 'admin';
+  const userEmail = (user?.email || '').toLowerCase().trim();
+  const authorizedClubs = clubs.filter(c =>
+    isSuperAdmin || (c.managerEmails || []).map(e => e.toLowerCase().trim()).includes(userEmail)
+  );
+  const isAuthorized = Boolean(user && (isSuperAdmin || authorizedClubs.length > 0));
 
   // Web Audio chime for successful check-in
   const playSuccessChime = () => {
@@ -72,13 +89,63 @@ export const FanClubAdminPage: React.FC = () => {
   useEffect(() => {
     api.getFanClubs().then(res => {
       setClubs(res.clubs);
-      if (!selectedClubId && res.clubs.length > 0) {
-        // Default to first Hyderabad fan club if available
+      const email = (user?.email || '').toLowerCase().trim();
+      const userClubs = res.clubs.filter(c => user?.role === 'admin' || (c.managerEmails || []).map(e => e.toLowerCase().trim()).includes(email));
+      if (!selectedClubId && userClubs.length > 0) {
+        setSelectedClubId(userClubs[0].id);
+      } else if (!selectedClubId && res.clubs.length > 0) {
         const hyd = res.clubs.find(c => c.region === 'hyderabad') || res.clubs[0];
         setSelectedClubId(hyd.id);
       }
     }).catch(console.error);
-  }, []);
+  }, [user?.email, user?.role]);
+
+  const loadInstaFans = () => {
+    if (isSuperAdmin) {
+      api.getAdminInstagramFans().then(res => {
+        setInstaFans(res.fans || []);
+      }).catch(console.error);
+    }
+  };
+
+  useEffect(() => {
+    loadInstaFans();
+  }, [isSuperAdmin]);
+
+  // Handle saving venue perks
+  const handleSavePerk = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedClubId || !editingPerk?.title || !editingPerk?.perk) return;
+    setPerkSaving(true);
+    setPerkNotice(null);
+    try {
+      const res = await api.saveVenuePerk(selectedClubId, editingPerk);
+      setClubs(prev => prev.map(c => c.id === selectedClubId ? { ...c, offers: res.offers } : c));
+      setEditingPerk(null);
+      setPerkNotice('Perk saved successfully!');
+    } catch (err: any) {
+      setPerkNotice(err?.message || 'Failed to save venue perk');
+    } finally {
+      setPerkSaving(false);
+    }
+  };
+
+  // Handle deleting venue perks
+  const handleDeletePerk = async (perkId: string) => {
+    if (!selectedClubId) return;
+    if (!window.confirm('Are you sure you want to remove this perk from this venue?')) return;
+    setPerkSaving(true);
+    setPerkNotice(null);
+    try {
+      const res = await api.deleteVenuePerk(selectedClubId, perkId);
+      setClubs(prev => prev.map(c => c.id === selectedClubId ? { ...c, offers: res.offers } : c));
+      setPerkNotice('Perk removed successfully.');
+    } catch (err: any) {
+      setPerkNotice(err?.message || 'Failed to delete perk');
+    } finally {
+      setPerkSaving(false);
+    }
+  };
 
   // Load venue stats
   const refreshStats = () => {
@@ -247,6 +314,52 @@ export const FanClubAdminPage: React.FC = () => {
 
   const currentClub = clubs.find(c => c.id === selectedClubId);
 
+  // If not signed in, show clean venue manager login prompt
+  if (!user) {
+    return (
+      <div className="min-h-[75vh] flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-navy-900 border border-gold-500/30 rounded-3xl p-8 text-center shadow-2xl space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-gold-500/10 border border-gold-500/30 text-gold-400 mx-auto flex items-center justify-center">
+            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-black text-white">Venue Check-In Desk Portal</h2>
+          <p className="text-xs text-navy-300">
+            Sign in with your Venue Manager or Admin profile to operate this venue's live QR check-in desk and redeem fan perks.
+          </p>
+          <button
+            type="button"
+            onClick={() => openAuth('venue-desk')}
+            className="w-full py-3 rounded-xl bg-gold-500 hover:bg-gold-400 text-navy-950 font-bold text-sm transition-all shadow-md active:scale-95"
+          >
+            Sign In with Venue Manager Profile
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // If signed in but not authorized for any venue
+  if (clubs.length > 0 && !isAuthorized) {
+    return (
+      <div className="min-h-[75vh] flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-navy-900 border border-rose-500/30 rounded-3xl p-8 text-center shadow-2xl space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-400 mx-auto flex items-center justify-center font-black text-2xl">
+            !
+          </div>
+          <h2 className="text-xl font-black text-white">Venue Manager Access Required</h2>
+          <p className="text-xs text-navy-300">
+            You are signed in as <span className="font-mono text-white font-bold">{user.email}</span>. Only designated Venue Managers and Super Admins can operate check-in stations.
+          </p>
+          <p className="text-[11px] text-navy-400">
+            Please ask the Super Admin to add your email <span className="font-mono text-gold-400">{user.email}</span> as a Venue Manager in the Admin Console.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-navy-950 text-white py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto space-y-6">
@@ -260,25 +373,35 @@ export const FanClubAdminPage: React.FC = () => {
               Fan Club Check-In Portal
             </h1>
             <p className="text-navy-300 text-sm mt-1">
-              Scan fan matchday QR passes or punch 6-digit codes to award +100 Fan Points & redeem venue offers.
+              Logged in as <span className="text-white font-semibold">{user.email}</span> {isSuperAdmin ? '(Super Admin)' : '(Venue Manager)'}
             </p>
           </div>
 
-          {/* Station Status */}
+          {/* Station Status & Perks Button */}
           {stationLocked && currentClub && (
-            <div className="flex items-center gap-3 bg-navy-900 border border-gold-500/40 rounded-xl px-4 py-2.5">
+            <div className="flex flex-col sm:flex-row items-end sm:items-center gap-3 bg-navy-900 border border-gold-500/40 rounded-xl px-4 py-2.5">
               <div className="text-right">
                 <span className="text-[10px] uppercase font-bold text-navy-400 block">Station Locked At</span>
                 <span className="text-xs font-bold text-gold-400">{currentClub.name}</span>
                 <span className="text-[11px] text-navy-400 block">{currentClub.city}</span>
               </div>
-              <button
-                type="button"
-                onClick={handleUnlockStation}
-                className="text-xs text-navy-400 hover:text-white underline decoration-navy-600"
-              >
-                Change
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowPerksModal(true)}
+                  className="px-2.5 py-1.5 rounded-lg bg-gold-500/20 hover:bg-gold-500/30 text-gold-300 text-xs font-bold transition-all border border-gold-500/40"
+                  title="Super Admin and Venue Managers can edit, add, or delete perks for this venue"
+                >
+                  ⚙ Manage Perks ({currentClub.offers?.length || 0})
+                </button>
+                <button
+                  type="button"
+                  onClick={handleUnlockStation}
+                  className="text-xs text-navy-400 hover:text-white underline decoration-navy-600"
+                >
+                  Change
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -288,11 +411,13 @@ export const FanClubAdminPage: React.FC = () => {
           <div className="bg-navy-900 border border-gold-500/30 rounded-2xl p-6 shadow-xl">
             <h2 className="text-lg font-bold text-white mb-2">Step 1: Set Your Fan Club Station</h2>
             <p className="text-navy-300 text-xs mb-4">
-              Per requirements, mark which fan club you are operating at once. It will stay locked for the rest of this match session.
+              {isSuperAdmin
+                ? 'Super Admin view: select any official venue to operate or manage.'
+                : 'Select the venue station you are assigned to manage for this match session:'}
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-              {clubs.map(club => (
+              {(isSuperAdmin ? clubs : authorizedClubs).map(club => (
                 <div
                   key={club.id}
                   onClick={() => setSelectedClubId(club.id)}
@@ -310,6 +435,11 @@ export const FanClubAdminPage: React.FC = () => {
                   </div>
                   <h3 className="font-bold text-sm text-white mb-1">{club.name}</h3>
                   <p className="text-xs text-navy-400 line-clamp-1">{club.address}</p>
+                  {club.offers && club.offers.length > 0 && (
+                    <span className="inline-block mt-2 text-[10px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded">
+                      {club.offers.length} Venue Perk{club.offers.length > 1 ? 's' : ''}
+                    </span>
+                  )}
                 </div>
               ))}
             </div>
@@ -493,9 +623,18 @@ export const FanClubAdminPage: React.FC = () => {
 
                   {/* Single-Use Venue Offers Kiosk */}
                   <div className="mt-4 pt-4 border-t border-navy-800">
-                    <h4 className="text-xs font-bold text-navy-300 uppercase tracking-wider mb-2">
-                      Venue Offers for this Fan
-                    </h4>
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-xs font-bold text-navy-300 uppercase tracking-wider">
+                        Venue Offers for this Fan
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={() => setShowPerksModal(true)}
+                        className="text-[11px] text-gold-400 hover:underline font-bold"
+                      >
+                        ⚙ Manage Perks
+                      </button>
+                    </div>
 
                     {offerSuccessMsg && (
                       <div className="mb-3 p-2.5 rounded-lg bg-emerald-950/80 border border-emerald-500/50 text-emerald-200 text-xs">
@@ -564,6 +703,15 @@ export const FanClubAdminPage: React.FC = () => {
                   <p className="text-xs text-navy-400">
                     Scanned fan verification, points credit, and single-use offer redemption will appear here.
                   </p>
+                  {stationLocked && currentClub && (
+                    <button
+                      type="button"
+                      onClick={() => setShowPerksModal(true)}
+                      className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-navy-800 hover:bg-navy-700 text-gold-400 text-xs font-semibold"
+                    >
+                      ⚙ Configure Venue Perks ({currentClub.offers?.length || 0})
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -591,7 +739,244 @@ export const FanClubAdminPage: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Super Admin: Instagram Gatekeeper Audit */}
+        {isSuperAdmin && (
+          <div className="bg-navy-900 border border-gold-500/30 rounded-2xl p-6 shadow-xl">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+              <div>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-pink-500/20 text-pink-300 text-[11px] font-bold uppercase tracking-wider mb-1">
+                  Gatekeeper Security Audit
+                </div>
+                <h3 className="text-lg font-bold text-white">
+                  Verified Instagram Accounts ({instaFans.length})
+                </h3>
+                <p className="text-xs text-navy-400">
+                  Fans verified via @ArabianAcesofficial follow & post like verification.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={loadInstaFans}
+                className="px-3 py-1.5 rounded-lg bg-navy-800 hover:bg-navy-700 text-xs text-navy-200 hover:text-white"
+              >
+                Refresh List
+              </button>
+            </div>
+
+            {instaFans.length === 0 ? (
+              <p className="text-xs text-navy-400 py-4 text-center bg-navy-950/60 rounded-xl border border-navy-800">
+                No Instagram verified accounts found yet.
+              </p>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-navy-800">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-navy-950 text-navy-400 uppercase text-[10px] tracking-wider border-b border-navy-800">
+                    <tr>
+                      <th className="py-2.5 px-3">Fan Name / Email</th>
+                      <th className="py-2.5 px-3">Instagram Handle</th>
+                      <th className="py-2.5 px-3">Verification ID</th>
+                      <th className="py-2.5 px-3">Post Liked</th>
+                      <th className="py-2.5 px-3">Points</th>
+                      <th className="py-2.5 px-3">Verified Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-navy-800 text-navy-200 bg-navy-950/40">
+                    {instaFans.map(f => (
+                      <tr key={f.id} className="hover:bg-navy-850/50">
+                        <td className="py-2.5 px-3 font-medium text-white">
+                          <div>{f.name}</div>
+                          <div className="text-[10px] text-navy-400 font-mono">{f.email || 'Guest verified'}</div>
+                        </td>
+                        <td className="py-2.5 px-3 font-mono font-bold text-pink-400">{f.instagramHandle || '—'}</td>
+                        <td className="py-2.5 px-3 font-mono text-gold-400 font-bold">{f.instagramVerificationCode || '—'}</td>
+                        <td className="py-2.5 px-3">
+                          {f.instagramLikedPost ? (
+                            <span className="text-emerald-400 font-semibold">✓ Liked</span>
+                          ) : (
+                            <span className="text-navy-500">—</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 font-bold text-amber-400">{f.points} pts</td>
+                        <td className="py-2.5 px-3 text-[11px] text-navy-400">
+                          {f.instagramVerifiedAt ? new Date(f.instagramVerifiedAt).toLocaleDateString() : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Manage Venue Perks Modal */}
+      {showPerksModal && currentClub && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" role="dialog" aria-modal="true">
+          <div className="bg-navy-900 border border-gold-500/40 rounded-3xl p-6 sm:p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl relative">
+            <div className="flex items-center justify-between pb-4 border-b border-navy-800">
+              <div>
+                <span className="text-[10px] uppercase font-bold text-gold-400 tracking-wider">Perks Manager</span>
+                <h3 className="text-xl font-bold text-white">
+                  {currentClub.name}
+                </h3>
+                <p className="text-xs text-navy-300">
+                  {currentClub.city} • Authorized Venue Managers & Super Admin can update single-use fan perks for this venue.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPerksModal(false);
+                  setEditingPerk(null);
+                  setPerkNotice(null);
+                }}
+                className="w-8 h-8 rounded-full bg-navy-800 hover:bg-navy-700 text-navy-300 hover:text-white flex items-center justify-center text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {perkNotice && (
+              <div className="my-4 p-3 rounded-xl bg-gold-500/10 border border-gold-500/30 text-gold-300 text-xs">
+                {perkNotice}
+              </div>
+            )}
+
+            {/* List of Perks */}
+            <div className="my-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold uppercase text-navy-300 tracking-wider">
+                  Active Venue Perks ({(currentClub.offers || []).length})
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setEditingPerk({
+                    id: '',
+                    title: '',
+                    perk: '',
+                    description: '',
+                    active: true,
+                  })}
+                  className="px-3 py-1.5 rounded-lg bg-gold-500 hover:bg-gold-400 text-navy-950 font-bold text-xs shadow transition-all"
+                >
+                  + Add New Perk
+                </button>
+              </div>
+
+              {(!currentClub.offers || currentClub.offers.length === 0) ? (
+                <div className="p-4 bg-navy-950/60 border border-navy-800 rounded-xl text-center text-xs text-navy-400">
+                  No perks configured for this venue yet. Click "+ Add New Perk" to create one.
+                </div>
+              ) : (
+                currentClub.offers.map(offer => (
+                  <div key={offer.id} className="p-4 bg-navy-950 rounded-xl border border-navy-800 flex items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="text-sm font-bold text-white">{offer.title}</div>
+                      <div className="text-xs font-medium text-gold-400">{offer.perk}</div>
+                      {offer.description && (
+                        <div className="text-xs text-navy-400">{offer.description}</div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setEditingPerk(offer)}
+                        className="px-2.5 py-1 text-xs font-semibold rounded bg-navy-800 hover:bg-navy-700 text-gold-400"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        disabled={perkSaving}
+                        onClick={() => handleDeletePerk(offer.id)}
+                        className="px-2.5 py-1 text-xs font-semibold rounded bg-rose-950/60 hover:bg-rose-900/60 text-rose-300"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Inline Add / Edit Form */}
+            {editingPerk && (
+              <form onSubmit={handleSavePerk} className="mt-5 p-4 bg-navy-950/80 rounded-2xl border border-gold-500/30 space-y-3">
+                <h4 className="text-xs font-bold text-gold-400 uppercase tracking-wide">
+                  {editingPerk.id ? 'Edit Perk' : 'Create New Venue Perk'}
+                </h4>
+                <div className="space-y-2">
+                  <div>
+                    <label className="block text-[11px] font-bold text-navy-300 mb-1">Perk Title</label>
+                    <input
+                      type="text"
+                      required
+                      value={editingPerk.title || ''}
+                      onChange={e => setEditingPerk({ ...editingPerk, title: e.target.value })}
+                      placeholder="e.g. Free Team Flag & Noise Maker"
+                      className="w-full bg-navy-900 border border-navy-700 focus:border-gold-500 rounded-xl px-3 py-2 text-xs text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-navy-300 mb-1">Perk Summary / Benefit</label>
+                    <input
+                      type="text"
+                      required
+                      value={editingPerk.perk || ''}
+                      onChange={e => setEditingPerk({ ...editingPerk, perk: e.target.value })}
+                      placeholder="e.g. Free official Arabian Aces fan kit at entrance"
+                      className="w-full bg-navy-900 border border-navy-700 focus:border-gold-500 rounded-xl px-3 py-2 text-xs text-gold-300"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-navy-300 mb-1">Claim Instructions / Description</label>
+                    <input
+                      type="text"
+                      value={editingPerk.description || ''}
+                      onChange={e => setEditingPerk({ ...editingPerk, description: e.target.value })}
+                      placeholder="e.g. Show your verified check-in pass to staff at counter 2"
+                      className="w-full bg-navy-900 border border-navy-700 focus:border-gold-500 rounded-xl px-3 py-2 text-xs text-navy-300"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingPerk(null)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold text-navy-300 hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={perkSaving}
+                    className="px-4 py-1.5 rounded-lg bg-gold-500 hover:bg-gold-400 text-navy-950 text-xs font-bold shadow"
+                  >
+                    {perkSaving ? 'Saving...' : 'Save Perk'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            <div className="mt-6 pt-4 border-t border-navy-800 text-right">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPerksModal(false);
+                  setEditingPerk(null);
+                  setPerkNotice(null);
+                }}
+                className="px-5 py-2 rounded-xl bg-navy-800 hover:bg-navy-700 text-white text-xs font-bold"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

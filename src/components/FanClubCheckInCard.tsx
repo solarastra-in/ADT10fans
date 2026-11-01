@@ -232,45 +232,87 @@ export const FanClubCheckInCard: React.FC<{ compact?: boolean }> = ({ compact = 
 
       {!compact && (
         <>
-          {/* Venue Specific Single-Use Offers Section */}
+          {/* Venue Specific Single-Use Offers Section with "City Name - Venue Name" selector */}
           <div className="mt-6 pt-6 border-t border-navy-800">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
               <div>
                 <h4 className="text-base font-bold text-white">Exclusive Venue Perks & Single-Use Offers</h4>
-                <p className="text-xs text-navy-300">Show your checked-in QR pass at the venue counter to claim these limited perks.</p>
+                <p className="text-xs text-navy-300">Select your venue to view its specific perks. Each perk can be redeemed once at the venue desk.</p>
+              </div>
+
+              {/* City Name - Venue Name Selection */}
+              <div className="w-full sm:w-auto min-w-[280px]">
+                <label className="sr-only">Select Venue</label>
+                <select
+                  value={selectedClub?.id || fanClubs[0]?.id || ''}
+                  onChange={(e) => {
+                    const found = fanClubs.find(c => c.id === e.target.value);
+                    if (found) {
+                      setSelectedClub(found);
+                      localStorage.setItem('aces_preferred_venue_id', found.id);
+                    }
+                  }}
+                  className="w-full bg-navy-950 border border-gold-500/50 rounded-xl px-3.5 py-2 text-xs font-bold text-white focus:outline-none focus:ring-1 focus:ring-gold-500"
+                >
+                  {fanClubs.map(fc => (
+                    <option key={fc.id} value={fc.id}>
+                      {fc.city} - {fc.name}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {activeOffers.map(offer => (
-                <div
-                  key={offer.id}
-                  className={`p-4 rounded-xl border transition-all ${
-                    offer.redeemed
-                      ? 'bg-navy-950/40 border-navy-800/60 opacity-60'
-                      : 'bg-navy-900/90 border-navy-700 hover:border-gold-500/50 shadow-sm'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <h5 className="font-bold text-sm text-white line-clamp-1">{offer.title}</h5>
-                    {offer.redeemed ? (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-navy-800 text-navy-400 border border-navy-700">
-                        Claimed
-                      </span>
-                    ) : (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                        Single-Use
-                      </span>
-                    )}
+            {/* Venue Specific Perks */}
+            {(() => {
+              const activeVenue = selectedClub || fanClubs[0];
+              const offersForVenue = activeVenue?.offers || [];
+              const claimedOfferIds = new Set(user?.claimedVenueOfferIds || []);
+
+              if (offersForVenue.length === 0) {
+                return (
+                  <div className="p-4 rounded-xl bg-navy-950 border border-navy-800 text-xs text-navy-400 text-center">
+                    No custom perks currently listed for {activeVenue?.name}. General +100 check-in points apply!
                   </div>
-                  <p className="text-xs text-navy-300 mb-3 line-clamp-2">{offer.description}</p>
-                  <div className="flex items-center justify-between text-[11px] pt-2 border-t border-navy-800/60">
-                    <span className="text-gold-400 font-semibold">{offer.perk}</span>
-                    <span className="text-navy-400">At venue desk</span>
-                  </div>
+                );
+              }
+
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {offersForVenue.map(offer => {
+                    const redeemed = claimedOfferIds.has(offer.id);
+                    return (
+                      <div
+                        key={offer.id}
+                        className={`p-4 rounded-xl border transition-all ${
+                          redeemed
+                            ? 'bg-navy-950/40 border-navy-800/60 opacity-60'
+                            : 'bg-navy-900/90 border-navy-700 hover:border-gold-500/50 shadow-sm'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <h5 className="font-bold text-sm text-white line-clamp-1">{offer.title}</h5>
+                          {redeemed ? (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-navy-800 text-navy-400 border border-navy-700">
+                              Claimed
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                              Single-Use
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-navy-300 mb-3 line-clamp-2">{offer.description}</p>
+                        <div className="flex items-center justify-between text-[11px] pt-2 border-t border-navy-800/60">
+                          <span className="text-gold-400 font-semibold">{offer.perk}</span>
+                          <span className="text-navy-400">At venue desk</span>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
+              );
+            })()}
           </div>
 
           {/* Official Fan Club Locations (Primary focus: Hyderabad, India & UAE) */}

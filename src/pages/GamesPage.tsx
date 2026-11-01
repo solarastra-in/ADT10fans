@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Award, BookOpen, Check, ChevronDown, ChevronUp, Flame, Gamepad2, Grid3x3, HelpCircle, Info, Lightbulb, Puzzle, Search, Sparkles, Swords, Target, Trophy, X, Zap } from 'lucide-react';
+import { Award, BookOpen, Check, ChevronDown, ChevronUp, Flame, Gamepad2, Grid3x3, HelpCircle, Info, Lightbulb, Lock, Puzzle, Search, Sparkles, Swords, Target, Trophy, X, Zap } from 'lucide-react';
 import { api } from '../api';
 import { useApp, useLoad } from '../state';
 import { useT } from '../i18n';
@@ -144,7 +144,16 @@ function GuessGame({ data, onChange }: { data: GamesToday; onChange: (g: GuessSt
           </ul>
         </div>
       )}
-      {g.finished ? (
+      {!user ? (
+        <div className="p-4 rounded-xl bg-slate-950/70 border border-amber-500/30 text-center space-y-2">
+          <p className="text-xs text-slate-300 font-medium">
+            {t('Sign in to submit guesses for today’s mystery player and earn up to 50 points.')}
+          </p>
+          <Button size="sm" onClick={() => openAuth(t('Sign in to play Guess the Player.'))} className="font-bold">
+            <Lock className="w-3.5 h-3.5" /> {t('Sign In to Guess')}
+          </Button>
+        </div>
+      ) : g.finished ? (
         <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 flex items-center gap-3" data-testid="guess-result">
           <Avatar name={g.answer?.name || '?'} src={g.answer?.photoUrl} size={52} />
           <div className="flex-1 min-w-0">
@@ -259,7 +268,16 @@ function SuperOver({ data, onChange }: { data: GamesToday; onChange: (s: SuperOv
         <span className="ms-auto text-xl font-black text-white tabular-nums">{s.runs}/{s.wickets}</span>
       </div>
 
-      {s.finished ? (
+      {!user ? (
+        <div className="p-4 rounded-xl bg-slate-950/70 border border-amber-500/30 text-center space-y-2">
+          <p className="text-xs text-slate-300 font-medium">
+            {t('Sign in to pick shot tactics, chase the Super Over target, and earn fan points.')}
+          </p>
+          <Button size="sm" onClick={() => openAuth(t('Sign in to play Super Over.'))} className="font-bold">
+            <Lock className="w-3.5 h-3.5" /> {t('Sign In to Play')}
+          </Button>
+        </div>
+      ) : s.finished ? (
         <Notice tone={s.runs >= s.target ? 'success' : 'info'}>
           {s.runs >= s.target ? t('You chased {target}! {points} points (including the {bonus}-point bonus).', { target: s.target, points: s.points, bonus: s.bonus }) : t('You made {runs}. {points} points. New target in {time}.', { runs: s.runs, points: s.points, time: nextDubaiMidnight() })}
         </Notice>
@@ -446,7 +464,7 @@ function HowToPlayGuide() {
 }
 
 export default function GamesPage() {
-  const { user, teamById, config } = useApp();
+  const { user, teamById, config, openAuth } = useApp();
   const t = useT();
   usePageMeta(t('Daily cricket games'), t('Squad Connections, Cricket Grid, Stat Wars duels, Guess the Player and Super Over. New games every day.'), config?.brandName);
   const { data, setData, error, loading, reload } = useLoad(() => api.getGamesToday(), [user?.id]);
@@ -484,6 +502,28 @@ export default function GamesPage() {
           {t('How to Play & Rules')}
         </a>
       </div>
+
+      {!user && (
+        <Card className="p-4 sm:p-5 border-amber-500/40 bg-gradient-to-r from-amber-950/40 via-slate-900 to-slate-950 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+              <Lock className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-black text-white">{t('Sign In Required to Play Games')}</h4>
+                <span className="text-[10px] font-black px-1.5 py-0.2 rounded bg-amber-400 text-slate-950 uppercase">{t('Mandatory')}</span>
+              </div>
+              <p className="text-xs text-slate-300 mt-0.5">
+                {t('Playing daily games, guessing players, and challenging duels requires an authenticated account to earn points.')}
+              </p>
+            </div>
+          </div>
+          <Button onClick={() => openAuth(t('Sign in to play daily cricket games and earn points.'))} className="font-black shrink-0 self-start sm:self-auto">
+            <Sparkles className="w-4 h-4" /> {t('Sign In to Play')}
+          </Button>
+        </Card>
+      )}
 
       {/* Navigation Jump Bar */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none" aria-label={t('Games Navigation')}>

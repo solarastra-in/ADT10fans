@@ -1,11 +1,11 @@
 import type { PrizeItem, PrizeDraw } from '../db';
 
 export const OFFICIAL_ARABIAN_ACES_PRIZES: Omit<PrizeItem, 'id' | 'createdAt'>[] = [
-  // --- Matchday Free Match Tickets for Arabian Aces ---
+  // --- Matchday Free Match Tickets for Arabian Aces (1,000+ points) ---
   {
     title: 'Free Match Ticket - Match 3: Arabian Aces vs United Tigers',
     description: 'General admission ticket for Arabian Aces opening clash against United Tigers under the floodlights at Zayed Cricket Stadium, Abu Dhabi (Nov 7, 2026).',
-    pointsCost: 150,
+    pointsCost: 1000,
     stock: 25,
     teamOnly: 'aces',
     active: true,
@@ -14,7 +14,7 @@ export const OFFICIAL_ARABIAN_ACES_PRIZES: Omit<PrizeItem, 'id' | 'createdAt'>[]
   {
     title: 'Free Match Ticket - Match 4: Arabian Aces vs UAE Bulls',
     description: 'Matchday entry ticket for the high-voltage derby clash between Arabian Aces and UAE Bulls at Zayed Cricket Stadium, Abu Dhabi (Nov 8, 2026).',
-    pointsCost: 150,
+    pointsCost: 1000,
     stock: 25,
     teamOnly: 'aces',
     active: true,
@@ -23,7 +23,7 @@ export const OFFICIAL_ARABIAN_ACES_PRIZES: Omit<PrizeItem, 'id' | 'createdAt'>[]
   {
     title: 'Free Match Ticket - Match 9: Arabian Aces vs Yas Lions',
     description: 'Matchday entry ticket for Arabian Aces vs Yas Lions at Zayed Cricket Stadium, Abu Dhabi (Nov 10, 2026).',
-    pointsCost: 150,
+    pointsCost: 1000,
     stock: 25,
     teamOnly: 'aces',
     active: true,
@@ -32,7 +32,7 @@ export const OFFICIAL_ARABIAN_ACES_PRIZES: Omit<PrizeItem, 'id' | 'createdAt'>[]
   {
     title: 'Free Match Ticket - Match 12: Arabian Aces vs Emirates Eagles',
     description: 'Floodlight evening match ticket for Arabian Aces vs Emirates Eagles at Zayed Cricket Stadium, Abu Dhabi (Nov 11, 2026).',
-    pointsCost: 150,
+    pointsCost: 1000,
     stock: 25,
     teamOnly: 'aces',
     active: true,
@@ -41,7 +41,7 @@ export const OFFICIAL_ARABIAN_ACES_PRIZES: Omit<PrizeItem, 'id' | 'createdAt'>[]
   {
     title: 'Free Match Ticket - Match 15: Arabian Aces vs Royal Desert Champions',
     description: 'Weekend fixture ticket for Arabian Aces vs Royal Desert Champions at Zayed Cricket Stadium, Abu Dhabi (Nov 14, 2026).',
-    pointsCost: 150,
+    pointsCost: 1000,
     stock: 25,
     teamOnly: 'aces',
     active: true,
@@ -50,7 +50,7 @@ export const OFFICIAL_ARABIAN_ACES_PRIZES: Omit<PrizeItem, 'id' | 'createdAt'>[]
   {
     title: 'Free Match Ticket - Match 18 & 19: Arabian Aces Double-Header Matchday',
     description: 'Full-day double-header pass for Arabian Aces vs United Tigers and UAE Bulls at Zayed Cricket Stadium (Nov 15, 2026).',
-    pointsCost: 200,
+    pointsCost: 1200,
     stock: 20,
     teamOnly: 'aces',
     active: true,
@@ -59,7 +59,7 @@ export const OFFICIAL_ARABIAN_ACES_PRIZES: Omit<PrizeItem, 'id' | 'createdAt'>[]
   {
     title: 'Free Match Ticket - Match 24: Arabian Aces vs Yas Lions',
     description: 'Prime evening slot match ticket for Arabian Aces vs Yas Lions at Zayed Cricket Stadium, Abu Dhabi (Nov 17, 2026).',
-    pointsCost: 150,
+    pointsCost: 1000,
     stock: 25,
     teamOnly: 'aces',
     active: true,
@@ -68,18 +68,18 @@ export const OFFICIAL_ARABIAN_ACES_PRIZES: Omit<PrizeItem, 'id' | 'createdAt'>[]
   {
     title: 'Free Match Ticket - Match 27 & 30: Arabian Aces Super Finale Matchday',
     description: 'Decisive final group stage double-header pass for Arabian Aces vs Emirates Eagles & Royal Desert Champions (Nov 19, 2026).',
-    pointsCost: 200,
+    pointsCost: 1200,
     stock: 20,
     teamOnly: 'aces',
     active: true,
     fulfilment: 'Show your 8-character claim code at Gate 3 Fan Service Desk on matchday (Nov 19) for admission to both matches.',
   },
 
-  // --- Official Team T-Shirts and Signed Jerseys ---
+  // --- Official Team T-Shirts and Signed Jerseys (1,500 - 2,800 points) ---
   {
     title: 'Arabian Aces Official Team T-Shirt (2026 Season)',
     description: 'Official breathable performance supporter jersey in franchise amber/black colors with official Abu Dhabi T10 crest. Available in S, M, L, XL, XXL.',
-    pointsCost: 250,
+    pointsCost: 1500,
     stock: 60,
     teamOnly: 'aces',
     active: true,
@@ -88,7 +88,7 @@ export const OFFICIAL_ARABIAN_ACES_PRIZES: Omit<PrizeItem, 'id' | 'createdAt'>[]
   {
     title: 'Official Arabian Aces T-Shirt Signed by Moeen Ali',
     description: 'Authentic franchise jersey personally hand-signed by Arabian Aces Captain & Icon player Moeen Ali. Comes with hologram Certificate of Authenticity (COA).',
-    pointsCost: 600,
+    pointsCost: 2500,
     stock: 15,
     teamOnly: 'aces',
     active: true,
@@ -97,7 +97,7 @@ export const OFFICIAL_ARABIAN_ACES_PRIZES: Omit<PrizeItem, 'id' | 'createdAt'>[]
   {
     title: 'Official Arabian Aces T-Shirt Signed by Andre Russell (Dre Russ)',
     description: 'Exclusive franchise T-Shirt hand-signed in permanent silver marker by powerhouse all-rounder Andre Russell. Includes official authenticity seal.',
-    pointsCost: 650,
+    pointsCost: 2800,
     stock: 15,
     teamOnly: 'aces',
     active: true,
@@ -106,18 +106,18 @@ export const OFFICIAL_ARABIAN_ACES_PRIZES: Omit<PrizeItem, 'id' | 'createdAt'>[]
   {
     title: 'Official Arabian Aces T-Shirt Signed by Liam Livingstone',
     description: 'Official team jersey autographed by dynamic England & Arabian Aces power-hitter Liam Livingstone with official certificate.',
-    pointsCost: 600,
+    pointsCost: 2500,
     stock: 15,
     teamOnly: 'aces',
     active: true,
     fulfilment: 'Collect at the VIP Fan Lounge at Zayed Stadium with your claim code, or request registered courier delivery across the UAE.',
   },
 
-  // --- Signed Miniature Bats & Miniature Bat + T-Shirt Combos ---
+  // --- Signed Miniature Bats & Miniature Bat + T-Shirt Combos (3,500 - 4,500 points) ---
   {
     title: 'Miniature Signed Cricket Bat of Moeen Ali',
     description: 'Collector-edition handcrafted miniature cricket bat personally autographed by international superstar and Arabian Aces captain Moeen Ali. Encased in protective display stand with hologram Certificate of Authenticity (COA).',
-    pointsCost: 1100,
+    pointsCost: 3500,
     stock: 12,
     teamOnly: 'aces',
     active: true,
@@ -126,7 +126,7 @@ export const OFFICIAL_ARABIAN_ACES_PRIZES: Omit<PrizeItem, 'id' | 'createdAt'>[]
   {
     title: 'Miniature Signed Cricket Bat of Andre Russell (Dre Russ)',
     description: 'Specially crafted miniature willow display bat personally autographed by West Indies international powerhouse Andre Russell. Includes official Certificate of Authenticity (COA) and acrylic display cradle.',
-    pointsCost: 1100,
+    pointsCost: 3800,
     stock: 12,
     teamOnly: 'aces',
     active: true,
@@ -135,7 +135,7 @@ export const OFFICIAL_ARABIAN_ACES_PRIZES: Omit<PrizeItem, 'id' | 'createdAt'>[]
   {
     title: 'Miniature Signed Cricket Bat of Liam Livingstone',
     description: 'Authentic miniature willow display bat hand-signed by international power-hitter Liam Livingstone with Certificate of Authenticity (COA).',
-    pointsCost: 1000,
+    pointsCost: 3500,
     stock: 12,
     teamOnly: 'aces',
     active: true,
@@ -144,7 +144,7 @@ export const OFFICIAL_ARABIAN_ACES_PRIZES: Omit<PrizeItem, 'id' | 'createdAt'>[]
   {
     title: 'Miniature Signed Bat & T-Shirt Powerhouse Bundle by Andre Russell (Dre Russ)',
     description: 'Premium international star collector pack: miniature signed display bat plus official franchise T-Shirt, both personally autographed by Dre Russ.',
-    pointsCost: 1400,
+    pointsCost: 4500,
     stock: 8,
     teamOnly: 'aces',
     active: true,
@@ -153,7 +153,7 @@ export const OFFICIAL_ARABIAN_ACES_PRIZES: Omit<PrizeItem, 'id' | 'createdAt'>[]
   {
     title: 'Miniature Signed Bat & T-Shirt Boundary Hitter Bundle by Liam Livingstone',
     description: 'Elite international star collector edition: miniature signed cricket bat and official team jersey hand-signed by Liam Livingstone.',
-    pointsCost: 1350,
+    pointsCost: 4200,
     stock: 8,
     teamOnly: 'aces',
     active: true,
@@ -170,7 +170,7 @@ export const OFFICIAL_ARABIAN_ACES_DRAWS: Omit<PrizeDraw, 'id' | 'createdAt'>[] 
     closesAt: '2026-11-06T18:00:00.000Z',
     status: 'open',
     teamOnly: 'aces',
-    minPoints: 20,
+    minPoints: 1000,
   },
   {
     title: 'Signed Moeen Ali Miniature Bat & Jersey Free Fan Draw',
@@ -180,17 +180,17 @@ export const OFFICIAL_ARABIAN_ACES_DRAWS: Omit<PrizeDraw, 'id' | 'createdAt'>[] 
     closesAt: '2026-11-12T18:00:00.000Z',
     status: 'open',
     teamOnly: 'aces',
-    minPoints: 50,
+    minPoints: 1200,
   },
   {
     title: 'Dre Russ Explosive Miniature Signed Bat & T-Shirt Mega Draw',
     prize: 'Miniature Signed Bat of Andre Russell (Dre Russ) + Official T-Shirt Bundle',
-    description: 'Grand prize draw featuring the ultimate Dre Russ memorabilia pack with miniature signed bat. Open to all Arabian Aces fans with 50+ season points.',
+    description: 'Grand prize draw featuring the ultimate Dre Russ memorabilia pack with miniature signed bat. Open to all Arabian Aces fans with 1,000+ season points.',
     color: '#f59e0b',
     closesAt: '2026-11-16T18:00:00.000Z',
     status: 'open',
     teamOnly: 'aces',
-    minPoints: 50,
+    minPoints: 1500,
   },
   {
     title: 'Liam Livingstone Miniature Signed Bat & Matchday Bundle Draw',
@@ -200,7 +200,7 @@ export const OFFICIAL_ARABIAN_ACES_DRAWS: Omit<PrizeDraw, 'id' | 'createdAt'>[] 
     closesAt: '2026-11-18T18:00:00.000Z',
     status: 'open',
     teamOnly: 'aces',
-    minPoints: 40,
+    minPoints: 1200,
   },
   {
     title: 'Arabian Aces Super Finale Double-Header VIP Draw',
@@ -210,6 +210,6 @@ export const OFFICIAL_ARABIAN_ACES_DRAWS: Omit<PrizeDraw, 'id' | 'createdAt'>[] 
     closesAt: '2026-11-19T10:00:00.000Z',
     status: 'open',
     teamOnly: 'aces',
-    minPoints: 30,
+    minPoints: 1000,
   },
 ];

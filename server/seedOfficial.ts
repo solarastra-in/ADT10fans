@@ -6,6 +6,7 @@ import { OFFICIAL_2026_MATCHES } from './data/officialMatches';
 import { OFFICIAL_ARABIAN_ACES_PRIZES, OFFICIAL_ARABIAN_ACES_DRAWS } from './data/officialPrizes';
 import { generateOfficialMatchContests } from './data/officialContests';
 import { OFFICIAL_FAN_CLUBS } from './data/officialVenues';
+import { seedCommunityFantasyTeams } from './seedCommunityTeams';
 
 export { OFFICIAL_2026_TEAMS, OFFICIAL_SOCIAL_POSTS, OFFICIAL_2026_MATCHES, OFFICIAL_ARABIAN_ACES_PRIZES, OFFICIAL_ARABIAN_ACES_DRAWS, generateOfficialMatchContests, OFFICIAL_FAN_CLUBS };
 
@@ -154,6 +155,7 @@ export function initializeStore(store: AppStore): boolean {
     if (seedOfficialPrizesAndDraws(store, now)) changed = true;
     if (seedOfficialContests(store, now)) changed = true;
     if (seedOfficialFanClubs(store, now)) changed = true;
+    if (seedCommunityFantasyTeams(store, now)) changed = true;
   }
   if (!store.jobLog['game-secret'] && !process.env.GAME_SECRET) {
     store.jobLog['game-secret'] = crypto.randomBytes(24).toString('hex');
@@ -207,12 +209,21 @@ export function seedOfficialPrizesAndDraws(store: AppStore, now = new Date().toI
       p.description = p.description.replace(/full[- ]size/i, 'handcrafted miniature display');
       changed = true;
     }
+    // Ensure all claim prizes start from 1000 points onwards per instruction
+    if (p.pointsCost < 1000) {
+      p.pointsCost = Math.max(1000, p.pointsCost >= 250 ? p.pointsCost * 5 : 1000);
+      changed = true;
+    }
   }
   for (const d of store.draws) {
     if (/full[- ]size/i.test(d.title) || /full[- ]size/i.test(d.prize || '') || /full[- ]size/i.test(d.description || '')) {
       d.title = d.title.replace(/full[- ]size/i, 'Miniature');
       if (d.prize) d.prize = d.prize.replace(/full[- ]size/i, 'Miniature');
       if (d.description) d.description = d.description.replace(/full[- ]size/i, 'miniature display');
+      changed = true;
+    }
+    if ((d.minPoints || 0) < 1000) {
+      d.minPoints = 1000;
       changed = true;
     }
   }
@@ -282,16 +293,24 @@ export function seedOfficialContests(store: AppStore, now = new Date().toISOStri
  * Seeds official fan club chapters across Hyderabad, India, UAE, and international hubs.
  */
 export function seedOfficialFanClubs(store: AppStore, now = new Date().toISOString(), overwrite = false): boolean {
-  if (!overwrite && store.fanClubs && store.fanClubs.length > 0) return false;
   let changed = false;
   if (!store.fanClubs) store.fanClubs = [];
 
-  const existingIds = new Set(store.fanClubs.map(c => c.id));
+  const existingById = new Map(store.fanClubs.map(c => [c.id, c]));
   for (const fc of OFFICIAL_FAN_CLUBS) {
-    if (!existingIds.has(fc.id)) {
+    const existing = existingById.get(fc.id);
+    if (!existing) {
       store.fanClubs.push({ ...fc, createdAt: now });
-      existingIds.add(fc.id);
       changed = true;
+    } else if (overwrite) {
+      Object.assign(existing, { ...fc, createdAt: existing.createdAt || now });
+      changed = true;
+    } else {
+      // Reconcile manager emails if missing or empty
+      if (!existing.managerEmails || existing.managerEmails.length === 0) {
+        existing.managerEmails = [...(fc.managerEmails || [])];
+        changed = true;
+      }
     }
   }
 

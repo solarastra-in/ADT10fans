@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../api';
-import type { FanClub } from '../../types';
+import type { FanClub, VenueOffer } from '../../types';
 import { Button, Card, Notice, NoticeState, SectionHeader, TextInput, Select } from './ui';
 
 export const FanClubsSection: React.FC = () => {
@@ -191,6 +191,113 @@ export const FanClubsSection: React.FC = () => {
                   placeholder="Contact Name & Mobile"
                 />
               </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-semibold text-gold-400 uppercase mb-1">
+                  Venue Managers (More than 1 manager allowed)
+                </label>
+                <TextInput
+                  value={(editingClub.managerEmails || []).join(', ')}
+                  onChange={e => {
+                    const emails = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+                    setEditingClub({ ...editingClub, managerEmails: emails });
+                  }}
+                  placeholder="solarastra.in@gmail.com, admin@aces.com, venue_lead@hyd.com"
+                />
+                <p className="text-[11px] text-navy-400 mt-1">
+                  Separate multiple emails with commas. These authorized venue managers can log in with their personal fan profile and operate the live QR scanner / manual check-in desk at <span className="font-mono text-gold-400">/admin/fanclub</span>.
+                </p>
+              </div>
+
+              {/* Venue Perks Editor */}
+              <div className="sm:col-span-2 pt-2 border-t border-navy-800">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-semibold text-navy-300 uppercase">
+                    Venue Perks & Offers (Single-Use per Fan at this Venue)
+                  </label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      const newOffer: VenueOffer = {
+                        id: `offer_${Date.now()}`,
+                        fanClubId: editingClub.id || '',
+                        title: 'Matchday Drink / Snack Voucher',
+                        description: 'Redeemable at venue counter during match interval',
+                        perk: 'Free Beverage or Snack',
+                        active: true,
+                      };
+                      setEditingClub({
+                        ...editingClub,
+                        offers: [...(editingClub.offers || []), newOffer],
+                      });
+                    }}
+                  >
+                    + Add Perk
+                  </Button>
+                </div>
+
+                <div className="space-y-2">
+                  {(!editingClub.offers || editingClub.offers.length === 0) ? (
+                    <div className="text-xs text-navy-400 p-3 bg-navy-950/60 rounded-xl border border-navy-800">
+                      No perks configured for this venue yet. Click "+ Add Perk" to create exclusive venue perks.
+                    </div>
+                  ) : (
+                    editingClub.offers.map((offer, idx) => (
+                      <div key={offer.id || idx} className="p-3 bg-navy-950/90 rounded-xl border border-navy-800 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <input
+                            type="text"
+                            value={offer.title}
+                            onChange={e => {
+                              const updated = [...(editingClub.offers || [])];
+                              updated[idx] = { ...updated[idx], title: e.target.value };
+                              setEditingClub({ ...editingClub, offers: updated });
+                            }}
+                            placeholder="Perk Title (e.g. Free Team Flag)"
+                            className="bg-navy-900 border border-navy-700 rounded-lg px-2.5 py-1 text-xs text-white flex-1 font-bold"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = (editingClub.offers || []).filter((_, i) => i !== idx);
+                              setEditingClub({ ...editingClub, offers: updated });
+                            }}
+                            className="text-xs text-rose-400 hover:text-rose-300 px-2 py-1"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <input
+                            type="text"
+                            value={offer.perk}
+                            onChange={e => {
+                              const updated = [...(editingClub.offers || [])];
+                              updated[idx] = { ...updated[idx], perk: e.target.value };
+                              setEditingClub({ ...editingClub, offers: updated });
+                            }}
+                            placeholder="Perk Summary (e.g. Free Aces Jersey Badge)"
+                            className="bg-navy-900 border border-navy-700 rounded-lg px-2.5 py-1 text-xs text-gold-300"
+                          />
+                          <input
+                            type="text"
+                            value={offer.description}
+                            onChange={e => {
+                              const updated = [...(editingClub.offers || [])];
+                              updated[idx] = { ...updated[idx], description: e.target.value };
+                              setEditingClub({ ...editingClub, offers: updated });
+                            }}
+                            placeholder="Description / Claim instructions"
+                            className="bg-navy-900 border border-navy-700 rounded-lg px-2.5 py-1 text-xs text-navy-300"
+                          />
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-4 border-t border-navy-800">
@@ -198,7 +305,7 @@ export const FanClubsSection: React.FC = () => {
                 Cancel
               </Button>
               <Button type="submit" disabled={saving}>
-                {saving ? 'Saving...' : 'Save Venue'}
+                {saving ? 'Saving...' : 'Save Venue & Perks'}
               </Button>
             </div>
           </form>
@@ -224,9 +331,15 @@ export const FanClubsSection: React.FC = () => {
                 {club.contactPerson && (
                   <p className="text-[11px] text-navy-400">Coordinator: {club.contactPerson}</p>
                 )}
+                {club.managerEmails && club.managerEmails.length > 0 && (
+                  <div className="mt-2 text-[11px] text-navy-400">
+                    <span className="font-semibold text-slate-300">Desk Managers ({club.managerEmails.length}):</span>{' '}
+                    <span className="font-mono text-gold-400/90 break-words">{club.managerEmails.join(', ')}</span>
+                  </div>
+                )}
                 {club.offers && club.offers.length > 0 && (
                   <div className="mt-2 text-[11px] text-amber-400 font-medium">
-                    {club.offers.length} Venue Offer{club.offers.length > 1 ? 's' : ''} Active
+                    {club.offers.length} Venue Perk{club.offers.length > 1 ? 's' : ''} Active
                   </div>
                 )}
               </div>

@@ -209,6 +209,12 @@ adminRouter.post('/admin/fanclubs', requireAdmin('settings'), (req, res) => {
   const idx = store.fanClubs.findIndex(c => c.id === id);
 
   const existing = idx >= 0 ? store.fanClubs[idx] : null;
+  const managerEmails = Array.isArray(b.managerEmails)
+    ? b.managerEmails.map((e: any) => String(e).trim().toLowerCase()).filter(Boolean)
+    : (typeof b.managerEmails === 'string'
+      ? b.managerEmails.split(',').map((e: string) => e.trim().toLowerCase()).filter(Boolean)
+      : (existing?.managerEmails || []));
+
   const club = {
     id,
     name,
@@ -218,6 +224,7 @@ adminRouter.post('/admin/fanclubs', requireAdmin('settings'), (req, res) => {
     region,
     capacity: Math.max(10, Math.round(num(b.capacity, 250))),
     contactPerson: str(b.contactPerson, 100) || undefined,
+    managerEmails,
     active: b.active !== undefined ? Boolean(b.active) : true,
     offers: Array.isArray(b.offers) ? b.offers : (existing?.offers || []),
     createdAt: existing?.createdAt || new Date().toISOString(),
@@ -226,6 +233,22 @@ adminRouter.post('/admin/fanclubs', requireAdmin('settings'), (req, res) => {
   if (idx >= 0) store.fanClubs[idx] = club;
   else store.fanClubs.push(club);
 
+  db.save();
+  res.json({ success: true, fanClub: club });
+});
+
+adminRouter.post('/admin/fanclubs/:id/managers', requireAdmin('settings'), (req, res) => {
+  const store = db.get();
+  const id = req.params.id;
+  const club = (store.fanClubs || []).find(c => c.id === id);
+  if (!club) return bad(res, 'Fan club not found', 404);
+
+  const raw = req.body?.managerEmails;
+  const emails: string[] = Array.isArray(raw)
+    ? raw.map((e: any) => String(e).trim().toLowerCase()).filter(Boolean)
+    : (typeof raw === 'string' ? raw.split(',').map((e: string) => e.trim().toLowerCase()).filter(Boolean) : []);
+
+  club.managerEmails = emails;
   db.save();
   res.json({ success: true, fanClub: club });
 });

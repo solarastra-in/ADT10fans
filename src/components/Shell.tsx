@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Award, CalendarDays, ChevronDown, Coins, Gamepad2, Home, LayoutGrid, LogIn, LogOut, Settings, Share2, Shield, Languages, User, X } from 'lucide-react';
+import { Award, CalendarDays, ChevronDown, Coins, Gamepad2, Home, LayoutGrid, LogIn, LogOut, QrCode, Settings, Share2, Shield, Languages, User, X } from 'lucide-react';
 import { Link, navigate, Route, RouteName } from '../router';
 import { useApp } from '../state';
 import { LANGUAGES, useI18n, useT } from '../i18n';
@@ -51,7 +51,7 @@ export function LanguagePicker({ className }: { className?: string }) {
 }
 
 export function UserDropdown() {
-  const { user, logout, openTeamPicker, teamById, toast } = useApp();
+  const { user, logout, openTeamPicker, openQrPass, teamById, toast } = useApp();
   const t = useT();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -105,6 +105,17 @@ export function UserDropdown() {
           <div className="p-2.5 pb-3 border-b border-slate-800 mb-1">
             <p className="font-bold text-white text-sm truncate">{user.name}</p>
             <p className="text-xs text-slate-400 truncate">{user.email}</p>
+            {user.instagramHandle && (
+              <div className="mt-1.5 flex items-center justify-between text-[11px] px-2 py-1 rounded-lg bg-pink-500/10 border border-pink-500/20 text-pink-300">
+                <span className="flex items-center gap-1 font-bold truncate">
+                  <svg className="w-3 h-3 fill-current text-pink-400 shrink-0" viewBox="0 0 24 24">
+                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069z"/>
+                  </svg>
+                  {user.instagramHandle}
+                </span>
+                <span className="text-[10px] font-black text-emerald-400 shrink-0">✓ Verified</span>
+              </div>
+            )}
             <div className="mt-2 flex items-center justify-between text-xs">
               <span className="font-bold text-amber-400 tabular-nums">{t('{n} points', { n: user.points })}</span>
               {team ? (
@@ -122,6 +133,19 @@ export function UserDropdown() {
 
           {/* Quick Navigation Links */}
           <div className="space-y-0.5">
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                openQrPass();
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-black text-amber-300 bg-amber-400/10 hover:bg-amber-400/20 transition-colors text-start"
+              role="menuitem"
+            >
+              <QrCode className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>{t('Matchday QR Pass')}</span>
+              <span className="ms-auto text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">+100 pts</span>
+            </button>
             <Link
               to="/profile"
               onClick={() => setOpen(false)}
@@ -200,9 +224,13 @@ export function UserDropdown() {
 }
 
 export function Header({ route }: { route: Route }) {
-  const { user, openAuth, config } = useApp();
+  const { user, openAuth, openQrPass, openInstaModal, config } = useApp();
   const t = useT();
   const current = SECTION_OF[route.name];
+  const targetHandle = config?.instagramTargetHandle || '@ArabianAcesofficial';
+  const hasInstaFollowed = Boolean(user?.instagramFollowed || (typeof window !== 'undefined' && localStorage.getItem('aces_instagram_verified') === 'true'));
+  const storedHandle = (typeof window !== 'undefined' ? localStorage.getItem('aces_instagram_handle') : null) || user?.instagramHandle || targetHandle;
+
   const links: [string, string, string][] = [
     ['/matches', t('Matches'), 'matches'],
     ['/teams', t('Teams'), 'teams'],
@@ -224,7 +252,48 @@ export function Header({ route }: { route: Route }) {
             </Link>
           ))}
         </nav>
-        <div className="ms-auto flex items-center gap-1.5">
+        <div className="ms-auto flex items-center gap-1.5 sm:gap-2">
+          {/* Instagram Follow / Verified Status */}
+          {hasInstaFollowed ? (
+            <button
+              type="button"
+              onClick={openInstaModal}
+              className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-pink-500/10 hover:bg-pink-500/20 border border-pink-500/30 text-[11px] font-bold text-pink-300 transition-colors"
+              title="Instagram Verified Fan"
+            >
+              <svg className="w-3.5 h-3.5 fill-current text-pink-400" viewBox="0 0 24 24">
+                <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069z"/>
+              </svg>
+              <span className="truncate max-w-[100px]">{storedHandle}</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={openInstaModal}
+              className="inline-flex items-center gap-1.5 min-h-[38px] px-2.5 sm:px-3 rounded-xl bg-gradient-to-r from-pink-500/20 to-rose-500/20 hover:from-pink-500/30 hover:to-rose-500/30 text-pink-300 border border-pink-500/40 text-xs font-black transition-all shadow-sm shadow-pink-500/10 active:scale-95"
+              title={`Follow ${targetHandle} on Instagram`}
+            >
+              <svg className="w-3.5 h-3.5 fill-current text-pink-400" viewBox="0 0 24 24">
+                <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069z"/>
+              </svg>
+              <span className="hidden sm:inline">Follow Aces</span>
+              <span className="text-[10px] bg-pink-500/30 text-pink-200 px-1.5 py-0.5 rounded font-black">+25 pts</span>
+            </button>
+          )}
+
+          {/* Quick Matchday Pass QR button - easily accessible from top nav */}
+          <button
+            type="button"
+            onClick={openQrPass}
+            className="inline-flex items-center gap-1.5 min-h-[38px] px-2.5 sm:px-3 rounded-xl bg-amber-400/15 hover:bg-amber-400/25 text-amber-300 border border-amber-400/40 text-xs font-black transition-all shadow-sm shadow-amber-500/10 active:scale-95"
+            title={t('Open Matchday Fan Pass QR Code')}
+            data-testid="header-qr-pass-btn"
+          >
+            <QrCode className="w-4 h-4 text-amber-400" />
+            <span className="hidden sm:inline">{t('My QR Pass')}</span>
+            <span className="sm:hidden text-[11px] font-bold">QR</span>
+          </button>
           {/* On phones the language picker lives in the "More" sheet. */}
           <div className="hidden sm:block">
             <LanguagePicker />
@@ -244,6 +313,29 @@ export function Header({ route }: { route: Route }) {
           )}
         </div>
       </div>
+      {/* Platform Access Instagram Requirement Announcement for visitors who haven't followed */}
+      {!hasInstaFollowed && (
+        <div className="bg-gradient-to-r from-purple-950 via-rose-950 to-amber-950 border-t border-b border-pink-500/30 text-xs font-bold text-white px-4 py-1.5 flex items-center justify-between gap-3 shadow-inner">
+          <div className="flex items-center gap-2 truncate">
+            <span className="text-pink-400 font-black flex items-center gap-1.5 shrink-0 text-[11px] uppercase tracking-wider">
+              <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069z"/>
+              </svg>
+              Platform Requirement:
+            </span>
+            <span className="text-slate-200 truncate text-[11px] sm:text-xs">
+              Follow <strong className="text-amber-300">{targetHandle}</strong> on Instagram to play match games, submit Pick XI, and check in at fan venues!
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={openInstaModal}
+            className="shrink-0 px-2.5 py-1 bg-gradient-to-r from-pink-500 to-amber-500 hover:from-pink-400 hover:to-amber-400 text-slate-950 font-black rounded-lg text-[11px] shadow-sm transition-transform active:scale-95"
+          >
+            Follow on Instagram
+          </button>
+        </div>
+      )}
       {config?.tickerText ? (
         <div className="bg-amber-400 text-slate-950 text-xs font-black overflow-hidden whitespace-nowrap">
           <div className="max-w-6xl mx-auto px-4 py-1 truncate">{config.tickerText}</div>
@@ -255,7 +347,7 @@ export function Header({ route }: { route: Route }) {
 
 export function BottomNav({ route }: { route: Route }) {
   const t = useT();
-  const { user, logout, toast } = useApp();
+  const { user, logout, toast, openQrPass } = useApp();
   const [more, setMore] = useState(false);
   const current = SECTION_OF[route.name];
   const items: [string, string, React.FC<{ className?: string }>, string][] = [
@@ -309,6 +401,26 @@ export function BottomNav({ route }: { route: Route }) {
                 <X className="w-5 h-5" />
               </button>
             </div>
+            {/* Quick Matchday Pass in drawer */}
+            <button
+              type="button"
+              onClick={() => {
+                setMore(false);
+                openQrPass();
+              }}
+              className="w-full mb-3 flex items-center justify-between p-3 rounded-2xl bg-gradient-to-r from-amber-500/20 via-amber-400/10 to-transparent border border-amber-400/50 text-white hover:border-amber-400 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-bold shadow-md shadow-amber-500/30">
+                  <QrCode className="w-5 h-5" />
+                </div>
+                <div className="text-start">
+                  <div className="text-xs font-black text-amber-300">{t('Matchday QR Pass')}</div>
+                  <div className="text-[11px] text-slate-300">{t('Venue check-in for +100 fan points')}</div>
+                </div>
+              </div>
+              <span className="text-xs font-bold text-amber-400 px-2 py-1 rounded bg-amber-400/15">View →</span>
+            </button>
             <div className="grid grid-cols-2 gap-2">
               {moreLinks.map(([to, label]) => (
                 <button key={to + label} type="button" onClick={() => { setMore(false); navigate(to); }} className="min-h-[48px] px-3 rounded-xl bg-slate-950/70 border border-slate-800 text-sm font-bold text-slate-200 text-start hover:border-slate-600">
@@ -407,3 +519,28 @@ export function Toasts() {
     </div>
   );
 }
+
+export function FloatingQRButton() {
+  const { openQrPass } = useApp();
+  const t = useT();
+  return (
+    <button
+      type="button"
+      onClick={openQrPass}
+      className="fixed z-30 bottom-20 lg:bottom-6 end-4 sm:end-6 inline-flex items-center gap-2 px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-full bg-slate-900/95 hover:bg-slate-800 text-amber-300 border border-amber-400/50 shadow-2xl shadow-black/80 hover:shadow-amber-500/25 transition-all hover:scale-105 active:scale-95 backdrop-blur group"
+      aria-label={t('My Matchday QR Pass')}
+      data-testid="floating-qr-button"
+    >
+      <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-amber-400 to-amber-500 text-slate-950 flex items-center justify-center font-bold shadow">
+        <QrCode className="w-4 h-4" />
+      </div>
+      <span className="text-xs font-black tracking-tight text-white group-hover:text-amber-300">
+        {t('QR Pass')}
+      </span>
+      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300">
+        +100
+      </span>
+    </button>
+  );
+}
+
