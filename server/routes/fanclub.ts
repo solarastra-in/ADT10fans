@@ -130,7 +130,7 @@ fanclubRouter.get('/fanclub/my-status', (req, res) => {
     checkedInRecord: cur.match ? user.fanClubCheckIns?.find(c => c.matchId === cur.match!.id) || null : null,
     checkIns: [...(user.fanClubCheckIns || [])].reverse().slice(0, 30),
     gamesTeamId: fanClubGamesTeam(store, user),
-    activeOffers: clubs.flatMap(c => (c.offers || []).filter(o => offerLive(o, now)).map(o => ({ ...publicOffer(o), clubName: c.name, redeemed: claimed.has(o.id) }))),
+    activeOffers: clubs.flatMap(c => (c.offers || []).filter(o => offerLive(o, now)).map(o => ({ ...publicOffer(o), clubName: c.name, used: claimed.has(o.id) }))),
   });
 });
 
@@ -455,7 +455,7 @@ fanclubRouter.get('/fanclub/admin/fan', requireFanClubs, (req, res) => {
     window: match ? checkInWindow(store, match) : null,
     checkedIn,
     checkedInHereToday: hereToday(store, fan, club.id),
-    offers: club.offers.filter(o => offerLive(o)).map(o => ({ ...publicOffer(o), redeemed: claimed.has(o.id) })),
+    offers: club.offers.filter(o => offerLive(o)).map(o => ({ ...publicOffer(o), used: claimed.has(o.id) })),
   });
 });
 
@@ -496,7 +496,7 @@ fanclubRouter.post('/fanclub/admin/checkin', requireFanClubs, wrap(async (req, r
     store.fanClubCheckIns.unshift(rec);
     if (store.fanClubCheckIns.length > 50_000) store.fanClubCheckIns.length = 50_000;
     fan.fanClubCheckIns.push({ matchId: match.id, matchNo: match.matchNo, fanClubId: club.id, fanClubName: club.name, checkedInAt: at, pointsAwarded: points });
-    return { ok: { pointsAwarded: points, fan: { id: fan.id, name: fan.name, avatar: fan.avatar, teamId: fan.teamId, points: fan.points }, match, checkInRecord: rec, offers: club.offers.filter(o => offerLive(o)).map(o => ({ ...publicOffer(o), redeemed: (fan.claimedVenueOfferIds || []).includes(o.id) })) } };
+    return { ok: { pointsAwarded: points, fan: { id: fan.id, name: fan.name, avatar: fan.avatar, teamId: fan.teamId, points: fan.points }, match, checkInRecord: rec, offers: club.offers.filter(o => offerLive(o)).map(o => ({ ...publicOffer(o), used: (fan.claimedVenueOfferIds || []).includes(o.id) })) } };
   });
   if ('error' in r) return bad(res, r.error!, r.status);
   res.json({ success: true, ...r.ok });

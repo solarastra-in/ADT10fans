@@ -532,6 +532,8 @@ export interface PrizeItem {
   teamOnly?: string | null;
   /** The franchise offering and fulfilling the prize (set for prizes a team admin creates). */
   teamId?: string | null;
+  /** Reward tier this prize belongs to on the Prizes page, e.g. "Match tickets". Tiers are built from these. */
+  category?: string;
   active: boolean;
   /** How the fan receives it, shown after claiming (e.g. "Collect at the Fan Zone with your code"). */
   fulfilment: string;
@@ -1270,6 +1272,17 @@ export function isFabricatedFeedItem(f: any): boolean {
  * Upgrade a store written by an older version. Real accounts, forum posts and everything an admin
  * created are kept. Invented demo content is dropped; unconfirmed handles go to the approval queue.
  */
+/** A starting tier for a prize from its name; admins can change it (Admin → Prizes). */
+export function guessPrizeCategory(title: string): string {
+  const t = String(title || '').toLowerCase();
+  if (t.includes('bundle')) return 'Signed bundles';
+  if (/\bbat\b/.test(t)) return 'Signed bats';
+  if (t.includes('signed') && /(t-shirt|shirt|jersey)/.test(t)) return 'Signed shirts';
+  if (/(t-shirt|shirt|jersey|cap|scarf|kit)/.test(t)) return 'Team apparel';
+  if (t.includes('ticket')) return 'Match tickets';
+  return 'Other rewards';
+}
+
 export function migrate(raw: any): AppStore {
   const fresh = emptyStore();
   if (!raw || typeof raw !== 'object') return fresh;
@@ -1346,6 +1359,7 @@ export function migrate(raw: any): AppStore {
       if (!['team', 'all'].includes(c.gamesMode)) c.gamesMode = 'team';
       if (!Array.isArray(c.offers)) c.offers = [];
     }
+    for (const p of out.prizes as any[]) if (!p.category) p.category = guessPrizeCategory(p.title);
     if (out.settings.instagramTargetHandle === '@ArabianAcesofficial') out.settings.instagramTargetHandle = '@arabianacesofficial';
   }
   for (const u of out.users as any[]) {

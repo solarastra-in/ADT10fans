@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { AppStore, db, Match, SocialHandle, Team } from './db';
+import { AppStore, db, guessPrizeCategory, Match, SocialHandle, Team } from './db';
 import { OFFICIAL_2026_TEAMS } from './data/officialTeams';
 import { OFFICIAL_SQUAD_IDS_BEFORE_2026_10_27 } from './data/previousSquadIds';
 import { normName } from './fantasy';
@@ -258,6 +258,7 @@ export function seedOfficialPrizesAndDraws(store: AppStore, now = new Date().toI
       if (!existingTitles.has(op.title.toLowerCase().trim())) {
         store.prizes.push({
           ...op,
+          category: op.category || guessPrizeCategory(op.title),
           id: `prz-aces-${i + 1}`,
           createdAt: now,
         });

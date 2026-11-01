@@ -4,7 +4,7 @@ import React, { useEffect, useSyncExternalStore } from 'react';
 export type RouteName =
   | 'home' | 'matches' | 'match' | 'teams' | 'team' | 'players' | 'player' | 'social' | 'videos' | 'news'
   | 'play' | 'fantasy' | 'fantasyMatch' | 'games' | 'duel' | 'fanwall' | 'fanPost' | 'contests' | 'prizes' | 'leaderboard' | 'fans'
-  | 'forum' | 'thread' | 'fanspaces' | 'growth' | 'profile' | 'rules' | 'privacy' | 'terms' | 'admin' | 'adminFanclub' | 'teamPortal' | 'teamInvite' | 'proposal' | 'notFound';
+  | 'forum' | 'thread' | 'fanspaces' | 'growth' | 'profile' | 'rules' | 'privacy' | 'terms' | 'admin' | 'adminFanclub' | 'teamGames' | 'pick5' | 'fanclub' | 'teamPortal' | 'teamInvite' | 'proposal' | 'notFound';
 
 export interface Route {
   name: RouteName;
@@ -25,6 +25,9 @@ const TABLE: [RegExp, RouteName, string[]][] = [
   [/^\/videos$/, 'videos', []],
   [/^\/news$/, 'news', []],
   [/^\/play$/, 'play', []],
+  [/^\/team-games$/, 'teamGames', []],
+  [/^\/team-games\/([^/]+)$/, 'pick5', ['id']],
+  [/^\/fanclub$/, 'fanclub', []],
   [/^\/fantasy$/, 'fantasy', []],
   [/^\/fantasy\/([^/]+)$/, 'fantasyMatch', ['id']],
   [/^\/games$/, 'games', []],

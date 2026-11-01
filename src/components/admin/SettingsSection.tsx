@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Save, Info, Sparkles, CheckCircle2, AlertTriangle, ShieldCheck, Mail, Send } from 'lucide-react';
-import { SystemSettings } from '../../types';
+import { SystemSettings, Team } from '../../types';
 import { api } from '../../api';
 import { Button, Card, Checkbox, Errors, Field, Notice, SectionHeader, TextArea, TextInput, splitList, toDateInput, toNumber, useRunner, Select } from './ui';
 
@@ -37,6 +37,10 @@ type Draft = {
   requireTwitterFollow: boolean;
   twitterTargetHandle: string;
   fanClubCheckInPoints: string;
+  instagramVerifyPostUrl: string;
+  instagramHideVerifyComments: boolean;
+  fanClubCheckInOpensMins: string;
+  fanClubTeamId: string;
 };
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -70,13 +74,17 @@ const toDraft = (s: Partial<SystemSettings> | null | undefined): Draft => ({
   smtpFrom: s?.smtp?.from || '',
   smtpEnabled: !!s?.smtp?.enabled,
   requireInstagramFollow: s?.requireInstagramFollow !== false,
-  instagramTargetHandle: s?.instagramTargetHandle || '@ArabianAcesofficial',
+  instagramTargetHandle: s?.instagramTargetHandle || '@arabianacesofficial',
   requireTwitterFollow: !!s?.requireTwitterFollow,
   twitterTargetHandle: s?.twitterTargetHandle || '@ArabianAces',
   fanClubCheckInPoints: String(s?.fanClubCheckInPoints ?? 100),
+  instagramVerifyPostUrl: s?.instagramVerifyPostUrl || '',
+  instagramHideVerifyComments: !!s?.instagramHideVerifyComments,
+  fanClubCheckInOpensMins: String(s?.fanClubCheckInOpensMins ?? 90),
+  fanClubTeamId: s?.fanClubTeamId || 'aces',
 });
 
-export const SettingsSection: React.FC<{ settings: SystemSettings; onRefreshAll: () => Promise<void> }> = ({ settings, onRefreshAll }) => {
+export const SettingsSection: React.FC<{ settings: SystemSettings; teams: Team[]; onRefreshAll: () => Promise<void> }> = ({ settings, teams, onRefreshAll }) => {
   const { busy, notice, setNotice, run } = useRunner();
   const [draft, setDraft] = useState<Draft>(() => toDraft(settings));
   const [passIsSet, setPassIsSet] = useState<boolean>(!!settings?.smtp?.pass);
@@ -199,10 +207,12 @@ export const SettingsSection: React.FC<{ settings: SystemSettings; onRefreshAll:
         .join('\n'),
       smtp: smtp as SystemSettings['smtp'],
       requireInstagramFollow: draft.requireInstagramFollow,
-      instagramTargetHandle: draft.instagramTargetHandle.trim() || '@ArabianAcesofficial',
-      requireTwitterFollow: draft.requireTwitterFollow,
-      twitterTargetHandle: draft.twitterTargetHandle.trim() || '@ArabianAces',
+      instagramTargetHandle: draft.instagramTargetHandle.trim() || '@arabianacesofficial',
+      instagramVerifyPostUrl: draft.instagramVerifyPostUrl.trim(),
+      instagramHideVerifyComments: draft.instagramHideVerifyComments,
       fanClubCheckInPoints: toNumber(draft.fanClubCheckInPoints, 100),
+      fanClubCheckInOpensMins: toNumber(draft.fanClubCheckInOpensMins, 90),
+      fanClubTeamId: draft.fanClubTeamId,
     };
 
     const res = await run('save', () => api.saveSettings(payload), 'Settings saved.');
@@ -343,54 +353,41 @@ export const SettingsSection: React.FC<{ settings: SystemSettings; onRefreshAll:
         <div>
           <h3 className="font-extrabold text-white text-base">Social Follow Gateways & Fan Club Policy</h3>
           <p className="text-xs text-slate-400 mt-0.5">
-            Configure mandatory Instagram follow gate upon site arrival, optional X (Twitter) toggle, and matchday check-in points.
+            Fans must verify Instagram before they can play: they follow the account and comment a code on the pinned post. Admins never see the check.
           </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
             <Checkbox
-              label="Enable Instagram Follow Gateway"
-              hint="Prompt visitors to follow @ArabianAcesofficial"
+              label="Require the Instagram check"
+              hint="Fans can browse the rules and legal pages, but every game, prize and post needs a verified Instagram."
               checked={draft.requireInstagramFollow}
               onChange={c => set({ requireInstagramFollow: c })}
             />
-            <Field label="Target Instagram Account">
-              <TextInput
-                value={draft.instagramTargetHandle}
-                onChange={e => set({ instagramTargetHandle: e.target.value })}
-                placeholder="@ArabianAcesofficial"
-              />
+            <Field label="Instagram account fans follow">
+              <TextInput value={draft.instagramTargetHandle} onChange={e => set({ instagramTargetHandle: e.target.value })} placeholder="@arabianacesofficial" />
             </Field>
           </div>
-
           <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-            <Checkbox
-              label="Enable X (Twitter) Follow Gate"
-              hint="Optional follow requirement controlled by Super Admin"
-              checked={draft.requireTwitterFollow}
-              onChange={c => set({ requireTwitterFollow: c })}
-            />
-            <Field label="Target X Account">
-              <TextInput
-                value={draft.twitterTargetHandle}
-                onChange={e => set({ twitterTargetHandle: e.target.value })}
-                placeholder="@ArabianAces"
-              />
+            <Field label="Pinned post for codes" hint="A post of that account. With the Meta token set (Admin → Environment), the site reads its comments and verifies fans by itself.">
+              <TextInput value={draft.instagramVerifyPostUrl} onChange={e => set({ instagramVerifyPostUrl: e.target.value })} placeholder="https://www.instagram.com/p/…/" data-testid="settings-ig-post" />
+            </Field>
+            <Checkbox label="Hide verification comments once checked" hint="Keeps the post tidy. Needs the instagram_manage_comments permission." checked={draft.instagramHideVerifyComments} onChange={c => set({ instagramHideVerifyComments: c })} />
+          </div>
+          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+            <Field label="Fan club check-in points (default)" hint="Each club can set its own.">
+              <TextInput type="number" value={draft.fanClubCheckInPoints} onChange={e => set({ fanClubCheckInPoints: e.target.value })} placeholder="100" />
+            </Field>
+            <Field label="Check-in opens (minutes before the first ball)">
+              <TextInput type="number" value={draft.fanClubCheckInOpensMins} onChange={e => set({ fanClubCheckInOpensMins: e.target.value })} placeholder="90" />
             </Field>
           </div>
-
-          <div className="sm:col-span-2 p-4 rounded-xl bg-slate-950 border border-slate-800">
-            <Field
-              label="Matchday Fan Club Check-In Points"
-              hint="Points awarded to each fan when venue admin scans their matchday QR code at an official fan club (60–90 min pre-match window)."
-            >
-              <TextInput
-                type="number"
-                value={draft.fanClubCheckInPoints}
-                onChange={e => set({ fanClubCheckInPoints: e.target.value })}
-                placeholder="100"
-              />
+          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+            <Field label="Fan club team" hint="Its games (Pick 5 and team predictions) are the only games for fans checked in at a fan club. Every fan can play them.">
+              <Select value={draft.fanClubTeamId} onChange={e => set({ fanClubTeamId: e.target.value })}>
+                {teams.map(tm => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
+              </Select>
             </Field>
           </div>
         </div>

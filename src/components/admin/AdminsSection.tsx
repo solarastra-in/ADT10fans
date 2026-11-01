@@ -18,6 +18,7 @@ const ALL_PERMISSIONS: { id: AdminPermission; label: string; desc: string; color
   { id: 'fantasy', label: 'Pick XI', desc: 'Re-score Pick XI after scorecard fixes', color: 'bg-violet-500/10 text-violet-300 border-violet-500/30' },
   { id: 'prizes', label: 'Prizes & claims', desc: 'Reward catalogue, fulfil or cancel claims', color: 'bg-lime-500/10 text-lime-300 border-lime-500/30' },
   { id: 'draws', label: 'Prize draws', desc: 'Create draws, pick winners', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' },
+  { id: 'fanclubs', label: 'Fan clubs', desc: 'Every fan club: add clubs, their admins, offers and check-ins', color: 'bg-amber-500/10 text-amber-300 border-amber-500/30' },
   { id: 'social', label: 'Handles & feeds', desc: 'Official accounts, posts, approvals', color: 'bg-orange-500/10 text-orange-400 border-orange-500/30' },
   { id: 'community', label: 'Forum & polls', desc: 'Moderation, reports, polls', color: 'bg-pink-500/10 text-pink-300 border-pink-500/30' },
   { id: 'notifications', label: 'Notifications', desc: 'Push and in-app messages', color: 'bg-rose-500/10 text-rose-400 border-rose-500/30' },
@@ -35,11 +36,17 @@ const ROLE_PRESETS: { id: AdminRole; label: string; desc: string; defaultPerms: 
   { id: 'winner_admin', label: 'Prizes Admin', desc: 'Prize catalogue, claims and prize draws.', defaultPerms: ['winners', 'draws', 'prizes'] },
   { id: 'social_admin', label: 'Social & Community', desc: 'Official handles, feeds, approvals, forum moderation and polls.', defaultPerms: ['feeds', 'social', 'community'] },
   { id: 'team_official', label: 'Team Official', desc: 'One franchise only, in its team portal: its page, squad, channels, posts, prizes for its fans, polls, forum and fan messages.', defaultPerms: TEAM_OFFICIAL_PERMS },
+  { id: 'fanclub_admin', label: 'Fan Club Admin', desc: 'Runs the chosen fan clubs only: check-ins, offers and club details.', defaultPerms: ['fanclubs'] },
   { id: 'custom', label: 'Custom Role', desc: 'Pick individual permissions.', defaultPerms: ['matches'] },
 ];
 
 export const AdminsSection: React.FC<AdminsSectionProps> = ({ currentUserEmail, isCurrentUserSuperAdmin, teams }) => {
   const [admins, setAdmins] = useState<AdminUserRecord[]>([]);
+  const [formFanClubIds, setFormFanClubIds] = useState<string[]>([]);
+  const [fanClubs, setFanClubs] = useState<{ id: string; name: string; city: string }[]>([]);
+  useEffect(() => {
+    api.fanClubAdmin().then(v => setFanClubs(v.clubs)).catch(() => undefined);
+  }, []);
   const [superAdminEmail, setSuperAdminEmail] = useState<string>('solarastra.in@gmail.com');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -90,6 +97,7 @@ export const AdminsSection: React.FC<AdminsSectionProps> = ({ currentUserEmail, 
     setFormRole(admin.role || 'custom');
     setFormPermissions(admin.permissions || []);
     setFormTeamId(admin.teamId || '');
+    setFormFanClubIds(admin.fanClubIds || []);
     setIsModalOpen(true);
   };
 
@@ -119,6 +127,11 @@ export const AdminsSection: React.FC<AdminsSectionProps> = ({ currentUserEmail, 
     setError(null);
     try {
       const isSuper = formRole === 'superadmin';
+      if (formRole === 'fanclub_admin' && !formFanClubIds.length) {
+        setError('Choose the fan club(s) this admin runs.');
+        setSaving(false);
+        return;
+      }
       if (formRole === 'team_official' && !formTeamId) {
         setError('Choose the team this official manages.');
         setSaving(false);
@@ -130,6 +143,7 @@ export const AdminsSection: React.FC<AdminsSectionProps> = ({ currentUserEmail, 
         role: formRole,
         permissions: isSuper ? ['all'] : formPermissions,
         teamId: formRole === 'team_official' ? formTeamId : null,
+        fanClubIds: formRole === 'fanclub_admin' ? formFanClubIds : undefined,
       });
       setAdmins(res.admins || []);
       setSuccessMsg(`Admin permissions for ${formEmail.trim()} updated successfully.`);
@@ -184,6 +198,12 @@ export const AdminsSection: React.FC<AdminsSectionProps> = ({ currentUserEmail, 
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
             <Key className="w-3 h-3" /> Winner Admin
+          </span>
+        );
+      case 'fanclub_admin':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+            <Users className="w-3 h-3" /> Fan Club Admin
           </span>
         );
       case 'team_official':
@@ -487,7 +507,21 @@ export const AdminsSection: React.FC<AdminsSectionProps> = ({ currentUserEmail, 
                 </Field>
               )}
 
-              {formRole !== 'superadmin' && formRole !== 'team_official' && (
+              {formRole === 'fanclub_admin' && (
+                <Field label="Fan clubs">
+                  <div className="grid grid-cols-1 gap-1.5 mt-1.5 p-3 rounded-2xl bg-slate-950 border border-slate-800 max-h-56 overflow-y-auto">
+                    {fanClubs.length === 0 && <p className="text-xs text-slate-500">Add fan clubs first (Admin → Fan clubs).</p>}
+                    {fanClubs.map(c => (
+                      <label key={c.id} className="flex items-center gap-2 text-sm text-slate-200">
+                        <input type="checkbox" className="accent-amber-400" checked={formFanClubIds.includes(c.id)} onChange={() => setFormFanClubIds(ids => (ids.includes(c.id) ? ids.filter(x => x !== c.id) : [...ids, c.id]))} />
+                        {c.name} · {c.city}
+                      </label>
+                    ))}
+                  </div>
+                </Field>
+              )}
+
+              {formRole !== 'superadmin' && formRole !== 'team_official' && formRole !== 'fanclub_admin' && (
                 <Field label="Granular Permissions">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1.5 p-3 rounded-2xl bg-slate-950 border border-slate-800 max-h-56 overflow-y-auto">
                     {ALL_PERMISSIONS.map(perm => {

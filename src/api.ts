@@ -10,7 +10,8 @@ import type {
   YouthCupSchool, CreatorPartner, CommentaryAudioFeed, SuperfanPassportTier,
   AdminFanPoints, PointsHistory, PointsEntry, PlayerWithForm, LineupPreset, MatchSwingInsights, PlayerDetail,
   ConnectionsState, GridState, StatQuestion, StatWarsResult, DuelView, FanPostView, FanPostKind, FanWallResponse, FanOfTheDayView,
-  FanClub, FanClubCheckInRecord, FanClubStatusResponse, VenueOffer,
+  FanClub, FanClubCheckInRecord, FanClubStatusResponse, VenueOffer, FanClubAdminView, FanClubFanLookup, FanClubMatchRef, FanClubRedemption,
+  InstagramView, InstagramAdminView, TeamGamesView, Pick5View,
 } from './types';
 
 const TOKEN_KEY = 't10_auth_token';
@@ -279,14 +280,34 @@ export const api = {
   // ----- fan clubs & check-in -----
   getFanClubs: () => pub<{ clubs: FanClub[] }>('/api/fanclub/clubs'),
   getFanClubStatus: () => req<FanClubStatusResponse>('/api/fanclub/my-status'),
-  verifySocialFollow: (platform: 'instagram' | 'twitter', handle: string) => post<Ok & { pointsAwarded: number; user: User }>('/api/fanclub/social-verify', { platform, handle }),
-  fanClubAdminCheckIn: (data: { qrPayload?: string; code?: string; fanClubId: string; matchId?: string }) => post<Ok & { pointsAwarded: number; fan: any; fanClub: FanClub; match: Match; checkInRecord: FanClubCheckInRecord }>('/api/fanclub/admin/checkin', data),
-  fanClubAdminRedeemOffer: (data: { userId: string; offerId: string; fanClubId: string }) => post<Ok & { message: string; offer: VenueOffer; fan: User }>('/api/fanclub/admin/redeem-offer', data),
-  getFanClubAdminStats: (fanClubId?: string) => req<{ totalCheckIns: number; todayCheckIns: number; recentCheckIns: FanClubCheckInRecord[] }>(`/api/fanclub/admin/stats${qs({ fanClubId })}`),
-  getAdminFanClubs: () => req<{ fanClubs: FanClub[] }>('/api/admin/fanclubs'),
-  saveAdminFanClub: (club: Partial<FanClub>) => post<Ok & { fanClub: FanClub }>('/api/admin/fanclubs', club),
-  deleteAdminFanClub: (id: string) => del<Ok & { removed: number }>(`/api/admin/fanclubs/${id}`),
-  seedAdminFanClubs: () => post<Ok & { fanClubs: FanClub[]; message: string }>('/api/admin/fanclubs/seed'),
+  renewFanClubCode: () => post<{ fanClubCode: string; qrPayload: string }>('/api/fanclub/my-code/renew'),
+  // Fan club admins
+  fanClubAdmin: () => req<FanClubAdminView>('/api/fanclub/admin/clubs'),
+  fanClubSave: (club: Partial<FanClub> & { checkInPoints?: number | string | null }) => post<Ok & { club: FanClub }>('/api/fanclub/admin/clubs', club),
+  fanClubDelete: (id: string) => del<Ok & { deactivated?: boolean; note?: string }>(`/api/fanclub/admin/clubs/${encodeURIComponent(id)}`),
+  fanClubSaveOffer: (clubId: string, offer: Partial<VenueOffer>) => post<Ok & { offer: VenueOffer; offers: VenueOffer[] }>(`/api/fanclub/admin/clubs/${encodeURIComponent(clubId)}/offers`, offer),
+  fanClubDeleteOffer: (clubId: string, offerId: string) => del<Ok & { offers: VenueOffer[] }>(`/api/fanclub/admin/clubs/${encodeURIComponent(clubId)}/offers/${encodeURIComponent(offerId)}`),
+  fanClubSetAdmin: (clubId: string, email: string, opts: { name?: string; remove?: boolean } = {}) => post<Ok & { admins: { email: string; name: string }[] }>(`/api/fanclub/admin/clubs/${encodeURIComponent(clubId)}/admins`, { email, ...opts }),
+  fanClubImport: (data: { clubs?: any[]; csv?: string }) => post<Ok & { added: number; updated: number; offers: number; errors: string[] }>('/api/fanclub/admin/import', data),
+  fanClubExport: () => req<{ clubs: any[] }>('/api/fanclub/admin/export'),
+  fanClubLookup: (fanClubId: string, code: string, matchId?: string) => req<FanClubFanLookup>(`/api/fanclub/admin/fan${qs({ fanClubId, code, matchId })}`),
+  fanClubCheckIn: (data: { fanClubId: string; code: string; matchId?: string }) => post<Ok & { pointsAwarded: number; fan: { id: string; name: string; points: number }; match: FanClubMatchRef; offers: (VenueOffer & { used: boolean })[] }>('/api/fanclub/admin/checkin', data),
+  fanClubRedeem: (data: { fanClubId: string; offerId: string; code?: string; userId?: string }) => post<Ok & { message: string; bonusPoints: number }>('/api/fanclub/admin/redeem-offer', data),
+  fanClubStats: (fanClubId?: string) => req<{ totalCheckIns: number; todayCheckIns: number; pointsGiven: number; totalRedemptions: number; recentCheckIns: FanClubCheckInRecord[]; recentRedemptions: FanClubRedemption[] }>(`/api/fanclub/admin/stats${qs({ fanClubId })}`),
+  // Instagram check
+  instagramStatus: () => req<InstagramView>('/api/instagram/status'),
+  instagramStart: (handle: string) => post<InstagramView>('/api/instagram/start', { handle }),
+  instagramCheck: () => post<InstagramView>('/api/instagram/check'),
+  instagramRequestReview: () => post<InstagramView>('/api/instagram/request-review'),
+  adminInstagram: (q?: string, diagnose?: boolean) => req<InstagramAdminView>(`/api/admin/instagram${qs({ q, diagnose: diagnose ? 1 : undefined })}`),
+  adminInstagramAction: (userId: string, action: 'approve' | 'reject' | 'reset', note?: string) => post<Ok & { status: string }>(`/api/admin/instagram/${encodeURIComponent(userId)}`, { action, note }),
+  // Team games (Pick 5 and team predictions)
+  teamGames: () => req<TeamGamesView>('/api/team-games'),
+  pick5: (matchId: string) => req<Pick5View>(`/api/team-games/${encodeURIComponent(matchId)}/pick5`),
+  savePick5: (matchId: string, playerIds: string[], captainId: string) => post<Ok & { pick: Pick5View['pick'] }>(`/api/team-games/${encodeURIComponent(matchId)}/pick5`, { playerIds, captainId }),
+  pick5Results: (matchId: string) => req<{ results: { rank: number; name: string; avatar: string; mine: boolean; points: number }[] }>(`/api/team-games/${encodeURIComponent(matchId)}/results`),
+  adminScoreTeamGames: (matchId: string) => post<Ok & { settled: boolean; picksScored?: number }>(`/api/admin/team-games/${encodeURIComponent(matchId)}/score`),
+  adminSeedPrizes: () => post<Ok & { added: { prizes: number; draws: number } }>('/api/admin/prizes/seed-official'),
 
   // ----- growth -----
   getGrowthCatalysts: () => req<{ youthSchools: YouthCupSchool[]; creatorPartners: CreatorPartner[]; commentaryFeeds: CommentaryAudioFeed[]; passportTiers: SuperfanPassportTier[] }>('/api/growth-catalysts'),
@@ -317,7 +338,7 @@ export const api = {
   saveSettings: (s: Partial<SystemSettings>) => post<Ok & { settings: SystemSettings }>('/api/admin/settings', s),
   testSmtp: (data?: { host?: string; port?: number; user?: string; pass?: string; from?: string; to?: string }) => post<{ success: boolean; message: string }>('/api/admin/smtp/test', data || {}),
   getAdmins: () => req<{ admins: AdminUserRecord[]; superAdminEmail: string; rolePresets: Record<AdminRole, AdminPermission[]>; permissions: AdminPermission[] }>('/api/admin/admins'),
-  saveAdmin: (a: { email: string; name?: string; role: AdminRole; permissions?: AdminPermission[]; teamId?: string | null }) => post<Ok & { admins: AdminUserRecord[] }>('/api/admin/admins', a),
+  saveAdmin: (a: { email: string; name?: string; role: AdminRole; permissions?: AdminPermission[]; teamId?: string | null; fanClubIds?: string[] }) => post<Ok & { admins: AdminUserRecord[] }>('/api/admin/admins', a),
   deleteAdmin: (email: string) => del<Ok & { admins: AdminUserRecord[]; note?: string }>(`/api/admin/admins/${encodeURIComponent(email)}`),
   getEnvVariables: () => req<{ variables: EnvVariableInfo[] }>('/api/admin/env'),
   saveEnvVariables: (overrides: Record<string, string>) => post<{ success: boolean; message: string; updatedKeys: string[]; refusedKeys?: string[]; requiresRestartKeys: string[]; hasRestartRequired: boolean; error?: string }>('/api/admin/env', { overrides }),

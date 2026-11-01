@@ -2,9 +2,9 @@
 
 export type AdminPermission =
   | 'all' | 'leagues' | 'matches' | 'teams' | 'team' | 'contests' | 'fantasy' | 'games' | 'winners' | 'draws' | 'prizes'
-  | 'feeds' | 'social' | 'community' | 'notifications' | 'fanspaces' | 'growth' | 'settings' | 'admins';
+  | 'feeds' | 'social' | 'community' | 'notifications' | 'fanspaces' | 'growth' | 'settings' | 'admins' | 'fanclubs';
 
-export type AdminRole = 'superadmin' | 'league_admin' | 'contest_admin' | 'winner_admin' | 'social_admin' | 'team_official' | 'custom';
+export type AdminRole = 'superadmin' | 'league_admin' | 'contest_admin' | 'winner_admin' | 'social_admin' | 'team_official' | 'fanclub_admin' | 'custom';
 
 export interface AdminUserRecord {
   email: string;
@@ -12,6 +12,7 @@ export interface AdminUserRecord {
   role: AdminRole;
   permissions: AdminPermission[];
   teamId?: string | null;
+  fanClubIds?: string[];
   isSuperAdmin?: boolean;
   addedBy?: string;
   addedAt: string;
@@ -43,20 +44,65 @@ export interface User {
   bio?: string;
   referralCode?: string;
   createdAt?: string;
+  adminFanClubIds?: string[];
   fanClubCode?: string;
   instagramFollowed?: boolean;
   instagramHandle?: string;
+  instagramStatus?: InstagramStatus;
   xFollowed?: boolean;
   xHandle?: string;
   claimedVenueOfferIds?: string[];
-  fanClubCheckIns?: {
-    matchId: string;
-    matchNo: number;
-    fanClubId: string;
-    fanClubName: string;
-    checkedInAt: string;
-    pointsAwarded: number;
-  }[];
+  fanClubCheckIns?: FanClubVisit[];
+}
+
+export type InstagramStatus = 'none' | 'code' | 'review' | 'verified' | 'rejected';
+
+export interface InstagramView {
+  required: boolean;
+  target: string;
+  targetUrl: string;
+  postUrl: string | null;
+  automatic: boolean;
+  status: InstagramStatus;
+  handle: string | null;
+  code: string | null;
+  note: string | null;
+  welcomePoints: number;
+  verified?: boolean;
+  reason?: string;
+  pointsAwarded?: number;
+  user?: User;
+}
+
+export interface InstagramReviewRow {
+  id: string;
+  name: string;
+  email: string;
+  avatar: string;
+  handle: string | null;
+  code: string | null;
+  status: InstagramStatus;
+  requestedAt: string | null;
+  verifiedAt: string | null;
+  verifiedBy: string | null;
+  note: string | null;
+}
+
+export interface InstagramAdminView {
+  settings: { required: boolean; target: string; postUrl: string; hideComments: boolean };
+  setup: { configured: boolean; account?: string; matchesTarget?: boolean; postFound?: boolean; error?: string };
+  counts: { verified: number; waiting: number; withCode: number; notStarted: number };
+  queue: InstagramReviewRow[];
+  search: InstagramReviewRow[];
+}
+
+export interface FanClubVisit {
+  matchId: string;
+  matchNo: number;
+  fanClubId: string;
+  fanClubName: string;
+  checkedInAt: string;
+  pointsAwarded: number;
 }
 
 export interface VenueOffer {
@@ -66,8 +112,13 @@ export interface VenueOffer {
   description: string;
   badge?: string;
   perk: string;
+  bonusPoints?: number;
+  limit?: number;
+  redeemed?: number;
+  remaining?: number | null;
+  startsAt?: string;
   expiresAt?: string;
-  active: boolean;
+  active?: boolean;
 }
 
 export interface FanClub {
@@ -76,12 +127,42 @@ export interface FanClub {
   city: string;
   country: string;
   address: string;
-  region: 'hyderabad' | 'uae' | 'international';
+  region?: string;
   capacity?: number;
   contactPerson?: string;
-  active: boolean;
+  active?: boolean;
   offers: VenueOffer[];
+  checkInPoints?: number | null;
+  gamesMode?: 'team' | 'all';
   createdAt?: string;
+}
+
+export interface FanClubAdminClub extends FanClub {
+  effectiveCheckInPoints: number;
+  admins: { email: string; name: string }[];
+  totalCheckIns: number;
+  todayCheckIns: number;
+}
+
+export interface FanClubMatchRef {
+  id: string;
+  matchNo: number;
+  teamA: string;
+  teamB: string;
+  startsAt: string;
+  status: string;
+  open?: boolean;
+}
+
+export interface FanClubAdminView {
+  leagueWide: boolean;
+  defaultCheckInPoints: number;
+  opensMinutesBefore: number;
+  currentMatch: FanClubMatchRef | null;
+  checkInOpen: boolean;
+  opensAt: string | null;
+  matches: FanClubMatchRef[];
+  clubs: FanClubAdminClub[];
 }
 
 export interface FanClubCheckInRecord {
@@ -100,31 +181,77 @@ export interface FanClubCheckInRecord {
   checkedInAt: string;
 }
 
+export interface FanClubRedemption {
+  id: string;
+  userId: string;
+  userName: string;
+  fanClubId: string;
+  offerId: string;
+  offerTitle: string;
+  bonusPoints: number;
+  adminName?: string;
+  at: string;
+}
+
+export interface FanClubFanLookup {
+  fan: { id: string; name: string; avatar: string; teamId: string | null; points: number; instagramVerified: boolean; instagramHandle: string | null };
+  match: FanClubMatchRef | null;
+  window: { open: boolean; opensAt: string; closesAt: string } | null;
+  checkedIn: FanClubVisit | null;
+  checkedInHereToday: boolean;
+  offers: (VenueOffer & { used: boolean })[];
+}
+
 export interface FanClubStatusResponse {
-  openMatch: {
-    id: string;
-    matchNo: number;
-    teamA: string;
-    teamB: string;
-    startsAt: string;
-    status: string;
-    venue: string;
-  } | null;
+  signedIn: boolean;
+  instagramRequired?: boolean;
+  openMatch: FanClubMatchRef | null;
   checkInWindowActive: boolean;
-  minutesToMatch: number | null;
-  checkedIn: boolean;
-  checkedInRecord?: {
-    matchId: string;
-    matchNo: number;
-    fanClubId: string;
-    fanClubName: string;
-    checkedInAt: string;
-    pointsAwarded: number;
-  } | null;
-  fanClubCode: string;
-  qrPayload: string;
+  opensAt: string | null;
+  opensMinutesBefore: number;
+  checkedIn?: boolean;
+  checkedInRecord?: FanClubVisit | null;
+  checkIns?: FanClubVisit[];
+  gamesTeamId?: string | null;
+  fanClubCode?: string;
+  qrPayload?: string;
   fanClubs: FanClub[];
-  activeOffers: (VenueOffer & { redeemed: boolean })[];
+  activeOffers?: (VenueOffer & { used: boolean; clubName: string })[];
+}
+
+export interface TeamGamesMatch {
+  matchId: string;
+  matchNo: number;
+  teamA: string;
+  teamB: string;
+  startsAt: string;
+  status: string;
+  open: boolean;
+  locked: boolean;
+  opensAt: string;
+  pick: { playerIds: string[]; captainId: string; points: number | null; scored: boolean } | null;
+  picks: number;
+  contestId: string | null;
+  contestStatus: string | null;
+  predicted: boolean;
+  predictionPoints: number | null;
+}
+
+export interface TeamGamesView {
+  team: { id: string; name: string; short: string; logo?: string; color?: string } | null;
+  onlyTeamGames: boolean;
+  pickSize: number;
+  captainMultiplier: number;
+  fanPointsDivisor: number;
+  matches: TeamGamesMatch[];
+}
+
+export interface Pick5View {
+  match: { id: string; matchNo: number; teamA: string; teamB: string; startsAt: string; status: string; open: boolean; locked: boolean; opensAt: string };
+  teamId: string;
+  pool: { id: string; name: string; role: string; imageId?: string; isIcon?: boolean; isCaptain?: boolean; credits: number; selectedBy: number | null }[];
+  pick: { playerIds: string[]; captainId: string; points?: number; breakdown?: { playerId: string; name: string; base: number; multiplier: number; total: number; detail: string }[]; scoredAt?: string } | null;
+  pickSize: number;
 }
 
 export interface UserStats {
@@ -822,6 +949,7 @@ export interface PrizeItem {
   teamOnly?: string | null;
   /** The franchise offering and fulfilling the prize. */
   teamId?: string | null;
+  category?: string;
   active: boolean;
   fulfilment: string;
   createdAt: string;
@@ -830,7 +958,9 @@ export interface PrizeItem {
 export type PointsSource =
   | 'checkin' | 'guess' | 'superover' | 'dream-xi' | 'prediction' | 'quiz'
   | 'forum-thread' | 'forum-reply' | 'forum-removed' | 'badge' | 'referral'
-  | 'prize' | 'prize-refund' | 'admin';
+  | 'prize' | 'prize-refund' | 'admin'
+  | 'connections' | 'grid' | 'statwars' | 'duel' | 'fan-post' | 'fan-of-day'
+  | 'fanclub-checkin' | 'fanclub-offer' | 'social-follow' | 'aces-pick5';
 
 export interface PointsEntry {
   id: string;
@@ -932,6 +1062,10 @@ export interface SystemSettings {
   requireTwitterFollow?: boolean;
   twitterTargetHandle?: string;
   fanClubCheckInPoints?: number;
+  instagramVerifyPostUrl?: string;
+  instagramHideVerifyComments?: boolean;
+  fanClubCheckInOpensMins?: number;
+  fanClubTeamId?: string;
 }
 
 export interface PublicConfig {
@@ -952,6 +1086,8 @@ export interface PublicConfig {
   requireTwitterFollow?: boolean;
   twitterTargetHandle?: string;
   fanClubCheckInPoints?: number;
+  instagramVerifyPostUrl?: string;
+  fanClubTeamId?: string;
   features: { googleSignIn: boolean; emailOtp: boolean; gemini: boolean; pushNotifications: boolean; liveScores: boolean; curator: boolean };
   fcmVapidKey: string;
   stats: { teams: number; players: number; fans: number; handles: number; matches: number; openContests: number; openDraws: number; prizes: number; forumThreads: number };

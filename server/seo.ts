@@ -44,8 +44,8 @@ const fmtDate = (iso: string) => {
   }
 };
 
-export const INDEXABLE_STATIC = ['/', '/matches', '/teams', '/players', '/social', '/videos', '/news', '/play', '/fantasy', '/games', '/fanwall', '/contests', '/prizes', '/leaderboard', '/fans', '/forum', '/fanspaces', '/rules', '/privacy', '/terms'];
-const PRIVATE = ['/team-portal', '/team-invite', '/admin', '/proposal', '/profile'];
+export const INDEXABLE_STATIC = ['/', '/matches', '/teams', '/players', '/social', '/videos', '/news', '/play', '/team-games', '/fantasy', '/games', '/fanwall', '/contests', '/prizes', '/leaderboard', '/fans', '/forum', '/fanspaces', '/rules', '/privacy', '/terms'];
+const PRIVATE = ['/team-portal', '/team-invite', '/admin', '/proposal', '/profile', '/fanclub'];
 
 function teamName(store: AppStore, id: string) {
   return store.teams.find(t => t.id === id)?.name || id;
@@ -449,6 +449,13 @@ export function renderPage(rawPath: string, store: AppStore, base: string): Rend
             '<h2>Guess the Player and Super Over</h2><p>Guess the mystery player in five tries, and bat a Super Over to beat the day\'s target.</p>',
         ),
       });
+    }
+    case 'team-games': {
+      const team = store.teams.find(t => t.id === (store.settings.fanClubTeamId || 'aces'));
+      if (!team || parts.length > 2) return notFound();
+      const title = `${team.name} games: Pick 5 and predictions`;
+      const description = `Pick five ${team.name} players for each match and predict the ${team.short || team.name} total, sixes, fours and wickets. Free, with points for every fan.`;
+      return page({ ...(parts[1] ? { robots: 'noindex, follow' } : {}), title, description, body: shell(title, description, '') });
     }
     case 'play':
     case 'contests':

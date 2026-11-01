@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { Router } from 'express';
-import { db, PrizeDraw, PrizeItem } from '../db';
+import { db, guessPrizeCategory, PrizeDraw, PrizeItem } from '../db';
+import { seedOfficialPrizesAndDraws } from '../seedOfficial';
 import { getAuthUser, rateLimit, requireAdmin, requireUser, selfUser, teamScopeOf } from '../auth';
 import { bad, isColor, isoOrEmpty, newId, num, optionalUrl, str, userOf, wrap } from '../http';
 import { dispatchNotification } from '../notify';
@@ -295,6 +296,7 @@ prizesRouter.post('/admin/prizes', requireAdmin('prizes'), (req, res) => {
     stock,
     teamOnly,
     teamId: owner,
+    category: str(b.category, 40) || (idx >= 0 ? store.prizes[idx].category : undefined) || guessPrizeCategory(title),
     active: b.active !== false,
     fulfilment,
     createdAt: idx >= 0 ? store.prizes[idx].createdAt : new Date().toISOString(),
@@ -303,6 +305,15 @@ prizesRouter.post('/admin/prizes', requireAdmin('prizes'), (req, res) => {
   else store.prizes.push(prize);
   db.save();
   res.json({ success: true, prize, prizes: store.prizes });
+});
+
+/** Load the season's prize list and draws (adds any that are missing; never changes existing ones). */
+prizesRouter.post('/admin/prizes/seed-official', requireAdmin('prizes'), leagueOnly, (_req, res) => {
+  const store = db.get();
+  const before = { prizes: store.prizes.length, draws: store.draws.length };
+  seedOfficialPrizesAndDraws(store, new Date().toISOString(), true);
+  db.save();
+  res.json({ success: true, added: { prizes: store.prizes.length - before.prizes, draws: store.draws.length - before.draws }, prizes: store.prizes });
 });
 
 prizesRouter.delete('/admin/prizes/:id', requireAdmin('prizes'), (req, res) => {

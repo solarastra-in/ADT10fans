@@ -27,6 +27,7 @@ import { AdminToolsSection } from './admin/AdminToolsSection';
 import { EnvVariablesSection } from './admin/EnvVariablesSection';
 import { SquadEditorSection } from './admin/SquadEditorSection';
 import { FanClubsSection } from './admin/FanClubsSection';
+import { InstagramSection } from './admin/InstagramSection';
 
 export type { AdminSectionId } from './admin/shared';
 
@@ -149,11 +150,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = props => {
         {section === 'notifications' && <NotificationsSection notifications={notifications} teams={scopedTeams} matches={matches} contests={contests} isTeamOfficial={isTeamOfficial} />}
         {section === 'fanspaces' && <FanSpacesSection />}
         {section === 'fanclubs' && <FanClubsSection />}
+        {section === 'instagram' && <InstagramSection />}
         {section === 'checkin' && <FanCheckInPanel />}
         {section === 'growth' && <GrowthSection />}
         {section === 'approvals' && <ApprovalsSection approvals={approvals} onRefreshAll={onRefreshAll} />}
         {section === 'marketing' && <MarketingSection teams={teams} />}
-        {section === 'settings' && <SettingsSection settings={settings} onRefreshAll={onRefreshAll} />}
+        {section === 'settings' && <SettingsSection settings={settings} teams={teams} onRefreshAll={onRefreshAll} />}
         {section === 'proposal' && <ProposalSection />}
       </main>
     </div>

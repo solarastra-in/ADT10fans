@@ -22,6 +22,16 @@ export const SOURCE_NAMES: Record<PointsSource, string> = {
   prize: 'Prize claim',
   'prize-refund': 'Prize claim cancelled',
   admin: 'Adjustment by the organisers',
+  connections: 'Squad Connections',
+  grid: 'Cricket Grid',
+  statwars: 'Stat Wars',
+  duel: 'Stat Wars duel',
+  'fan-post': 'Fan wall post',
+  'fan-of-day': 'Fan of the Day',
+  'fanclub-checkin': 'Fan club check-in',
+  'fanclub-offer': 'Fan club offer',
+  'social-follow': 'Instagram verified',
+  'aces-pick5': 'Pick 5',
 };
 
 export function PointsRow({ e }: { e: PointsEntry }) {

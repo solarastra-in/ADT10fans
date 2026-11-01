@@ -42,7 +42,10 @@ const FanClubAdminPage = React.lazy(() => import('./pages/FanClubAdminPage').the
 const TeamPortalPage = React.lazy(() => import('./pages/TeamPortalPage'));
 const TeamInvitePage = React.lazy(() => import('./pages/TeamInvitePage'));
 const ProposalPage = React.lazy(() => import('./pages/ProposalPage'));
-import { InstagramFollowModal } from './components/InstagramFollowModal';
+const TeamGamesPage = React.lazy(() => import('./pages/TeamGamesPage'));
+const Pick5Page = React.lazy(() => import('./pages/TeamGamesPage').then(m => ({ default: m.Pick5Page })));
+const FanClubPage = React.lazy(() => import('./pages/FanClubPage'));
+import { InstagramGate } from './components/InstagramGate';
 
 function Page() {
   const route = useRoute();
@@ -59,6 +62,9 @@ function Page() {
     case 'videos': return <SocialPage mode="videos" />;
     case 'news': return <SocialPage mode="news" />;
     case 'play': return <PlayPage />;
+    case 'teamGames': return <TeamGamesPage />;
+    case 'pick5': return <Pick5Page id={p.id} />;
+    case 'fanclub': return <FanClubPage />;
     case 'fantasy': return <FantasyPage />;
     case 'fantasyMatch': return <FantasyMatchPage id={p.id} />;
     case 'games': return <GamesPage />;
@@ -163,7 +169,7 @@ function Shell() {
       </main>
       <Footer />
       <BottomNav route={route} />
-      <InstagramFollowModal />
+      <InstagramGate />
       <AuthModal />
       <TeamPickerModal />
       <PlayerCardHost />

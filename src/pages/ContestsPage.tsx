@@ -7,7 +7,7 @@ import { Link, usePageMeta } from '../router';
 import { Button, Card, Countdown, EmptyState, ErrorBox, PageHeader, Pill, Spinner, Tabs, TeamBadge, cx } from '../components/ui';
 import type { Contest, ContestEntry } from '../types';
 
-function ContestCard({ c, entry, entries, onEntered }: { c: Contest; entry?: ContestEntry; entries: number; onEntered: () => void }) {
+export function ContestCard({ c, entry, entries, onEntered }: { c: Contest; entry?: ContestEntry; entries: number; onEntered: () => void }) {
   const { user, openAuth, setUser, toast, matches, teamById } = useApp();
   const t = useT();
   const [answers, setAnswers] = useState<Record<string, string>>(entry?.answers || {});
