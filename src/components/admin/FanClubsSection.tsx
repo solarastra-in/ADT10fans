@@ -153,6 +153,7 @@ function ClubCard({ club, onChanged, onRemove, setNotice, defaultPoints }: { clu
           <div className="mt-1 flex flex-wrap gap-1.5">
             <Chip tone="amber">+{club.effectiveCheckInPoints} per check-in</Chip>
             <Chip tone="blue">{club.gamesMode === 'all' ? 'Every game' : 'Fan club team games only'}</Chip>
+            <Chip tone="slate">{club.matchIds.length} match(es){club.extraMatchIds?.length || club.excludedMatchIds?.length ? ' (edited)' : ''}</Chip>
             <Chip tone="slate">{club.offers.length} offer(s)</Chip>
             <Chip tone="slate">{club.totalCheckIns} check-ins</Chip>
           </div>

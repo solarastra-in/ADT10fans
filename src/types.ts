@@ -139,6 +139,11 @@ export interface FanClub {
 }
 
 export interface FanClubAdminClub extends FanClub {
+  /** Matches fans can check in for here (default: every match of the fan club team). */
+  matchIds: string[];
+  currentMatchId: string | null;
+  extraMatchIds?: string[];
+  excludedMatchIds?: string[];
   effectiveCheckInPoints: number;
   admins: { email: string; name: string }[];
   totalCheckIns: number;
@@ -162,6 +167,7 @@ export interface FanClubAdminView {
   currentMatch: FanClubMatchRef | null;
   checkInOpen: boolean;
   opensAt: string | null;
+  fanClubTeamId: string;
   matches: FanClubMatchRef[];
   clubs: FanClubAdminClub[];
 }

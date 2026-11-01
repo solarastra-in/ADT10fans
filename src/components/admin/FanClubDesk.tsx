@@ -36,7 +36,7 @@ export function FanClubAdminPage() {
   usePageMeta(t('Fan club desk'), undefined, config?.brandName);
   const data = useLoad(() => api.fanClubAdmin(), [user?.id]);
   const [clubId, setClubId] = useState(store.get());
-  const [tab, setTab] = useState<'desk' | 'offers' | 'club' | 'activity'>('desk');
+  const [tab, setTab] = useState<'desk' | 'matches' | 'offers' | 'club' | 'activity'>('desk');
 
   const clubs = data.data?.clubs || [];
   const club = clubs.find(c => c.id === clubId) || clubs[0];
@@ -94,10 +94,12 @@ export function FanClubAdminPage() {
           { id: 'desk', label: t('Check-in') },
           { id: 'offers', label: t('Offers ({n})', { n: club.offers.filter(o => o.active !== false).length }) },
           { id: 'club', label: t('Club') },
+          { id: 'matches', label: t('Matches ({n})', { n: club.matchIds.length }) },
           { id: 'activity', label: t('Activity') },
         ]}
       />
       {tab === 'desk' && <Desk club={club} view={data.data} />}
+      {tab === 'matches' && <ClubMatches club={club} view={data.data} onChange={data.reload} />}
       {tab === 'offers' && <Offers club={club} onChange={data.reload} />}
       {tab === 'club' && <ClubForm club={club} leagueWide={data.data.leagueWide} defaultPoints={data.data.defaultCheckInPoints} onSaved={data.reload} />}
       {tab === 'activity' && <Activity clubId={club.id} />}
@@ -109,7 +111,9 @@ function Desk({ club, view }: { club: FanClubAdminClub; view: NonNullable<Awaite
   const { teamById, toast } = useApp();
   const t = useT();
   const f = useFormat();
-  const [matchId, setMatchId] = useState(view.currentMatch?.id || '');
+  const [matchId, setMatchId] = useState(club.currentMatchId || '');
+  useEffect(() => setMatchId(club.currentMatchId || ''), [club.id, club.currentMatchId]);
+  const clubMatchList = view.matches.filter(m => club.matchIds.includes(m.id));
   const [code, setCode] = useState('');
   const [fan, setFan] = useState<FanClubFanLookup | null>(null);
   const [busy, setBusy] = useState<'' | 'lookup' | 'checkin' | string>('');
@@ -119,7 +123,7 @@ function Desk({ club, view }: { club: FanClubAdminClub; view: NonNullable<Awaite
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const match = view.matches.find(m => m.id === matchId) || view.currentMatch;
+  const match = clubMatchList.find(m => m.id === matchId) || null;
 
   const lookup = async (raw = code) => {
     const c = raw.trim().toUpperCase();
@@ -218,8 +222,8 @@ function Desk({ club, view }: { club: FanClubAdminClub; view: NonNullable<Awaite
       <Card className="p-4 space-y-3">
         <Field label={t('Match')} htmlFor="fc-match">
           <select id="fc-match" className={inputCls} value={matchId} onChange={e => { setMatchId(e.target.value); setFan(null); }}>
-            {!view.currentMatch && <option value="">{t('Choose a match')}</option>}
-            {view.matches
+            {!club.currentMatchId && <option value="">{t('Choose a match')}</option>}
+            {clubMatchList
               .filter(m => m.status !== 'completed' || m.id === matchId || m.open)
               .map(m => (
                 <option key={m.id} value={m.id}>
@@ -229,7 +233,8 @@ function Desk({ club, view }: { club: FanClubAdminClub; view: NonNullable<Awaite
               ))}
           </select>
         </Field>
-        {match && !view.matches.find(m => m.id === match.id)?.open && (
+        {!clubMatchList.length && <p className="text-xs text-amber-200">{t('This club has no matches. Add them on the Matches tab.')}</p>}
+        {match && !match.open && (
           <p className="text-xs text-amber-200">{t('Check-in for this match opens {n} minutes before the first ball.', { n: view.opensMinutesBefore })}</p>
         )}
         <form className="flex gap-2" onSubmit={e => { e.preventDefault(); lookup(); }}>
@@ -455,6 +460,63 @@ function Activity({ clubId }: { clubId: string }) {
           </li>
         ))}
         {!s.data.recentCheckIns.length && !s.data.recentRedemptions.length && <li className="p-3 text-slate-400">{t('Nothing yet.')}</li>}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * The matches fans can check in for at this club. By default every match of the fan club team (the
+ * Arabian Aces); the club's admins and league admins can add other matches or take some out.
+ */
+function ClubMatches({ club, view, onChange }: { club: FanClubAdminClub; view: NonNullable<Awaited<ReturnType<typeof api.fanClubAdmin>>>; onChange: () => void }) {
+  const { teamById, toast } = useApp();
+  const t = useT();
+  const f = useFormat();
+  const [busy, setBusy] = useState('');
+  const team = teamById(view.fanClubTeamId);
+  const set = async (body: { matchId?: string; include?: boolean; reset?: boolean }) => {
+    setBusy(body.matchId || 'reset');
+    try {
+      await api.fanClubSetMatch(club.id, body);
+      onChange();
+    } catch (e: any) {
+      toast(e.message, 'error');
+    } finally {
+      setBusy('');
+    }
+  };
+  const changed = Boolean(club.extraMatchIds?.length || club.excludedMatchIds?.length);
+  return (
+    <div className="space-y-3" data-testid="club-matches">
+      <p className="text-sm text-slate-300">
+        {t('Fans can check in here for the ticked matches. By default these are all {team} matches.', { team: team?.name || view.fanClubTeamId })}
+      </p>
+      {changed && (
+        <Button size="sm" variant="ghost" onClick={() => set({ reset: true })} loading={busy === 'reset'} data-testid="club-matches-reset">
+          {t('Back to {team} matches only', { team: team?.short || view.fanClubTeamId })}
+        </Button>
+      )}
+      {view.matches.length === 0 && <p className="text-sm text-slate-400">{t('No matches yet.')}</p>}
+      <ul className="divide-y divide-slate-800 rounded-2xl border border-slate-800">
+        {view.matches.map(m => {
+          const on = club.matchIds.includes(m.id);
+          const isTeam = m.teamA === view.fanClubTeamId || m.teamB === view.fanClubTeamId;
+          return (
+            <li key={m.id}>
+              <label className="flex items-center gap-3 p-3 min-h-[48px] cursor-pointer">
+                <input type="checkbox" className="accent-amber-400 w-4 h-4" checked={on} disabled={busy === m.id} onChange={e => set({ matchId: m.id, include: e.target.checked })} data-testid="club-match-toggle" data-match={m.id} />
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-bold text-white">
+                    {t('Match {n}', { n: m.matchNo })}: {teamById(m.teamA)?.short || m.teamA} vs {teamById(m.teamB)?.short || m.teamB}
+                  </span>
+                  <span className="block text-xs text-slate-400">{f.dateTime(m.startsAt)}{m.status === 'completed' ? ` · ${t('played')}` : ''}</span>
+                </span>
+                {isTeam ? <Pill tone="amber">{team?.short || view.fanClubTeamId}</Pill> : on ? <Pill tone="blue">{t('Added')}</Pill> : null}
+              </label>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

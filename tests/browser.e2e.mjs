@@ -368,6 +368,11 @@ for (const lang of ['ar', 'ur']) {
   await desk.page.locator('[data-testid="desk-checkin"]').click();
   await desk.page.waitForSelector('[data-testid="desk-checked-in"]');
   ok('the fan club admin checks the fan in at the desk', desk.errors.length === 0 && (await noOverflow(desk.page)), desk.errors);
+  await desk.page.locator('[role="tab"], button', { hasText: /^Matches/ }).first().click();
+  await desk.page.waitForSelector('[data-testid="club-matches"]');
+  const toggles = desk.page.locator('[data-testid="club-match-toggle"]');
+  const states = await toggles.evaluateAll(els => els.map(e => ({ id: e.getAttribute('data-match'), on: e.checked })));
+  ok('the Matches tab ticks the Aces matches by default and fits a phone', states.some(x => x.id === soon.id && x.on) && states.some(x => !x.on) && (await noOverflow(desk.page)), states);
   await desk.ctx.close();
 
   // Checked in at a fan club, the fan plays the Aces games.

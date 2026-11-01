@@ -1032,14 +1032,34 @@ ok('robots.txt blocks admin and API', /Disallow: \/admin/.test((await html('/rob
   ok('checking in gives the club’s points', ci.status === 200 && ci.json.pointsAwarded === 120 && (await me(IG)).points === before + 120, ci.json);
   ok('one check-in per fan per match', (await post('/api/fanclub/admin/checkin', { fanClubId: lounge.id, code: st1.fanClubCode, matchId: mAces.id }, CA)).status === 409);
   ok('even at another club', (await post('/api/fanclub/admin/checkin', { fanClubId: cafe.id, code: st1.fanClubCode, matchId: mAces.id }, A)).status === 409);
+  // Fan clubs cover the Arabian Aces matches by default; their admins add or remove matches.
+  const loungeView = () => get('/api/fanclub/admin/clubs', CA).then(r => r.json.clubs[0]);
+  ok('a fan club’s matches are the Aces matches by default', (await loungeView()).matchIds.includes(mAces.id) && (await loungeView()).matchIds.includes(far.id));
+  const other = (await post('/api/matches', { teamA: 'bulls', teamB: 'lions', startsAt: inMinutes(20) }, A)).json.targetMatch;
+  ok('a match without the Aces is not a fan club match', !(await loungeView()).matchIds.includes(other.id));
+  const notHere = await post('/api/fanclub/admin/checkin', { fanClubId: lounge.id, code: st1.fanClubCode, matchId: other.id }, CA);
+  ok('fans cannot check in for it', notHere.status === 409 && /not one of/.test(notHere.json.error), notHere.json);
+  ok('a fan club admin cannot change another club’s matches', (await post(`/api/fanclub/admin/clubs/${cafe.id}/matches`, { matchId: other.id, include: true }, CA)).status === 403);
+  ok('the fan club admin adds that match to their club', (await post(`/api/fanclub/admin/clubs/${lounge.id}/matches`, { matchId: other.id, include: true }, CA)).json.matchIds.includes(other.id));
+  const ci2 = await post('/api/fanclub/admin/checkin', { fanClubId: lounge.id, code: st1.fanClubCode, matchId: other.id }, CA);
+  ok('fans can now check in for the added match', ci2.status === 200 && ci2.json.pointsAwarded === 120, ci2.json);
+  ok('an Aces match can be taken out', !(await post(`/api/fanclub/admin/clubs/${lounge.id}/matches`, { matchId: far.id, include: false }, CA)).json.matchIds.includes(far.id));
+  ok('editing the club keeps its match list', (await post('/api/fanclub/admin/clubs', { id: lounge.id, contactPerson: 'Sam' }, CA)).status === 200 && !(await loungeView()).matchIds.includes(far.id) && (await loungeView()).matchIds.includes(other.id));
+  ok('a super admin can change the club’s matches too', (await post(`/api/fanclub/admin/clubs/${lounge.id}/matches`, { matchId: far.id, include: true }, A)).json.matchIds.includes(far.id));
+  const reset = (await post(`/api/fanclub/admin/clubs/${lounge.id}/matches`, { reset: true }, CA)).json.matchIds;
+  ok('reset goes back to Aces matches only', reset.includes(far.id) && reset.includes(mAces.id) && !reset.includes(other.id));
+  {
+    const cafeIds = (await get('/api/fanclub/admin/clubs', A)).json.clubs.find(c => c.id === cafe.id).matchIds;
+    ok('other clubs keep the default', cafeIds.includes(mAces.id) && cafeIds.includes(far.id) && !cafeIds.includes(other.id), cafeIds);
+  }
   const hist = (await get('/api/me/points', IG)).json;
   ok('the check-in is in the fan’s points history', JSON.stringify(hist).includes('fanclub-checkin'));
   const red = await post('/api/fanclub/admin/redeem-offer', { fanClubId: lounge.id, offerId: offer.id, code: st1.fanClubCode }, CA);
-  ok('redeeming an offer gives its bonus points', red.status === 200 && red.json.bonusPoints === 15 && (await me(IG)).points === before + 135, red.json);
+  ok('redeeming an offer gives its bonus points', red.status === 200 && red.json.bonusPoints === 15 && (await me(IG)).points === before + 255, red.json);
   ok('each offer once per fan', (await post('/api/fanclub/admin/redeem-offer', { fanClubId: lounge.id, offerId: offer.id, code: st1.fanClubCode }, CA)).status === 409);
   ok('an unverified fan cannot be checked in', (await post('/api/fanclub/admin/checkin', { fanClubId: lounge.id, code: 'ZZZZZZ', matchId: mAces.id }, CA)).status === 404);
   const stats = (await get(`/api/fanclub/admin/stats?fanClubId=${lounge.id}`, CA)).json;
-  ok('the desk counts check-ins, offers and points given', stats.totalCheckIns === 1 && stats.totalRedemptions === 1 && stats.pointsGiven === 135, stats);
+  ok('the desk counts check-ins, offers and points given', stats.totalCheckIns === 2 && stats.totalRedemptions === 1 && stats.pointsGiven === 255, stats);
   ok('a fan club admin cannot read another club’s numbers', (await get(`/api/fanclub/admin/stats?fanClubId=${cafe.id}`, CA)).status === 403);
 
   // --- Team games: Pick 5 and team predictions ---

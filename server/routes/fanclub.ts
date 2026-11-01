@@ -57,9 +57,27 @@ export function checkInWindow(store: AppStore, m: Match, now = Date.now()) {
   return { open: now >= opensAt && now <= closesAt && m.status !== 'abandoned', opensAt: new Date(opensAt).toISOString(), closesAt: new Date(closesAt).toISOString() };
 }
 
+const clubTeam = (store: AppStore) => store.settings.fanClubTeamId || 'aces';
+const byStart = (a: Match, b: Match) => +new Date(a.startsAt) - +new Date(b.startsAt);
+
+/** Whether fans can check in for this match at this club (default: the fan club team's matches). */
+export function clubHasMatch(store: AppStore, club: FanClub | null | undefined, m: Match): boolean {
+  if (!club) return m.teamA === clubTeam(store) || m.teamB === clubTeam(store);
+  if ((club.excludedMatchIds || []).includes(m.id)) return false;
+  if ((club.extraMatchIds || []).includes(m.id)) return true;
+  return m.teamA === clubTeam(store) || m.teamB === clubTeam(store);
+}
+
+/** The matches of a club; with no club, the matches of any active club. */
+export function clubMatches(store: AppStore, club?: FanClub | null): Match[] {
+  const clubs = club ? [club] : store.fanClubs.filter(c => c.active);
+  const list = clubs.length ? store.matches.filter(m => clubs.some(c => clubHasMatch(store, c, m))) : store.matches.filter(m => clubHasMatch(store, null, m));
+  return list.sort(byStart);
+}
+
 /** The match fans would check in for now: the one whose window is open (earliest first), else the next one. */
-export function currentMatch(store: AppStore, now = Date.now()): { match: Match | null; open: boolean; opensAt?: string } {
-  const sorted = [...store.matches].sort((a, b) => +new Date(a.startsAt) - +new Date(b.startsAt));
+export function currentMatch(store: AppStore, now = Date.now(), club?: FanClub | null): { match: Match | null; open: boolean; opensAt?: string } {
+  const sorted = clubMatches(store, club);
   const open = sorted.find(m => checkInWindow(store, m, now).open);
   if (open) return { match: open, open: true };
   const next = sorted.find(m => +new Date(m.startsAt) > now && m.status !== 'completed' && m.status !== 'abandoned') || null;
@@ -181,9 +199,12 @@ fanclubRouter.get('/fanclub/admin/clubs', requireFanClubs, (req, res) => {
     currentMatch: cur.match,
     checkInOpen: cur.open,
     opensAt: cur.opensAt || null,
-    matches: [...store.matches].sort((a, b) => +new Date(a.startsAt) - +new Date(b.startsAt)).map(m => ({ id: m.id, matchNo: m.matchNo, teamA: m.teamA, teamB: m.teamB, startsAt: m.startsAt, status: m.status, open: checkInWindow(store, m).open })),
+    fanClubTeamId: clubTeam(store),
+    matches: [...store.matches].sort(byStart).map(m => ({ id: m.id, matchNo: m.matchNo, teamA: m.teamA, teamB: m.teamB, startsAt: m.startsAt, status: m.status, open: checkInWindow(store, m).open })),
     clubs: clubs.map(c => ({
       ...c,
+      matchIds: clubMatches(store, c).map(m => m.id),
+      currentMatchId: currentMatch(store, Date.now(), c).match?.id || null,
       checkInPoints: c.checkInPoints ?? null,
       effectiveCheckInPoints: pointsFor(store, c),
       gamesMode: c.gamesMode || 'team',
@@ -212,6 +233,8 @@ function readClub(b: any, existing: FanClub | null, by: string): FanClub | strin
     offers: existing?.offers || [],
     checkInPoints: pts,
     gamesMode: b.gamesMode === 'all' ? 'all' : b.gamesMode === 'team' ? 'team' : existing?.gamesMode || 'team',
+    extraMatchIds: existing?.extraMatchIds || [],
+    excludedMatchIds: existing?.excludedMatchIds || [],
     createdBy: existing?.createdBy || by,
     createdAt: existing?.createdAt || now,
     updatedAt: now,
@@ -401,6 +424,32 @@ function readOffer(b: any, club: FanClub, existing: VenueOffer | null, by: strin
   };
 }
 
+/**
+ * Add a match to a club, or take one out (the club's own admins and league admins). With
+ * { reset: true } the club goes back to the default: every match of the fan club team.
+ */
+fanclubRouter.post('/fanclub/admin/clubs/:id/matches', requireFanClubs, (req, res) => {
+  const club = clubFor(req, res, req.params.id);
+  if (!club) return;
+  const store = db.get();
+  if (req.body?.reset) {
+    club.extraMatchIds = [];
+    club.excludedMatchIds = [];
+  } else {
+    const m = store.matches.find(x => x.id === String(req.body?.matchId || ''));
+    if (!m) return bad(res, 'Match not found', 404);
+    const include = Boolean(req.body?.include);
+    const isTeam = m.teamA === clubTeam(store) || m.teamB === clubTeam(store);
+    club.extraMatchIds = (club.extraMatchIds || []).filter(id => id !== m.id);
+    club.excludedMatchIds = (club.excludedMatchIds || []).filter(id => id !== m.id);
+    if (include && !isTeam) club.extraMatchIds.push(m.id);
+    if (!include && isTeam) club.excludedMatchIds.push(m.id);
+  }
+  club.updatedAt = new Date().toISOString();
+  db.save();
+  res.json({ success: true, matchIds: clubMatches(store, club).map(m => m.id) });
+});
+
 /** Add or edit an offer at a club this admin runs. */
 fanclubRouter.post('/fanclub/admin/clubs/:id/offers', requireFanClubs, (req, res) => {
   const club = clubFor(req, res, req.params.id);
@@ -434,9 +483,9 @@ function fanByCode(store: AppStore, raw: unknown): User | null {
   return code ? store.users.find(u => u.fanClubCode === code && !legacyCode(u)) || null : null;
 }
 
-function matchFor(store: AppStore, matchId: unknown): Match | null {
+function matchFor(store: AppStore, matchId: unknown, club: FanClub): Match | null {
   if (matchId) return store.matches.find(m => m.id === String(matchId)) || null;
-  return currentMatch(store).match;
+  return currentMatch(store, Date.now(), club).match;
 }
 
 /** Look a fan up by code before checking them in: who they are, whether they can check in, their offers. */
@@ -446,13 +495,14 @@ fanclubRouter.get('/fanclub/admin/fan', requireFanClubs, (req, res) => {
   const store = db.get();
   const fan = fanByCode(store, req.query.code);
   if (!fan) return bad(res, 'No fan has this code. Ask the fan to open Fan Club on ADT10fans.com and show their code.', 404);
-  const match = matchFor(store, req.query.matchId);
+  const match = matchFor(store, req.query.matchId, club);
   const checkedIn = match ? fan.fanClubCheckIns?.find(c => c.matchId === match.id) || null : null;
   const claimed = new Set(fan.claimedVenueOfferIds || []);
   res.json({
     fan: { id: fan.id, name: fan.name, avatar: fan.avatar, teamId: fan.teamId, points: fan.points, instagramVerified: isVerified(fan) || !gateSettings(store).required, instagramHandle: fan.instagramHandle || null },
     match,
-    window: match ? checkInWindow(store, match) : null,
+    window: match ? (clubHasMatch(store, club, match) ? checkInWindow(store, match) : { ...checkInWindow(store, match), open: false }) : null,
+    matchAtThisClub: match ? clubHasMatch(store, club, match) : false,
     checkedIn,
     checkedInHereToday: hereToday(store, fan, club.id),
     offers: club.offers.filter(o => offerLive(o)).map(o => ({ ...publicOffer(o), used: claimed.has(o.id) })),
@@ -474,8 +524,9 @@ fanclubRouter.post('/fanclub/admin/checkin', requireFanClubs, wrap(async (req, r
     const fan = fanByCode(store, b.code ?? b.qrPayload);
     if (!fan) return { status: 404, error: 'No fan has this code. Ask the fan to show the code on their Fan Club page.' };
     if (needsInstagram(store, fan)) return { status: 409, error: `${fan.name} has not verified Instagram yet. They can do it on ADT10fans.com now, then check in.` };
-    const match = matchFor(store, b.matchId);
+    const match = matchFor(store, b.matchId, club);
     if (!match) return { status: 409, error: 'There is no match to check in for' };
+    if (!clubHasMatch(store, club, match)) return { status: 409, error: `Match ${match.matchNo} is not one of ${club.name}’s matches. An admin can add it on the club’s Matches tab.` };
     const w = checkInWindow(store, match);
     if (!w.open) {
       const opens = new Date(w.opensAt);
@@ -522,7 +573,7 @@ fanclubRouter.post('/fanclub/admin/redeem-offer', requireFanClubs, wrap(async (r
     offer.redeemed = (offer.redeemed || 0) + 1;
     const bonus = offer.bonusPoints || 0;
     if (bonus) awardPoints(store, fan, bonus, 'fanclub-offer', `${offer.title} · ${club.name}`, offer.id, admin.email);
-    store.fanClubRedemptions.unshift({ id: 'fcr-' + crypto.randomUUID().slice(0, 10), userId: fan.id, userName: fan.name, fanClubId: club.id, offerId: offer.id, offerTitle: offer.title, matchId: currentMatch(store).match?.id, bonusPoints: bonus, adminId: admin.id, adminName: admin.name, at: new Date().toISOString() });
+    store.fanClubRedemptions.unshift({ id: 'fcr-' + crypto.randomUUID().slice(0, 10), userId: fan.id, userName: fan.name, fanClubId: club.id, offerId: offer.id, offerTitle: offer.title, matchId: currentMatch(store, Date.now(), club).match?.id, bonusPoints: bonus, adminId: admin.id, adminName: admin.name, at: new Date().toISOString() });
     if (store.fanClubRedemptions.length > 50_000) store.fanClubRedemptions.length = 50_000;
     return { ok: { message: `${offer.title}: redeemed for ${fan.name}.${bonus ? ` +${bonus} points.` : ''}`, offer: publicOffer(offer), bonusPoints: bonus, fan: { id: fan.id, name: fan.name, points: fan.points } } };
   });
