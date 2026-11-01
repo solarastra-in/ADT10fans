@@ -114,8 +114,10 @@ export interface User {
   referralRewardedAt?: string | null;
   /** Set when this friend joined after the inviter reached the invite-reward limit. */
   referralInviterUnpaid?: boolean;
-  /** Code a fan shows at a fan club to be checked in (random, can be renewed). */
+  /** Older builds stored a code here; codes are now worked out from the account (fanCodeFor). */
   fanClubCode?: string;
+  /** Bumped by "Get a new code", which changes the fan's check-in code. */
+  fanClubCodeVersion?: number;
   /** True once the Instagram check passed (see instagramGate.ts). */
   instagramFollowed?: boolean;
   /** Without @, lower case. */
