@@ -33,7 +33,7 @@ export const ALL_PERMISSIONS: AdminPermission[] = [
 ];
 
 /** What a team official may do: only for their own franchise. */
-export const TEAM_OFFICIAL_PERMISSIONS: AdminPermission[] = ['team', 'social', 'community', 'notifications'];
+export const TEAM_OFFICIAL_PERMISSIONS: AdminPermission[] = ['team', 'social', 'community', 'notifications', 'prizes'];
 
 export type AdminRole =
   | 'superadmin'
@@ -55,6 +55,27 @@ export interface AdminUserRecord {
   addedBy?: string;
   addedAt: string;
   updatedAt?: string;
+}
+
+/**
+ * An invitation for someone to run a franchise's team portal. A super admin sends it (name, email,
+ * team); it becomes a team admin (team_official) when that person signs in with the same email and
+ * accepts. Only a hash of the link's token is kept.
+ */
+export interface TeamInvite {
+  id: string;
+  tokenHash: string;
+  email: string;
+  name: string;
+  teamId: string;
+  invitedBy: string;
+  createdAt: string;
+  expiresAt: string;
+  status: 'pending' | 'accepted' | 'revoked';
+  acceptedAt?: string;
+  /** Last time the invitation email was sent, and whether it went out. */
+  sentAt?: string;
+  emailed?: boolean;
 }
 
 export interface User {
@@ -148,19 +169,28 @@ export interface Player {
   /** Where each link came from; an admin's link is never replaced by the lookup. */
   linkSources?: Partial<Record<'espncricinfo' | 'cricbuzz' | 'wikipedia' | 'instagram' | 'x' | 'facebook' | 'youtube' | 'tiktok' | 'threads', 'admin' | 'cricsheet' | 'wikidata' | 'squad'>>;
   linksCheckedAt?: string;
-  socials?: {
-    instagram?: string;
-    x?: string;
-    youtube?: string;
-    facebook?: string;
-    tiktok?: string;
-    threads?: string;
-  };
-  stats?: {
-    t10?: any;
-    t20_2025_2026?: any;
-    t20_career?: any;
-  };
+  /** CricketData.org player id, for career records (set by the lookup, or by an admin to correct it). */
+  cricketdataId?: string;
+}
+
+/** One format of a player's career record (CricketData.org players_info; values as published). */
+export interface CareerFormat {
+  /** CricketData's match type: t20 (T20 internationals), ipl, odi, test… */
+  key: string;
+  label: string;
+  /** m, inn, no, runs, hs, avg, bf, sr, 100s, 50s, 4s, 6s… */
+  batting?: Record<string, string>;
+  /** m, inn, b, runs, wkts, bbi, econ, avg, sr, 5w… */
+  bowling?: Record<string, string>;
+}
+
+export interface PlayerCareer {
+  playerId: string;
+  cricketdataId?: string;
+  status: 'found' | 'no-match' | 'ambiguous' | 'error';
+  note?: string;
+  checkedAt: string;
+  formats: CareerFormat[];
 }
 
 export interface Team {
@@ -382,6 +412,8 @@ export interface Contest {
   prize: string;
   questions: ContestQuestion[];
   instant?: boolean;
+  /** Created and settled by the site (one prediction set per match; see predictions.ts). */
+  auto?: boolean;
   createdAt: string;
 }
 
@@ -464,6 +496,8 @@ export interface PrizeItem {
   pointsCost: number;
   stock: number;
   teamOnly?: string | null;
+  /** The franchise offering and fulfilling the prize (set for prizes a team admin creates). */
+  teamId?: string | null;
   active: boolean;
   /** How the fan receives it, shown after claiming (e.g. "Collect at the Fan Zone with your code"). */
   fulfilment: string;
@@ -531,6 +565,8 @@ export interface SystemSettings {
   lockReminderMinutes: number;
   /** Points for the fan whose post the admins pick as Fan of the Day. */
   fanOfTheDayPoints: number;
+  /** CricketData.org requests a day for career stats (the free plan has 100 for everything). */
+  careerStatsDailyCalls?: number;
   /** Which fan wall posts wait for an admin before fans see them. */
   fanWallReview: 'photos' | 'all' | 'none';
   smtp: { host: string; port: number; user: string; pass: string; from: string; enabled: boolean };
@@ -927,6 +963,8 @@ export interface AppStore {
   duels: Duel[];
   fanPosts: FanPost[];
   fansOfTheDay: FanOfTheDay[];
+  playerCareer: PlayerCareer[];
+  teamInvites: TeamInvite[];
   sessions: Session[];
   passportInterest: PassportInterest[];
   claimedBadges: Record<string, boolean>;
@@ -1053,6 +1091,8 @@ export function emptyStore(): AppStore {
     duels: [],
     fanPosts: [],
     fansOfTheDay: [],
+    playerCareer: [],
+    teamInvites: [],
     sessions: [],
     passportInterest: [],
     claimedBadges: {},

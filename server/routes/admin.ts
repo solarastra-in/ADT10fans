@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import { Router } from 'express';
 import { ALL_PERMISSIONS, AdminPermission, AdminRole, db, defaultSettings, requestContext, SUPER_ADMIN_EMAIL, TEAM_OFFICIAL_PERMISSIONS } from '../db';
-import { adminEmails, IS_PROD, isSuperAdmin, rateLimit, requireAdmin, requireSuperAdmin, requireUser, smtpConfigured, firebaseProjectId, resetSmtpErrorState, smtpConfig, formatFromAddress } from '../auth';
+import { adminEmails, IS_PROD, isSuperAdmin, rateLimit, requireAdmin, teamScopeOf, requireSuperAdmin, requireUser, smtpConfigured, firebaseProjectId, resetSmtpErrorState, smtpConfig, formatFromAddress } from '../auth';
 import { bad, newId, num, str, userOf, wrap } from '../http';
 import { runDiscoveryAgent, runSocialAgent, runNewsAgent, runScoresAgent, runContentAgent, runOpsAgent } from '../agents';
 import { geminiConfigured, chatWithGemini, searchGroundingCricket, generateMarketingContent, transcribeAudioVoice } from '../gemini';
@@ -36,8 +36,15 @@ async function firestoreOpenToPublic(): Promise<boolean> {
   return open;
 }
 
-adminRouter.get('/admin/dashboard', requireAdmin, wrap(async (_req, res) => {
+adminRouter.get('/admin/dashboard', requireAdmin, wrap(async (req, res) => {
   const s = db.get();
+  // Team admins get their own team's portal (/api/team-portal/:id/overview), not league-wide figures,
+  // settings or other admins' addresses.
+  const scope = teamScopeOf(userOf(req));
+  if (scope !== null) {
+    const approvals = s.approvals.filter(a => a.status === 'pending' && (a.payload?.teamId === scope || a.payload?.handle?.teamId === scope));
+    return res.json({ teamScope: scope, pendingApprovals: approvals, agentRuns: [], warnings: [], settings: { brandName: s.settings.brandName, seasonStart: s.settings.seasonStart } });
+  }
   const warning = ephemeralDiskWarning(db.backend);
   const rulesOpen = await firestoreOpenToPublic();
   res.json({
@@ -96,6 +103,8 @@ adminRouter.post('/admin/approvals/:id/decide', requireAdmin(['social', 'feeds']
   const a = store.approvals.find(x => x.id === req.params.id);
   if (!a) return bad(res, 'Approval not found', 404);
   if (a.status !== 'pending') return bad(res, 'Already decided');
+  const scope = teamScopeOf(userOf(req));
+  if (scope !== null && !(a.kind === 'handle' && a.payload?.teamId === scope)) return bad(res, 'You can only decide on your own team\'s accounts', 403);
   const approve = req.body?.decision === 'approve';
   a.status = approve ? 'approved' : 'rejected';
   a.decidedAt = new Date().toISOString();
@@ -150,6 +159,7 @@ adminRouter.post('/admin/settings', requireAdmin('settings'), (req, res) => {
   if (b.referralMaxRewarded !== undefined) s.referralMaxRewarded = Math.min(1000, Math.max(0, Math.round(num(b.referralMaxRewarded, 10))));
   if (b.lockReminderMinutes !== undefined) s.lockReminderMinutes = Math.min(240, Math.max(5, Math.round(num(b.lockReminderMinutes, 30))));
   if (b.fanOfTheDayPoints !== undefined) s.fanOfTheDayPoints = Math.min(1000, Math.max(0, Math.round(num(b.fanOfTheDayPoints, 100))));
+  if (b.careerStatsDailyCalls !== undefined) s.careerStatsDailyCalls = Math.min(100, Math.max(0, Math.round(num(b.careerStatsDailyCalls, 30))));
   if (b.fanWallReview !== undefined && ['photos', 'all', 'none'].includes(b.fanWallReview)) s.fanWallReview = b.fanWallReview;
   if (b.curatorApiKey !== undefined && b.curatorApiKey !== '********') s.curatorApiKey = str(b.curatorApiKey, 200);
   if (b.requireInstagramFollow !== undefined) s.requireInstagramFollow = Boolean(b.requireInstagramFollow);
@@ -180,73 +190,7 @@ adminRouter.post('/admin/settings', requireAdmin('settings'), (req, res) => {
   res.json({ success: true, settings: maskedSettings() });
 });
 
-// ---------- Fan Club Super Admin Management ----------
-import { OFFICIAL_FAN_CLUBS } from '../data/officialVenues';
-
-adminRouter.get('/admin/fanclubs', requireAdmin('settings'), (_req, res) => {
-  const store = db.get();
-  if (!store.fanClubs || store.fanClubs.length === 0) {
-    store.fanClubs = OFFICIAL_FAN_CLUBS.map(c => ({ ...c }));
-    db.save();
-  }
-  res.json({ fanClubs: store.fanClubs });
-});
-
-adminRouter.post('/admin/fanclubs', requireAdmin('settings'), (req, res) => {
-  const b = req.body || {};
-  const store = db.get();
-  if (!store.fanClubs) store.fanClubs = [];
-
-  const name = str(b.name, 120);
-  const city = str(b.city, 60);
-  const country = str(b.country, 60) || 'India';
-  const address = str(b.address, 200);
-  const region = (['hyderabad', 'uae', 'international'].includes(b.region) ? b.region : 'hyderabad') as any;
-
-  if (!name || !city || !address) return bad(res, 'Name, city, and address are required');
-
-  const id = str(b.id, 60) || `fc-${city.toLowerCase().replace(/[^a-z0-9]/g, '')}-${crypto.randomUUID().slice(0, 6)}`;
-  const idx = store.fanClubs.findIndex(c => c.id === id);
-
-  const existing = idx >= 0 ? store.fanClubs[idx] : null;
-  const club = {
-    id,
-    name,
-    city,
-    country,
-    address,
-    region,
-    capacity: Math.max(10, Math.round(num(b.capacity, 250))),
-    contactPerson: str(b.contactPerson, 100) || undefined,
-    active: b.active !== undefined ? Boolean(b.active) : true,
-    offers: Array.isArray(b.offers) ? b.offers : (existing?.offers || []),
-    createdAt: existing?.createdAt || new Date().toISOString(),
-  };
-
-  if (idx >= 0) store.fanClubs[idx] = club;
-  else store.fanClubs.push(club);
-
-  db.save();
-  res.json({ success: true, fanClub: club });
-});
-
-adminRouter.delete('/admin/fanclubs/:id', requireAdmin('settings'), (req, res) => {
-  const store = db.get();
-  const id = req.params.id;
-  const before = store.fanClubs?.length || 0;
-  store.fanClubs = (store.fanClubs || []).filter(c => c.id !== id);
-  db.save();
-  res.json({ success: true, removed: before - store.fanClubs.length });
-});
-
-adminRouter.post('/admin/fanclubs/seed', requireAdmin('settings'), (_req, res) => {
-  const store = db.get();
-  store.fanClubs = OFFICIAL_FAN_CLUBS.map(c => ({ ...c }));
-  db.save();
-  res.json({ success: true, fanClubs: store.fanClubs, message: 'Global and Hyderabad fan clubs reset to official seed list.' });
-});
-
-adminRouter.post('/admin/smtp/test', requireAdmin, wrap(async (req, res) => {
+adminRouter.post('/admin/smtp/test', requireAdmin('settings'), wrap(async (req, res) => {
   const b = req.body || {};
   const c = smtpConfig();
   const host = b.host ? str(b.host, 120) : c.host;

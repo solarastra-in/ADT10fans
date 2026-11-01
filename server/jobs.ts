@@ -98,6 +98,28 @@ export async function runScheduledJobs(opts: { only?: string[]; force?: boolean 
       out.links = { error: e?.message || String(e) };
     }
   }
+  // Match predictions for every match whose games just opened (midnight in Abu Dhabi, the day before).
+  try {
+    const { ensureMatchPredictions } = await import('./predictions');
+    const added = await db.mutate(s => ensureMatchPredictions(s));
+    if (added) out.predictions = { added };
+  } catch (e: any) {
+    out.predictions = { error: e?.message || String(e) };
+  }
+  // Career records from CricketData.org: a few players an hour within the daily request budget.
+  const lastCareer = db.get().jobLog['jobs:career-stats'];
+  if (want('career') && process.env.CRICKET_API_KEY && (opts.only?.includes('career') || !lastCareer || Date.now() - +new Date(lastCareer) >= 60 * 60_000)) {
+    try {
+      const { refreshCareerStats } = await import('./careerStats');
+      const r = await refreshCareerStats();
+      await db.mutate(s => {
+        s.jobLog['jobs:career-stats'] = new Date().toISOString();
+      });
+      if (r.checked) out.career = r;
+    } catch (e: any) {
+      out.career = { error: e?.message || String(e) };
+    }
+  }
   try {
     const removed = await db.mutate(store => housekeeping(store));
     if (Object.keys(removed).length) out.housekeeping = removed;

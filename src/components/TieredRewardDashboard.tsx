@@ -93,7 +93,7 @@ export const REWARD_TIERS: RewardTier[] = [
     name: 'Willow Legend',
     subtitle: 'Miniature Signed Bats',
     categoryFilter: 'bats',
-    minPoints: 1100,
+    minPoints: 1000,
     iconName: 'award',
     themeColor: '#a855f7', // Purple
     themeGlow: 'rgba(168, 85, 247, 0.25)',
@@ -109,14 +109,14 @@ export const REWARD_TIERS: RewardTier[] = [
     id: 'tier-5',
     level: 5,
     name: 'Master Collector',
-    subtitle: 'Signed Bat & Jersey Bundles',
+    subtitle: 'Miniature Signed Bat & Jersey Bundles',
     categoryFilter: 'signed',
-    minPoints: 1400,
+    minPoints: 1350,
     iconName: 'crown',
     themeColor: '#f43f5e', // Rose
     themeGlow: 'rgba(244, 63, 94, 0.25)',
     accentBorder: 'border-rose-400/40',
-    description: 'The pinnacle fan reward: limited-edition collector vaults combining autographed match bats and signed team jerseys.',
+    description: 'The top fan reward: a miniature signed bat together with a signed team jersey.',
     keyItems: [
       'Powerhouse Bundle: Miniature Bat + T-Shirt Signed by Dre Russ (1500 pts)',
       'Boundary Hitter Bundle: Miniature Bat + T-Shirt Signed by Liam (1400 pts)',

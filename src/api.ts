@@ -1,4 +1,7 @@
 import type {
+  TeamInviteView,
+  TeamInvitePublic,
+  TeamPortalOverview,
   PublicConfig, User, Team, Player, SocialHandle, FeedItem, Match, MatchDetail, Contest, ContestEntry, PrizeDraw, SystemSettings,
   ForumThread, ForumComment, NotificationItem, AdminUserRecord, AdminRole, AdminPermission, EnvVariableInfo, CricketSyncResult,
   FantasyTeam, DreamXIRules, FantasyMatchSummary, LeaderRow, FantasyLeague, GamesToday, GuessState, SuperOverState, Shot,
@@ -130,6 +133,7 @@ export const api = {
   seedOfficialTeams: (overwrite = false, teamId?: string) => post<Ok & { teams: Team[]; handles: SocialHandle[]; created: string[]; updated: string[]; skipped: string[]; summary: string }>('/api/admin/teams/seed-official', { overwrite, teamId }),
   saveTeam: (team: Partial<Team>) => post<Ok & { team: Team; teams: Team[] }>('/api/teams', team),
   resolvePlayerLinks: (opts: { all?: boolean; teamId?: string } = {}) => post<Ok & { checked: number; updated: number; report: string[] }>('/api/admin/players/links/resolve', opts),
+  refreshCareerStats: (opts: { all?: boolean; playerId?: string } = {}) => post<Ok & { checked: number; found: number; report: string[] }>('/api/admin/players/career/refresh', opts),
   saveSquad: (teamId: string, squad: Partial<Player>[], force = false) => post<Ok & { team: Team; teams: Team[] }>(`/api/teams/${encodeURIComponent(teamId)}/squad`, { squad, force }),
   deleteTeam: (id: string) => del<Ok & { teams: Team[] }>(`/api/teams/${encodeURIComponent(id)}`),
   getHandles: (params?: { teamId?: string; platform?: string }) => req<{ handles: SocialHandle[] }>(`/api/handles${qs(params)}`),
@@ -177,7 +181,7 @@ export const api = {
   // ----- Pick XI -----
   getFantasyHub: () => req<{ rules: DreamXIRules; matches: FantasyMatchSummary[]; season: { points: number; matches: number; best: number } | null }>('/api/fantasy'),
   getFantasyRules: () => req<{ rules: DreamXIRules; scoring: { group: string; rules: [string, number | string][] }[] }>('/api/fantasy/rules'),
-  getFantasy: (matchId: string) => req<{ match: Match; locked: boolean; rules: DreamXIRules; pool: PlayerWithForm[]; fantasyTeam: FantasyTeam | null; fantasyTeams?: FantasyTeam[]; lineups: number; presets?: LineupPreset[]; swingInsights?: MatchSwingInsights }>(`/api/fantasy/${encodeURIComponent(matchId)}`),
+  getFantasy: (matchId: string) => req<{ match: Match; locked: boolean; opensAt?: string; open?: boolean; rules: DreamXIRules; pool: PlayerWithForm[]; fantasyTeam: FantasyTeam | null; fantasyTeams?: FantasyTeam[]; lineups: number; presets?: LineupPreset[]; swingInsights?: MatchSwingInsights }>(`/api/fantasy/${encodeURIComponent(matchId)}`),
   submitFantasy: (matchId: string, playerIds: string[], captainId: string, viceCaptainId: string, variationId?: string, variationName?: string) => post<Ok & { fantasyTeam: FantasyTeam; fantasyTeams: FantasyTeam[]; credits: number; user: User }>(`/api/fantasy/${encodeURIComponent(matchId)}`, { playerIds, captainId, viceCaptainId, variationId, variationName }),
   deleteFantasy: (matchId: string, variationId?: string) => del<Ok & { fantasyTeams: FantasyTeam[] }>(`/api/fantasy/${encodeURIComponent(matchId)}${variationId ? `?variationId=${encodeURIComponent(variationId)}` : ''}`),
   getFantasyLeaderboard: (matchId?: string) => pub<{ rows: LeaderRow[] }>(`/api/fantasy/leaderboard${qs({ matchId })}`),
@@ -298,6 +302,14 @@ export const api = {
 
   // ----- admin -----
   getAdminDashboard: () => req<any>('/api/admin/dashboard'),
+  // Team portals
+  getTeamInvites: () => req<{ invites: TeamInviteView[] }>('/api/admin/team-invites'),
+  inviteTeamAdmin: (b: { name: string; email: string; teamId: string }) => post<Ok & { invite: TeamInviteView; link: string; message: string }>('/api/admin/team-invites', b),
+  resendTeamInvite: (id: string) => post<Ok & { invite: TeamInviteView; link: string; message: string }>(`/api/admin/team-invites/${encodeURIComponent(id)}/resend`),
+  revokeTeamInvite: (id: string) => del<Ok & { invite: TeamInviteView }>(`/api/admin/team-invites/${encodeURIComponent(id)}`),
+  getTeamInvite: (token: string) => req<TeamInvitePublic>(`/api/team-invites/${encodeURIComponent(token)}`),
+  acceptTeamInvite: (token: string) => post<Ok & { teamId: string; user: User }>(`/api/team-invites/${encodeURIComponent(token)}/accept`),
+  getTeamOverview: (teamId: string) => req<TeamPortalOverview>(`/api/team-portal/${encodeURIComponent(teamId)}/overview`),
   runAgent: (name: string) => post<Ok & { agent: string; result: any }>(`/api/admin/agents/${name}/run`),
   runScheduledJobs: (only?: string) => post<any>(`/api/cron/run${qs({ only })}`),
   decideApproval: (id: string, decision: 'approve' | 'reject') => post<Ok & { approval: Approval }>(`/api/admin/approvals/${id}/decide`, { decision }),

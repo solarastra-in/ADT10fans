@@ -39,6 +39,8 @@ const ProfilePage = React.lazy(() => import('./pages/ProfilePage'));
 const InfoPage = React.lazy(() => import('./pages/InfoPage'));
 const AdminPage = React.lazy(() => import('./pages/AdminPage'));
 const FanClubAdminPage = React.lazy(() => import('./pages/FanClubAdminPage').then(m => ({ default: m.FanClubAdminPage })));
+const TeamPortalPage = React.lazy(() => import('./pages/TeamPortalPage'));
+const TeamInvitePage = React.lazy(() => import('./pages/TeamInvitePage'));
 const ProposalPage = React.lazy(() => import('./pages/ProposalPage'));
 import { InstagramFollowModal } from './components/InstagramFollowModal';
 
@@ -77,6 +79,8 @@ function Page() {
     case 'terms': return <InfoPage kind={route.name} />;
     case 'adminFanclub': return <FanClubAdminPage />;
     case 'admin': return p.section === 'fanclub' ? <FanClubAdminPage /> : <AdminPage section={p.section} />;
+    case 'teamPortal': return <TeamPortalPage section={p.section} />;
+    case 'teamInvite': return <TeamInvitePage token={p.token} />;
     case 'proposal': return <ProposalPage />;
     default: return <NotFoundPage />;
   }

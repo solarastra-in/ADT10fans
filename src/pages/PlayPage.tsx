@@ -16,11 +16,11 @@ export default function PlayPage() {
   const hub = useLoad(() => api.getFantasyHub(), [user?.id]);
   const games = useLoad(() => api.getGamesToday(), [user?.id]);
   const contests = useLoad(() => api.getContests(), [user?.id]);
-
-  const openMatches = (hub.data?.matches || []).filter(m => !m.locked);
-  const firstDate = openMatches[0]?.startsAt ? openMatches[0].startsAt.slice(0, 10) : null;
-  const activeDayMatches = openMatches.filter(m => m.startsAt.slice(0, 10) === firstDate);
-
+  const f = useFormat();
+  // Every match that is open now (today's and tomorrow's: each opens at midnight UAE time the day before).
+  const openMatches = (hub.data?.matches || []).filter(m => !m.locked && m.open !== false);
+  const nextMatch = openMatches[0];
+  const nextToOpen = (hub.data?.matches || []).find(m => !m.locked && m.open === false);
   const openContests = (contests.data?.contests || []).filter(c => c.status === 'open');
   const myEntries = new Set((contests.data?.myEntries || []).map(e => e.contestId));
   const gamesLeft = games.data ? Number(!games.data.guess.finished) + Number(!games.data.superOver.finished) : 2;
@@ -54,108 +54,50 @@ export default function PlayPage() {
           <StatTile label={t('Check-in streak')} value={t('{n} days', { n: user.streak || 0 })} />
         </div>
       )}
-
-      {/* Matchday Multi-Game Arena: Play All 2 or 3 Matches of the Day Simultaneously */}
-      {activeDayMatches.length > 0 && (
-        <section className="space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded-md bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center gap-1">
-                  <Flame className="w-3.5 h-3.5" />
-                  {activeDayMatches.length === 3 ? t('Matchday Triple-Header') : t('Matchday Double-Header')}
-                </span>
-                <span className="text-xs font-bold text-slate-400">
-                  {f.date(activeDayMatches[0].startsAt, { weekday: 'short', month: 'short', day: 'numeric' })}
-                </span>
-              </div>
-              <h2 className="text-xl font-black text-white mt-1">
-                {t('Play All {n} Matches Scheduled Today Simultaneously', { n: activeDayMatches.length })}
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                {t('Pick XI and match predictions open 24 hours before match day. You can play and edit all matches at the same time until the first ball.')}
-              </p>
+      {(openMatches.length > 0 || nextToOpen) && (
+        <section data-testid="open-matches">
+          <h2 className="text-sm font-black uppercase tracking-wider text-slate-400 mb-2">{t('Open matches')}</h2>
+          {openMatches.length ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {openMatches.map(m => {
+                const a = teamById(m.teamA);
+                const b = teamById(m.teamB);
+                const contestId = `auto-${m.matchId}`;
+                const hasPredictions = (contests.data?.contests || []).some(c => c.id === contestId && c.status === 'open');
+                return (
+                  <Card key={m.matchId} className="p-4 space-y-3" data-testid="open-match">
+                    <div className="flex items-center gap-2">
+                      <TeamBadge team={a} size="sm" />
+                      <span className="font-black text-white text-sm truncate">{a?.short} vs {b?.short}</span>
+                      <TeamBadge team={b} size="sm" />
+                      <span className="ms-auto text-[11px] text-slate-400">{t('Match {n}', { n: m.matchNo })}</span>
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      {f.dateTime(m.startsAt)} · <Countdown to={m.startsAt} prefix="locks in {time}" />
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Link to={`/fantasy/${m.matchId}`} className="inline-flex items-center gap-1.5 rounded-xl bg-amber-400 text-slate-950 px-3 py-2 text-xs font-black hover:bg-amber-300">
+                        <Trophy className="w-3.5 h-3.5" /> {m.mine?.saved ? t('Edit Pick XI') : t('Pick your XI')}
+                      </Link>
+                      {hasPredictions && (
+                        <Link to={`/contests#${contestId}`} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700 px-3 py-2 text-xs font-black text-white hover:bg-slate-800">
+                          <Target className="w-3.5 h-3.5" /> {myEntries.has(contestId) ? t('Edit predictions') : t('Predict')}
+                        </Link>
+                      )}
+                      {m.mine?.saved && <Pill tone="green">{t('Team saved')}</Pill>}
+                    </div>
+                  </Card>
+                );
+              })}
             </div>
-            <Link
-              to="/fantasy"
-              className="inline-flex items-center gap-1 text-xs font-bold text-amber-400 hover:text-amber-300 self-start sm:self-auto shrink-0"
-            >
-              {t('View all tournament fixtures')} →
-            </Link>
-          </div>
-
-          <div className={cx('grid gap-3', activeDayMatches.length === 3 ? 'grid-cols-1 md:grid-cols-3' : 'grid-cols-1 md:grid-cols-2')}>
-            {activeDayMatches.map(m => {
-              const teamA = teamById(m.teamA);
-              const teamB = teamById(m.teamB);
-              const matchingContest = openContests.find(c => c.matchId === m.matchId || c.title.includes(`Match ${m.matchNo}:`));
-              const enteredPrediction = matchingContest ? myEntries.has(matchingContest.id) : false;
-
-              return (
-                <Card key={m.matchId} className="p-4 flex flex-col justify-between border-slate-800 bg-slate-900/90 hover:border-amber-400/50 transition-colors shadow-lg">
-                  <div>
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <span className="text-xs font-black uppercase tracking-wider text-amber-400">
-                        {t('Match {n}', { n: m.matchNo })}
-                      </span>
-                      <span className="text-[11px] font-bold text-slate-400">
-                        <Countdown to={m.startsAt} prefix="locks in {time}" />
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 mb-3">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <TeamBadge team={teamA} size="sm" />
-                        <span className="text-xs font-black text-white truncate">{teamA?.short || m.teamA}</span>
-                      </div>
-                      <span className="text-[11px] font-black text-amber-400 uppercase">vs</span>
-                      <div className="flex items-center gap-2 min-w-0 justify-end">
-                        <span className="text-xs font-black text-white truncate">{teamB?.short || m.teamB}</span>
-                        <TeamBadge team={teamB} size="sm" />
-                      </div>
-                    </div>
-
-                    <div className="text-[11px] text-slate-400 flex items-center justify-between mb-3 px-1">
-                      <span>🕒 {f.time(m.startsAt)} GST</span>
-                      <span>👥 {m.lineups} {t('teams')}</span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 pt-2 border-t border-slate-800">
-                    <Link
-                      to={`/fantasy/${m.matchId}`}
-                      className={cx(
-                        'w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-black transition-colors',
-                        m.mine?.saved
-                          ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/25'
-                          : 'bg-amber-400 text-slate-950 hover:bg-amber-300 shadow-md',
-                      )}
-                    >
-                      <Trophy className="w-3.5 h-3.5" />
-                      <span>{m.mine?.saved ? t('✓ XI Saved ({n} teams)', { n: m.mine.variationsCount || 1 }) : t('Draft Pick XI (100 Cr)')}</span>
-                    </Link>
-
-                    <Link
-                      to={matchingContest ? `/contests` : `/matches/${m.matchId}`}
-                      className={cx(
-                        'w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-bold transition-colors border',
-                        enteredPrediction
-                          ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
-                          : 'border-slate-700 bg-slate-950 text-slate-200 hover:border-amber-400/50 hover:text-white',
-                      )}
-                    >
-                      <Target className="w-3.5 h-3.5 text-amber-400" />
-                      <span>{enteredPrediction ? t('✓ Predictions Saved') : t('Predict & Win (+140 pts)')}</span>
-                    </Link>
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
+          ) : null}
+          {nextToOpen && (
+            <p className="mt-2 text-xs text-slate-400">
+              {t('Next to open: {a} vs {b} on {date}. Each match opens at midnight UAE time on the day before match day.', { a: teamById(nextToOpen.teamA)?.short || '', b: teamById(nextToOpen.teamB)?.short || '', date: f.dateTime(nextToOpen.opensAt) })}
+            </p>
+          )}
         </section>
       )}
-
-      {/* Main Game Portals */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {card(
           '/fantasy',

@@ -192,6 +192,7 @@ export interface Player {
   cricinfoId?: string;
   wikidataId?: string;
   links?: Partial<Record<PlayerLinkKey, string>>;
+  cricketdataId?: string;
   linkSources?: Partial<Record<PlayerLinkKey, 'admin' | 'cricsheet' | 'wikidata' | 'squad'>>;
   linksCheckedAt?: string;
   socials?: PlayerSocialHandles;
@@ -203,33 +204,6 @@ export interface Player {
 }
 
 export type PlayerLinkKey = 'espncricinfo' | 'cricbuzz' | 'wikipedia' | 'instagram' | 'x' | 'facebook' | 'youtube' | 'tiktok' | 'threads';
-
-export interface PlayerSocialHandles {
-  instagram?: string;
-  x?: string;
-  youtube?: string;
-  facebook?: string;
-  tiktok?: string;
-  threads?: string;
-}
-
-export interface PlayerFormatStats {
-  matches: number;
-  innings: number;
-  runs: number;
-  ballsFaced?: number;
-  highestScore: string;
-  strikeRate: number;
-  average: number;
-  hundreds?: number;
-  fifties?: number;
-  fours?: number;
-  sixes?: number;
-  wickets?: number;
-  bestBowling?: string;
-  economy?: number;
-  oversBowled?: number;
-}
 
 /** This season's figures from real scorecards (null fields: not batted / not bowled yet). */
 export interface SeasonStats {
@@ -272,12 +246,23 @@ export interface PlayerDetail {
   fixtures: PlayerFixture[];
   season: SeasonStats | null;
   links: { key: PlayerLinkKey; label: string; url: string; handle: string | null }[];
-  socials?: PlayerSocialHandles;
-  stats?: {
-    t10?: PlayerFormatStats;
-    t20_2025_2026?: PlayerFormatStats;
-    t20_career?: PlayerFormatStats;
-  };
+  /** Career records from CricketData.org (T20I, IPL…), when the player was matched. */
+  career: PlayerCareer | null;
+}
+
+export interface CareerFormat {
+  key: string;
+  label: string;
+  batting?: Record<string, string>;
+  bowling?: Record<string, string>;
+}
+
+export interface PlayerCareer {
+  playerId: string;
+  cricketdataId?: string;
+  status: 'found' | 'no-match' | 'ambiguous' | 'error';
+  checkedAt: string;
+  formats: CareerFormat[];
 }
 
 export interface Team {
@@ -501,6 +486,7 @@ export interface Contest {
   prize: string;
   questions: ContestQuestion[];
   instant?: boolean;
+  auto?: boolean;
   createdAt: string;
 }
 export interface ContestEntry {
@@ -651,6 +637,9 @@ export interface FantasyMatchSummary {
   startsAt: string;
   status: Match['status'];
   locked: boolean;
+  /** When picks open: midnight in Abu Dhabi on the day before match day. */
+  opensAt?: string;
+  open?: boolean;
   lineups: number;
   mine: { points: number | null; rank: number | null; saved: boolean; variationsCount?: number } | null;
 }
@@ -837,6 +826,8 @@ export interface PrizeItem {
   pointsCost: number;
   stock: number;
   teamOnly?: string | null;
+  /** The franchise offering and fulfilling the prize. */
+  teamId?: string | null;
   active: boolean;
   fulfilment: string;
   createdAt: string;
@@ -937,6 +928,7 @@ export interface SystemSettings {
   referralMaxRewarded: number;
   lockReminderMinutes: number;
   fanOfTheDayPoints?: number;
+  careerStatsDailyCalls?: number;
   fanWallReview?: 'photos' | 'all' | 'none';
   smtp: { host: string; port: number; user: string; pass: string; from: string; enabled: boolean };
   cricbuzzSeriesId?: string;
@@ -1329,4 +1321,42 @@ export interface FanWallResponse {
   photosEnabled: boolean;
   review: 'photos' | 'all' | 'none';
   fanOfTheDayPoints: number;
+  careerStatsDailyCalls?: number;
+}
+
+// ---------- team portals ----------
+export interface TeamInviteView {
+  id: string;
+  email: string;
+  name: string;
+  teamId: string;
+  invitedBy: string;
+  createdAt: string;
+  expiresAt: string;
+  status: 'pending' | 'accepted' | 'revoked' | 'expired';
+  acceptedAt?: string;
+  sentAt?: string;
+  emailed?: boolean;
+}
+
+export interface TeamInvitePublic {
+  name: string;
+  team: { id: string; name: string; short: string; color: string; logo?: string } | null;
+  emailHint: string;
+  status: TeamInviteView['status'];
+  expiresAt: string;
+  signedInAsInvitee: boolean;
+}
+
+export interface TeamPortalOverview {
+  team: { id: string; name: string; short: string; color: string; secondaryColor?: string; logo?: string };
+  fans: number;
+  squad: number;
+  playersWithLinks: number;
+  handles: { verified: number; pending: number };
+  posts: number;
+  prizes: { active: number; total: number };
+  claims: { pending: number; total: number };
+  admins: { email: string; name: string; addedAt: string }[];
+  pendingInvites: { name: string; email: string; expiresAt: string }[];
 }

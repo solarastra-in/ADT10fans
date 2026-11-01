@@ -3,6 +3,7 @@ import { Shield, ShieldAlert, ShieldCheck, UserPlus, Trash2, Edit2, Check, X, Al
 import { api } from '../../api';
 import { AdminPermission, AdminRole, AdminUserRecord, Team } from '../../types';
 import { Button, Field, Select, TextInput } from './ui';
+import { TeamInvitesPanel } from './TeamInvitesPanel';
 
 interface AdminsSectionProps {
   currentUserEmail?: string;
@@ -25,7 +26,7 @@ const ALL_PERMISSIONS: { id: AdminPermission; label: string; desc: string; color
   { id: 'settings', label: 'Settings', desc: 'Branding, season, integrations, proposal', color: 'bg-slate-500/10 text-slate-300 border-slate-500/30' },
 ];
 
-const TEAM_OFFICIAL_PERMS: AdminPermission[] = ['team', 'social', 'community', 'notifications'];
+const TEAM_OFFICIAL_PERMS: AdminPermission[] = ['team', 'social', 'community', 'notifications', 'prizes'];
 
 const ROLE_PRESETS: { id: AdminRole; label: string; desc: string; defaultPerms: AdminPermission[] }[] = [
   { id: 'superadmin', label: 'Super Admin', desc: 'Everything, including managing admins and server settings.', defaultPerms: ['all'] },
@@ -33,7 +34,7 @@ const ROLE_PRESETS: { id: AdminRole; label: string; desc: string; defaultPerms: 
   { id: 'contest_admin', label: 'Games Admin', desc: 'Predictions, quizzes and Pick XI scoring.', defaultPerms: ['contests', 'fantasy', 'games'] },
   { id: 'winner_admin', label: 'Prizes Admin', desc: 'Prize catalogue, claims and prize draws.', defaultPerms: ['winners', 'draws', 'prizes'] },
   { id: 'social_admin', label: 'Social & Community', desc: 'Official handles, feeds, approvals, forum moderation and polls.', defaultPerms: ['feeds', 'social', 'community'] },
-  { id: 'team_official', label: 'Team Official', desc: 'One franchise only: its page, squad, channels, posts, polls, forum and fan messages.', defaultPerms: TEAM_OFFICIAL_PERMS },
+  { id: 'team_official', label: 'Team Official', desc: 'One franchise only, in its team portal: its page, squad, channels, posts, prizes for its fans, polls, forum and fan messages.', defaultPerms: TEAM_OFFICIAL_PERMS },
   { id: 'custom', label: 'Custom Role', desc: 'Pick individual permissions.', defaultPerms: ['matches'] },
 ];
 
@@ -238,6 +239,8 @@ export const AdminsSection: React.FC<AdminsSectionProps> = ({ currentUserEmail, 
           </Button>
         </div>
       </div>
+
+      {isCurrentUserSuperAdmin && <TeamInvitesPanel teams={teams} />}
 
       {successMsg && (
         <div className="p-3.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex items-center gap-2">
