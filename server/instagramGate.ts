@@ -180,7 +180,7 @@ export const takenBy = (store: AppStore, handle: string, selfId: string) =>
  * Paths a signed-in fan may still write to before passing the check: signing in and out, the check
  * itself, their profile and team, notifications, and accepting a team-admin invitation.
  */
-const OPEN_PREFIXES = ['/auth/', '/instagram/', '/notifications/', '/fcm/', '/team-invites/', '/cron/'];
+const OPEN_PREFIXES = ['/auth/', '/instagram/', '/notifications/', '/fcm/', '/team-invites/', '/cron/', '/live/'];
 const OPEN_PATHS = new Set(['/me', '/me/profile/update', '/me/team', '/feeds/webhook']);
 const isOpen = (path: string) => OPEN_PATHS.has(path) || OPEN_PREFIXES.some(p => path.startsWith(p));
 

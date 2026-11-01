@@ -1196,14 +1196,29 @@ ok('robots.txt blocks admin and API', /Disallow: \/admin/.test((await html('/rob
   const acesCard = {
     innings1: { teamId: 'aces', totalRuns: 130, wickets: 5, overs: '10', batting: [{ batsman: 'Moeen Ali', dismissal: 'not out', runs: 31, balls: 15, fours: 2, sixes: 3, isNotOut: true }], bowling: [] },
     innings2: { teamId: 'tigers', totalRuns: 110, wickets: 6, overs: '10', batting: [{ batsman: teams.find(t => t.id === 'tigers').squad[0].name, dismissal: 'run out (x)', runs: 10, balls: 8 }], bowling: [] },
+    // Over-by-over runs entered by an admin: 52 after 5 overs.
+    overs: [1, 2, 3, 4, 5].map(over => ({ innings: 1, over, runs: over === 5 ? 12 : 10, wickets: 0 })),
   };
   const fin = await post('/api/matches', { id: mAces.id, status: 'completed', winner: 'aces', result: 'Arabian Aces won by 20 runs', scoreA: '130/5', scoreB: '110/6', scorecard: acesCard }, A);
   ok('completing the match settles the team games', fin.json.teamGames?.settled === true && fin.json.teamGames.picksScored === 2, fin.json.teamGames);
   const settledC = (await get('/api/contests', IG)).json.contests.find(c => c.id === teamC.id);
-  ok('team answers come from the scorecard; no ball-by-ball, so “after 5 overs” is void', settledC.questions.map(q => q.answer).join('|') === '120–139|No result (void)|0–4|0–5|6–7', settledC.questions.map(q => q.answer));
+  ok('team answers come from the scorecard; “after 5 overs” from the over-by-over runs', settledC.questions.map(q => q.answer).join('|') === '120–139|45–59|0–4|0–5|6–7', settledC.questions.map(q => q.answer));
   const pick = (await get(`/api/team-games/${mAces.id}/pick5`, IG)).json.pick;
   ok('Pick 5 is scored with the Pick XI rules, captain double', pick.breakdown.find(b => b.playerId === moeen.id).total === 258 && pick.points === 258, pick.breakdown);
-  ok('fan points: predictions (20 + 15 + 15) plus Pick 5 ÷ 5', (await me(IG)).points === pBefore + 50 + Math.round(258 / 5), { before: pBefore, after: (await me(IG)).points });
+  ok('fan points: predictions (20 + 15 + 15 + 15) plus Pick 5 ÷ 5', (await me(IG)).points === pBefore + 65 + Math.round(258 / 5), { before: pBefore, after: (await me(IG)).points });
+
+  // --- Live centre: score updates for the run chart, the over-by-over runs, fresh scores on request ---
+  const lm = (await post('/api/matches', { teamA: 'aces', teamB: 'bulls', startsAt: inMinutes(-20), status: 'live', scoreA: '24/1', oversA: '2' }, A)).json.targetMatch;
+  await post('/api/matches', { id: lm.id, scoreA: '51/2', oversA: '4.3' }, A);
+  await post('/api/matches', { id: lm.id, scoreA: '51/2', oversA: '4.3' }, A);
+  const lmv = (await get(`/api/matches/${lm.id}`)).json.match;
+  ok('each score update is kept for the run chart (once), with the side batting first', lmv.firstInnings === 1 && lmv.progress?.length === 2 && lmv.progress[1].runs === 51 && lmv.progress[1].wickets === 2 && lmv.progress[1].overs === '4.3' && lmv.progress[1].innings === 1, lmv.progress);
+  const tal = await post(`/api/admin/matches/${lm.id}/scorecard`, { scorecard: { overs: [{ innings: 1, over: 1, runs: 12, wickets: 0 }, { innings: 1, over: 2, runs: 12, wickets: 1 }, { innings: 1, over: 3, runs: '', wickets: 0 }, { innings: 3, over: 1, runs: 5 }] } }, S);
+  ok('the team admin enters over-by-over runs without a full scorecard (empty and invalid overs dropped)', tal.status === 200 && tal.json.match.scorecard.overs.length === 2 && tal.json.match.scorecard.overs[1].wickets === 1, tal.json);
+  ok('saving the match without the tally keeps it', (await post('/api/matches', { id: lm.id, scoreA: '60/2', oversA: '5' }, A)).json.targetMatch.scorecard.overs.length === 2);
+  const lr = await post(`/api/live/${lm.id}/refresh`, {});
+  ok('anyone watching can ask for fresh scores; without a live feed it answers with what is stored', lr.status === 200 && lr.json.synced === false, lr.json);
+  ok('fresh scores for a match that does not exist', (await post('/api/live/nope/refresh', {})).status === 404);
 
   // --- Reward tiers come from the prizes ---
   await post('/api/admin/prizes', { title: 'Free Match Ticket - Match 3', pointsCost: 150, stock: 5, fulfilment: 'Gate', category: 'Match tickets' }, A);

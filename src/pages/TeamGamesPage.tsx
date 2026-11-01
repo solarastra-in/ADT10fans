@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Crown, Lock, Star, Target, Users } from 'lucide-react';
+import { Activity, ChevronRight, Crown, Lock, Star, Target, Users } from 'lucide-react';
 import { api } from '../api';
 import { useApp, useLoad } from '../state';
 import { useT } from '../i18n';
@@ -79,6 +79,14 @@ export default function TeamGamesPage() {
         subtitle={t('Pick 5 of the {team} players for each match, and predict their total, score after 5 overs, sixes, fours and wickets. Free for every fan.', { team: team.short || team.name })}
       />
       {fc.data && <FanClubToday status={fc.data} onChanged={fc.reload} />}
+      <Link to="/live" className="flex items-center gap-3 rounded-2xl border border-red-500/30 bg-red-500/5 p-4" data-testid="team-games-live">
+        <Activity className="w-5 h-5 text-red-400 shrink-0" />
+        <span className="flex-1 min-w-0">
+          <span className="block font-black text-white">{t('Live score and stats')}</span>
+          <span className="block text-xs text-slate-400">{t('Run rate, run charts, partnerships, batting and bowling numbers, updating while the match is on.')}</span>
+        </span>
+        <ChevronRight className="w-5 h-5 text-red-300" />
+      </Link>
       <Pick5Rules divisor={games.data.fanPointsDivisor} />
 
       <section className="space-y-3" data-testid="team-games-upcoming">

@@ -42,6 +42,20 @@ await api('POST', '/api/admin/contests', { title: 'Who wins match 1?', matchId: 
 await api('POST', '/api/admin/polls', { question: 'Best T10 finisher?', options: ['Pollard', 'Russell'] }, A);
 await api('POST', '/api/admin/prizes', { title: 'Signed cap', pointsCost: 10, stock: 5, fulfilment: 'Collect at the Fan Zone' }, A);
 await api('POST', '/api/admin/fanspaces', { name: 'Corniche Fan Zone', city: 'Abu Dhabi', capacity: 100, status: 'active' }, A);
+// A match being played, for the live centre: score updates, a scorecard and the over-by-over runs.
+const liveMatch = (await api('POST', '/api/matches', { teamA: 'lions', teamB: 'eagles', startsAt: new Date(Date.now() - 50 * 60_000).toISOString(), status: 'live', scoreA: '48/1', oversA: '4' }, A)).targetMatch;
+await api('POST', '/api/matches', { id: liveMatch.id, scoreA: '121/4', oversA: '10' }, A);
+await api('POST', '/api/matches', { id: liveMatch.id, scoreB: '30/2', oversB: '3' }, A);
+await api('POST', '/api/matches', { id: liveMatch.id, scoreB: '55/3', oversB: '5.2' }, A);
+{
+  const card = {
+    innings1: { teamId: 'lions', totalRuns: 121, wickets: 4, overs: '10', extras: { total: 7, wides: 5, noBalls: 2 }, fallOfWickets: [{ wicket: 1, score: 30, over: '2.4', player: 'A' }, { wicket: 2, score: 64, over: '5.1', player: 'B' }, { wicket: 3, score: 90, over: '7.3', player: 'C' }, { wicket: 4, score: 112, over: '9.2', player: 'D' }],
+      batting: [{ batsman: 'Lions Opener', dismissal: 'c x b y', runs: 44, balls: 20, fours: 4, sixes: 3 }, { batsman: 'Lions Two', dismissal: 'not out', runs: 38, balls: 18, fours: 2, sixes: 3 }], bowling: [{ bowler: 'Eagles Quick', overs: '2', runs: 18, wickets: 2, maidens: 0, economy: 9, dots: 4 }] },
+    innings2: { teamId: 'eagles', totalRuns: 55, wickets: 3, overs: '5.2', batting: [{ batsman: 'Eagles Opener', dismissal: 'not out', runs: 25, balls: 14, fours: 3, sixes: 1 }, { batsman: 'Eagles Three', dismissal: 'not out', runs: 9, balls: 6, fours: 1, sixes: 0 }], bowling: [{ bowler: 'Lions Spinner', overs: '2', runs: 15, wickets: 1, maidens: 0, economy: 7.5 }] },
+    overs: [...[14, 12, 9, 13, 16, 11, 12, 10, 13, 11].map((runs, i) => ({ innings: 1, over: i + 1, runs, wickets: [0, 0, 1, 0, 0, 1, 0, 1, 0, 1][i] })), ...[10, 8, 12, 14, 9].map((runs, i) => ({ innings: 2, over: i + 1, runs, wickets: [0, 1, 1, 0, 1][i] }))],
+  };
+  await api('POST', `/api/admin/matches/${liveMatch.id}/scorecard`, { scorecard: card }, A);
+}
 const otherFan = await apiLogin('other@test.dev');
 await api('POST', '/api/forum/threads', { title: 'Bulls opening pair', content: 'Who should open for the Bulls this season?', teamId: 'bulls' }, otherFan);
 
@@ -87,13 +101,26 @@ for (const [w, h] of [[390, 844], [360, 740]]) {
   console.log(`\n— ${w}px —`);
   // 1. Every public page renders, fits the screen and throws no errors.
   const anon = await newPage(w, h);
-  for (const p of ['/', '/matches', `/matches/${match.id}`, '/teams', '/teams/bulls', '/teams/aces', '/players', '/players/bulls-kieron-pollard', '/social', '/videos', '/news', '/play', '/fantasy', `/fantasy/${match.id}`, '/games', '/contests', '/prizes', '/leaderboard', '/fans', '/forum', '/fanspaces', '/rules', '/privacy', '/terms', '/nope']) {
+  for (const p of ['/', '/matches', `/matches/${match.id}`, '/teams', '/teams/bulls', '/teams/aces', '/players', '/players/bulls-kieron-pollard', '/social', '/videos', '/news', '/play', '/fantasy', `/fantasy/${match.id}`, '/games', '/contests', '/prizes', '/leaderboard', '/fans', '/forum', '/fanspaces', '/rules', '/privacy', '/terms', '/live', '/nope']) {
     await go(anon.page, p);
     await anon.page.waitForSelector('main', { timeout: 10000 });
     const text = await anon.page.locator('main').innerText();
     ok(`${w}px ${p} renders without errors`, anon.errors.length === 0 && text.trim().length > 20 && !/Something went wrong/.test(text), anon.errors);
     ok(`${w}px ${p} fits the screen`, await noOverflow(anon.page));
   }
+
+  // 1b. The live centre: score, chase, charts and stats fit a phone.
+  await go(anon.page, `/live/${liveMatch.id}`);
+  await anon.page.waitForSelector('[data-testid="live-score"]');
+  const liveText = await anon.page.locator('main').innerText();
+  ok(`${w}px the live centre shows the chase and the run rates`, /need 67 runs from 28 balls/i.test(liveText) && (await anon.page.locator('[data-testid="live-rrr"]').count()) === 1, liveText.slice(0, 400));
+  ok(`${w}px the live centre draws the run progression and runs per over`, (await anon.page.locator('[data-testid="live-worm"] svg polyline').count()) === 2 && (await anon.page.locator('[data-testid="live-manhattan"] svg path').count()) === 15 && (await anon.page.locator('[data-testid="live-phases"] tbody tr').count()) === 3);
+  ok(`${w}px the live centre shows batting, bowling, partnerships and who is at the crease`, (await Promise.all(['live-batting', 'live-bowling', 'live-partnerships', 'live-crease', 'live-fantasy'].map(id => anon.page.locator(`[data-testid="${id}"]`).count()))).slice(0, 4).every(n => n === 1) && (await anon.page.locator('[data-testid="live-crease"] li').count()) === 2 && (await anon.page.locator('[data-testid="live-partnerships"] li').count()) >= 5);
+  const bar = anon.page.locator('[data-testid="live-manhattan"] svg g g').first();
+  await bar.hover().catch(() => undefined);
+  await anon.page.locator('[data-testid="live-worm"] svg').hover({ position: { x: 120, y: 60 } });
+  ok(`${w}px the live centre fits the screen, charts answer hover, no errors`, (await noOverflow(anon.page)) && anon.errors.length === 0 && (await anon.page.locator('[data-testid="live-worm"] .absolute').count()) === 1, anon.errors);
+  if (process.env.SHOTS) await anon.page.screenshot({ path: `${process.env.SHOTS}/live-${w}.png`, fullPage: true });
 
   // 2. Videos play in the page.
   await go(anon.page, '/videos');
@@ -484,6 +511,9 @@ for (const lang of ['ar', 'ur']) {
   await fan.page.locator('[data-testid="fan-offer-done-close"]').click();
   await fan.page.waitForTimeout(800);
   ok('once used it cannot be redeemed again', (await fan.page.locator('[data-testid="fan-offer-redeem"]').count()) === 0 && /Used/.test(await fan.page.locator('[data-testid="fanclub-today-offers"]').innerText()));
+  await go(fan.page, '/fanclub');
+  await fan.page.waitForSelector('[data-testid="pass-offers"]');
+  ok('the pass under the QR code lists the offers but redeems only on the Aces page', (await fan.page.locator('[data-testid="fan-offer-redeem"]').count()) === 0 && (await fan.page.locator('[data-testid="pass-offers-link"]').getAttribute('href')) === '/team-games' && /Used/.test(await fan.page.locator('[data-testid="pass-offers"]').innerText()));
   await fan.ctx.close();
 }
 

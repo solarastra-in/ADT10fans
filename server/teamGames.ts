@@ -79,7 +79,11 @@ const band = (n: number, edges: number[], labels: string[]) => labels[edges.filt
 /** Runs off the bat and extras after the given number of overs, from ball-by-ball data; null if missing. */
 function runsAfterOvers(m: Match, innings: 1 | 2, overs: number): number | null {
   const balls = (m.scorecard?.ballByBall || []).filter(b => b.innings === innings);
-  if (!balls.length) return null;
+  if (!balls.length) {
+    // Else the over-by-over tally an admin entered (every one of those overs needed).
+    const tally = (m.scorecard?.overs || []).filter(o => o.innings === innings && o.over <= overs);
+    return tally.length === overs ? tally.reduce((s, o) => s + o.runs, 0) : null;
+  }
   const done = balls.filter(b => b.over < overs);
   // Need the whole of those overs (or the innings ended before them).
   if (!balls.some(b => b.over >= overs - 1)) return null;
