@@ -1252,4 +1252,5 @@ export const ur: Record<string, string> = {
   "Top Seeded Squad": "ٹاپ ٹیم",
   "View Full Leaderboard": "مکمل لیڈر بورڈ دیکھیں",
   "Be the first to register a Pick XI squad for this match!": "اس میچ کے لیے Pick XI ٹیم رجسٹر کرنے والے پہلے بنیں!",
+  "Staff sign-in": "اسٹاف سائن اِن",
 };

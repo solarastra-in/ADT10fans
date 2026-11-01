@@ -45,7 +45,7 @@ const fmtDate = (iso: string) => {
 };
 
 export const INDEXABLE_STATIC = ['/', '/matches', '/teams', '/players', '/social', '/videos', '/news', '/play', '/team-games', '/fantasy', '/games', '/fanwall', '/contests', '/prizes', '/leaderboard', '/fans', '/forum', '/fanspaces', '/rules', '/privacy', '/terms'];
-const PRIVATE = ['/team-portal', '/team-invite', '/admin', '/proposal', '/profile', '/fanclub'];
+const PRIVATE = ['/team-portal', '/team-invite', '/admin', '/proposal', '/profile', '/fanclub', '/venue', '/staff'];
 
 function teamName(store: AppStore, id: string) {
   return store.teams.find(t => t.id === id)?.name || id;

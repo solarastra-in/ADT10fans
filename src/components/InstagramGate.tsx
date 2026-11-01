@@ -7,8 +7,12 @@ import { useRoute } from '../router';
 import { Button, inputCls } from './ui';
 import type { InstagramView } from '../types';
 
-/** Pages anyone can read without the check: the rules and legal pages, and team-admin invitations. */
-const OPEN_ROUTES = new Set(['rules', 'privacy', 'terms', 'teamInvite']);
+/**
+ * Pages without the check: the rules and legal pages, and the staff pages (staff sign-in, the admin
+ * console, team portals and invitations, the fan venue desk). Staff accounts never take the check;
+ * these pages let them sign in without the fan screen in the way.
+ */
+const OPEN_ROUTES = new Set(['rules', 'privacy', 'terms', 'teamInvite', 'teamPortal', 'admin', 'adminFanclub', 'staff']);
 
 /**
  * Before fans can use ADT10fans.com they sign in and prove their Instagram: follow the club's
