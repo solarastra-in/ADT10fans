@@ -50,7 +50,7 @@ const codeFrom = (raw: unknown) => {
 };
 
 const opensMins = (store: AppStore) => Math.max(15, Math.min(24 * 60, store.settings.fanClubCheckInOpensMins || 45));
-const offerOpensAfter = (store: AppStore) => Math.max(0, Math.min(240, store.settings.fanClubOfferOpensAfterMins ?? 30));
+const offerOpensBefore = (store: AppStore) => Math.max(0, Math.min(240, store.settings.fanClubOfferOpensBeforeMins ?? 30));
 const matchMins = (store: AppStore) => Math.max(30, Math.min(600, store.settings.fanClubMatchMins || 90));
 
 /**
@@ -63,9 +63,9 @@ export function matchOver(store: AppStore, m: Match, now = Date.now()) {
   return now > +new Date(m.startsAt) + matchMins(store) * 60_000;
 }
 
-/** When a match's offers can be redeemed: from offerOpensAfter minutes after the first ball until the match ends. */
+/** When a match's offers can be redeemed: from offerOpensBefore minutes before the first ball until the match ends. */
 export function offerWindow(store: AppStore, m: Match, now = Date.now()) {
-  const opensAt = +new Date(m.startsAt) + offerOpensAfter(store) * 60_000;
+  const opensAt = +new Date(m.startsAt) - offerOpensBefore(store) * 60_000;
   const closesAt = m.status === 'live' && now > +new Date(m.startsAt) + matchMins(store) * 60_000 ? null : +new Date(m.startsAt) + matchMins(store) * 60_000;
   return { open: now >= opensAt && !matchOver(store, m, now), opensAt: new Date(opensAt).toISOString(), closesAt: closesAt ? new Date(closesAt).toISOString() : null };
 }
@@ -145,7 +145,7 @@ function offerForFan(store: AppStore, fan: User, club: FanClub, o: VenueOffer, n
 /** Redeem one of an offer for a fan (on the fan's phone, or at the desk). Returns an error message or the redemption. */
 function redeemFor(store: AppStore, fan: User, club: FanClub, offer: VenueOffer, by: { id: string; name?: string; email: string }) {
   const view = offerForFan(store, fan, club, offer);
-  if (!view.canRedeem) return { error: view.reason || `This offer opens ${offerOpensAfter(store)} minutes after the first ball.` };
+  if (!view.canRedeem) return { error: view.reason || `This offer opens ${offerOpensBefore(store)} minutes before the first ball.` };
   fan.claimedVenueOfferIds ||= [];
   if (!fan.claimedVenueOfferIds.includes(offer.id)) fan.claimedVenueOfferIds.push(offer.id);
   offer.redeemed = (offer.redeemed || 0) + 1;
@@ -292,7 +292,7 @@ fanclubRouter.get('/fanclub/admin/clubs', requireFanClubs, (req, res) => {
     opensAt: cur.opensAt || null,
     fanClubTeamId: clubTeam(store),
     today: uaeDay(Date.now()),
-    offerOpensAfterMins: offerOpensAfter(store),
+    offerOpensBeforeMins: offerOpensBefore(store),
     matchMins: matchMins(store),
     matches: allMatches(store).sort(byStart).map(m => {
       const w = checkInWindow(store, m);
@@ -494,7 +494,7 @@ fanclubRouter.post('/fanclub/admin/clubs/:id/admins', requireFanClubs, (req, res
 function readOffer(b: any, club: FanClub, existing: VenueOffer | null, by: string): VenueOffer | string {
   const title = str(b.title ?? existing?.title, 120);
   if (!title) return 'Give the offer a title';
-  // No dates: an offer runs with its match (from offerOpensAfter minutes after the first ball to the end).
+  // No dates: an offer runs with its match (from offerOpensBefore minutes before the first ball to the end).
   const imageUrl = b.imageUrl !== undefined ? str(b.imageUrl, 500) : existing?.imageUrl;
   if (imageUrl && !/^(https:\/\/|\/uploads\/)/.test(imageUrl)) return 'The image must be uploaded here';
   return {

@@ -628,8 +628,8 @@ export interface SystemSettings {
   instagramHideVerifyComments?: boolean;
   /** Fan club check-in opens this many minutes before the first ball. */
   fanClubCheckInOpensMins?: number;
-  /** Offers can be redeemed from this many minutes after the first ball… */
-  fanClubOfferOpensAfterMins?: number;
+  /** Offers can be redeemed from this many minutes before the first ball… */
+  fanClubOfferOpensBeforeMins?: number;
   /** …until the match ends: this long after the first ball (longer while it is still live). */
   fanClubMatchMins?: number;
   /** The team whose games fan club fans get (the club's own franchise). */
@@ -1164,7 +1164,7 @@ export function defaultSettings(): SystemSettings {
     instagramHideVerifyComments: false,
     instagramWelcomePoints: 25,
     fanClubCheckInOpensMins: 45,
-    fanClubOfferOpensAfterMins: 30,
+    fanClubOfferOpensBeforeMins: 30,
     fanClubMatchMins: 90,
     fanClubTeamId: 'aces',
     requireTwitterFollow: false,

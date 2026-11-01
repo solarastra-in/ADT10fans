@@ -175,7 +175,7 @@ adminRouter.post('/admin/settings', requireAdmin('settings'), (req, res) => {
   }
   if (b.instagramWelcomePoints !== undefined) s.instagramWelcomePoints = Math.max(0, Math.min(500, Math.round(num(b.instagramWelcomePoints, 25))));
   if (b.instagramHideVerifyComments !== undefined) s.instagramHideVerifyComments = Boolean(b.instagramHideVerifyComments);
-  if (b.fanClubOfferOpensAfterMins !== undefined) s.fanClubOfferOpensAfterMins = Math.max(0, Math.min(240, Math.round(num(b.fanClubOfferOpensAfterMins, 30))));
+  if (b.fanClubOfferOpensBeforeMins !== undefined) s.fanClubOfferOpensBeforeMins = Math.max(0, Math.min(240, Math.round(num(b.fanClubOfferOpensBeforeMins, 30))));
   if (b.fanClubMatchMins !== undefined) s.fanClubMatchMins = Math.max(30, Math.min(600, Math.round(num(b.fanClubMatchMins, 90))));
   if (b.fanClubCheckInOpensMins !== undefined) s.fanClubCheckInOpensMins = Math.max(15, Math.min(1440, Math.round(num(b.fanClubCheckInOpensMins, 90))));
   if (b.fanClubTeamId !== undefined) {

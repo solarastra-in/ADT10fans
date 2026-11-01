@@ -9,7 +9,7 @@ import type { FanOffer } from '../types';
 /**
  * The offers for the fan's check-in at a fan club. The fan redeems an offer on their own phone, in
  * front of the venue staff: tap Redeem, show the screen, tap again to confirm. Offers open a while
- * after the first ball and close when the match ends; each has a limit per fan and for the venue.
+ * before the first ball and close when the match ends; each has a limit per fan and for the venue.
  */
 export const FanOffers: React.FC<{ offers: FanOffer[]; onChanged?: () => void }> = ({ offers, onChanged }) => {
   const { refreshUser, toast } = useApp();

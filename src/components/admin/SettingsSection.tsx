@@ -41,7 +41,7 @@ type Draft = {
   instagramHideVerifyComments: boolean;
   instagramWelcomePoints: string;
   fanClubCheckInOpensMins: string;
-  fanClubOfferOpensAfterMins: string;
+  fanClubOfferOpensBeforeMins: string;
   fanClubMatchMins: string;
   fanClubTeamId: string;
 };
@@ -85,7 +85,7 @@ const toDraft = (s: Partial<SystemSettings> | null | undefined): Draft => ({
   instagramHideVerifyComments: !!s?.instagramHideVerifyComments,
   instagramWelcomePoints: String(s?.instagramWelcomePoints ?? 25),
   fanClubCheckInOpensMins: String(s?.fanClubCheckInOpensMins ?? 45),
-  fanClubOfferOpensAfterMins: String(s?.fanClubOfferOpensAfterMins ?? 30),
+  fanClubOfferOpensBeforeMins: String(s?.fanClubOfferOpensBeforeMins ?? 30),
   fanClubMatchMins: String(s?.fanClubMatchMins ?? 90),
   fanClubTeamId: s?.fanClubTeamId || 'aces',
 });
@@ -219,7 +219,7 @@ export const SettingsSection: React.FC<{ settings: SystemSettings; teams: Team[]
       instagramWelcomePoints: toNumber(draft.instagramWelcomePoints, 25),
       fanClubCheckInPoints: toNumber(draft.fanClubCheckInPoints, 100),
       fanClubCheckInOpensMins: toNumber(draft.fanClubCheckInOpensMins, 45),
-      fanClubOfferOpensAfterMins: toNumber(draft.fanClubOfferOpensAfterMins, 30),
+      fanClubOfferOpensBeforeMins: toNumber(draft.fanClubOfferOpensBeforeMins, 30),
       fanClubMatchMins: toNumber(draft.fanClubMatchMins, 90),
       fanClubTeamId: draft.fanClubTeamId,
     };
@@ -394,8 +394,8 @@ export const SettingsSection: React.FC<{ settings: SystemSettings; teams: Team[]
             <Field label="Check-in opens (minutes before the first ball)">
               <TextInput type="number" value={draft.fanClubCheckInOpensMins} onChange={e => set({ fanClubCheckInOpensMins: e.target.value })} placeholder="45" />
             </Field>
-            <Field label="Offers open (minutes after the first ball)">
-              <TextInput type="number" value={draft.fanClubOfferOpensAfterMins} onChange={e => set({ fanClubOfferOpensAfterMins: e.target.value })} placeholder="30" />
+            <Field label="Offers open (minutes before the first ball)">
+              <TextInput type="number" value={draft.fanClubOfferOpensBeforeMins} onChange={e => set({ fanClubOfferOpensBeforeMins: e.target.value })} placeholder="30" />
             </Field>
             <Field label="Match length (minutes)" hint="Offers close and check-in fans go back to every game this long after the first ball (or when the match is marked finished, if later).">
               <TextInput type="number" value={draft.fanClubMatchMins} onChange={e => set({ fanClubMatchMins: e.target.value })} placeholder="90" />

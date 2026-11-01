@@ -181,8 +181,8 @@ export interface FanClubAdminView {
   fanClubTeamId: string;
   /** Today in Abu Dhabi (YYYY-MM-DD). */
   today: string;
-  /** Offers open this many minutes after the first ball, and close this long after it (the match length). */
-  offerOpensAfterMins?: number;
+  /** Offers open this many minutes before the first ball, and close this long after it (the match length). */
+  offerOpensBeforeMins?: number;
   matchMins?: number;
   matches: FanClubMatchRef[];
   clubs: FanClubAdminClub[];
@@ -1160,7 +1160,7 @@ export interface SystemSettings {
   instagramHideVerifyComments?: boolean;
   instagramWelcomePoints?: number;
   fanClubCheckInOpensMins?: number;
-  fanClubOfferOpensAfterMins?: number;
+  fanClubOfferOpensBeforeMins?: number;
   fanClubMatchMins?: number;
   fanClubTeamId?: string;
 }
