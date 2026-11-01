@@ -366,7 +366,7 @@ export const SquadEditorSection: React.FC<{
         title="Squad Editor"
         description="Add, edit, or delete individual players from franchise squad arrays. Update player roles, batting and bowling styles, and save directly to persistent database."
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {isDirty && (
               <Button
                 variant="secondary"
@@ -466,7 +466,7 @@ export const SquadEditorSection: React.FC<{
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 variant="primary"
                 size="sm"
