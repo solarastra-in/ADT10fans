@@ -4,6 +4,7 @@ import { db, AppStore, FanClub, FanClubCheckInRecord, Match, User, VenueOffer } 
 import { canManageFanClub, fanClubScopeOf, getAuthUser, hasPermission, requireAdmin, requireUser } from '../auth';
 import { bad, num, str, userOf, wrap } from '../http';
 import { awardPoints } from '../points';
+import { gameSecret } from '../games';
 import { gateSettings, isVerified, needsInstagram, verifyInPerson } from '../instagramGate';
 
 /**
@@ -23,22 +24,22 @@ export const fanclubRouter = Router();
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const QR_PREFIX = 'ADT10FC:';
 
-function randomCode() {
-  return Array.from(crypto.randomBytes(6), b => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
-}
-
-/** The fan's check-in code, created on first use. Random, so it can't be worked out from the account. */
-export function ensureFanClubCode(store: AppStore, user: User): string {
-  if (user.fanClubCode && /^[A-Z2-9]{6}$/.test(user.fanClubCode) && !legacyCode(user)) return user.fanClubCode;
-  let code = randomCode();
-  while (store.users.some(u => u.fanClubCode === code)) code = randomCode();
-  user.fanClubCode = code;
+/**
+ * A fan's check-in code, worked out from their account with the site's secret: every server gives
+ * the same code without saving anything (page views cannot save on shared storage), and it cannot be
+ * guessed from the account. "Get a new code" bumps the version, which is saved.
+ */
+const codeCache = new Map<string, string>();
+export function fanCodeFor(store: AppStore, user: Pick<User, 'id' | 'fanClubCodeVersion'>): string {
+  const key = `${user.id}:${user.fanClubCodeVersion || 0}`;
+  let code = codeCache.get(key);
+  if (!code) {
+    const h = crypto.createHmac('sha256', gameSecret(store)).update(`fanclub-code:${key}`).digest();
+    code = Array.from(h.subarray(0, 6), b => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
+    if (codeCache.size > 200_000) codeCache.clear();
+    codeCache.set(key, code);
+  }
   return code;
-}
-/** Codes from an earlier build were derived from the account id (guessable): replace them. */
-function legacyCode(user: User) {
-  const h = crypto.createHash('md5').update(user.id + 'aces-fanclub').digest('hex').toUpperCase();
-  return user.fanClubCode === h.slice(0, 2) + h.slice(4, 8);
 }
 
 const codeFrom = (raw: unknown) => {
@@ -141,11 +142,7 @@ fanclubRouter.get('/fanclub/my-status', (req, res) => {
   // Fans who have not verified Instagram still get their code: a venue admin can confirm their
   // Instagram in person when they show it at a fan club (and check them in at the same time).
   const instagramRequired = needsInstagram(store, user);
-  let code = user.fanClubCode;
-  if (!code || !/^[A-Z2-9]{6}$/.test(code) || legacyCode(user)) {
-    code = ensureFanClubCode(store, user);
-    db.save();
-  }
+  const code = fanCodeFor(store, user);
   const claimed = new Set(user.claimedVenueOfferIds || []);
   res.json({
     ...base,
@@ -165,8 +162,8 @@ fanclubRouter.get('/fanclub/my-status', (req, res) => {
 fanclubRouter.post('/fanclub/my-code/renew', requireUser, (req, res) => {
   const user = userOf(req);
   const store = db.get();
-  user.fanClubCode = undefined;
-  const code = ensureFanClubCode(store, user);
+  user.fanClubCodeVersion = (user.fanClubCodeVersion || 0) + 1;
+  const code = fanCodeFor(store, user);
   db.save();
   res.json({ fanClubCode: code, qrPayload: QR_PREFIX + code });
 });
@@ -554,7 +551,7 @@ fanclubRouter.delete('/fanclub/admin/clubs/:id/offers/:offerId', requireFanClubs
 
 function fanByCode(store: AppStore, raw: unknown): User | null {
   const code = codeFrom(raw);
-  return code ? store.users.find(u => u.fanClubCode === code && !legacyCode(u)) || null : null;
+  return code ? store.users.find(u => fanCodeFor(store, u) === code) || null : null;
 }
 
 function matchFor(store: AppStore, matchId: unknown, club: FanClub): Match | null {

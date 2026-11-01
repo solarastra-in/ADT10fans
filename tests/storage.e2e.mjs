@@ -131,6 +131,18 @@ let adminToken;
   ok('an organiser on B verifies fans who asked on A', seen);
 }
 
+// A fan's fan club code is the same on both servers (page views cannot save on shared storage), and
+// a venue desk on the other server finds the fan by it.
+{
+  const club = (await call(A, 'POST', '/api/fanclub/admin/clubs', { name: 'Shared Lounge', city: 'Dubai', country: 'UAE' }, adminToken)).json.club;
+  const c1 = (await call(A, 'GET', '/api/fanclub/my-status', null, tokens[1])).json.fanClubCode;
+  const c2 = (await call(B, 'GET', '/api/fanclub/my-status', null, tokens[1])).json.fanClubCode;
+  const c3 = (await call(A, 'GET', '/api/fanclub/my-status', null, tokens[1])).json.fanClubCode;
+  ok('a fan’s fan club code is the same on every server and every page view', /^[A-Z2-9]{6}$/.test(c1) && c1 === c2 && c2 === c3, [c1, c2, c3]);
+  await new Promise(r => setTimeout(r, 1200));
+  const found = await call(B, 'GET', `/api/fanclub/admin/fan?fanClubId=${club.id}&code=${c1}`, null, adminToken);
+  ok('the venue desk on the other server finds the fan by that code', found.status === 200 && found.json.fan?.id === (await call(A, 'GET', '/api/me', null, tokens[1])).json.user.id, found.json);
+}
 const th = await call(A, 'POST', '/api/forum/threads', { title: 'Concurrency thread', content: 'Replies arrive from both servers' }, tokens[0], '10.3.0.1');
 const T = th.json.thread.id;
 const jobs = [];
