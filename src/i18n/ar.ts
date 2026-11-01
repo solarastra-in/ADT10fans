@@ -1254,4 +1254,7 @@ export const ar: Record<string, string> = {
   "Be the first to register a Pick XI squad for this match!": "كن أول من يسجل فريق Pick XI لهذه المباراة!",
   "Staff sign-in": "دخول الموظفين",
   "TEST MATCH": "مباراة تجريبية",
+  "At a fan club? Show this to the venue admin": "في نادي المشجعين؟ اعرض هذا على مسؤول المكان",
+  "Copy the post link": "انسخ رابط المنشور",
+  "They can confirm your Instagram and check you in. This screen moves on by itself.": "يمكنه تأكيد حسابك على إنستغرام وتسجيل حضورك. ستنتقل هذه الشاشة تلقائيًا.",
 };

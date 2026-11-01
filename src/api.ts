@@ -295,7 +295,8 @@ export const api = {
   fanClubImport: (data: { clubs?: any[]; csv?: string }) => post<Ok & { added: number; updated: number; offers: number; errors: string[] }>('/api/fanclub/admin/import', data),
   fanClubExport: () => req<{ clubs: any[] }>('/api/fanclub/admin/export'),
   fanClubLookup: (fanClubId: string, code: string, matchId?: string) => req<FanClubFanLookup>(`/api/fanclub/admin/fan${qs({ fanClubId, code, matchId })}`),
-  fanClubCheckIn: (data: { fanClubId: string; code: string; matchId?: string }) => post<Ok & { pointsAwarded: number; fan: { id: string; name: string; points: number }; match: FanClubMatchRef; offers: (VenueOffer & { used: boolean })[] }>('/api/fanclub/admin/checkin', data),
+  fanClubCheckIn: (data: { fanClubId: string; code: string; matchId?: string; verifyInstagram?: boolean; handle?: string }) => post<Ok & { pointsAwarded: number; fan: { id: string; name: string; points: number }; match: FanClubMatchRef; offers: (VenueOffer & { used: boolean })[] }>('/api/fanclub/admin/checkin', data),
+  fanClubVerifyInstagram: (data: { fanClubId: string; code: string; handle?: string }) => post<Ok & { fan: { id: string; name: string; instagramHandle: string } }>('/api/fanclub/admin/verify-instagram', data),
   fanClubRedeem: (data: { fanClubId: string; offerId: string; code?: string; userId?: string }) => post<Ok & { message: string; bonusPoints: number }>('/api/fanclub/admin/redeem-offer', data),
   fanClubStats: (fanClubId?: string) => req<{ totalCheckIns: number; todayCheckIns: number; pointsGiven: number; totalRedemptions: number; recentCheckIns: FanClubCheckInRecord[]; recentRedemptions: FanClubRedemption[] }>(`/api/fanclub/admin/stats${qs({ fanClubId })}`),
   // Instagram check

@@ -4,7 +4,7 @@ import { db, AppStore, FanClub, FanClubCheckInRecord, Match, User, VenueOffer } 
 import { canManageFanClub, fanClubScopeOf, getAuthUser, hasPermission, requireAdmin, requireUser } from '../auth';
 import { bad, num, str, userOf, wrap } from '../http';
 import { awardPoints } from '../points';
-import { gateSettings, isVerified, needsInstagram } from '../instagramGate';
+import { gateSettings, isVerified, needsInstagram, verifyInPerson } from '../instagramGate';
 
 /**
  * Fan clubs: places where fans watch matches together (a venue, a supporters' chapter).
@@ -138,7 +138,9 @@ fanclubRouter.get('/fanclub/my-status', (req, res) => {
     fanClubs: clubs.map(c => publicClub(c, now)),
   };
   if (!user) return res.json({ ...base, signedIn: false });
-  if (needsInstagram(store, user)) return res.json({ ...base, signedIn: true, instagramRequired: true });
+  // Fans who have not verified Instagram still get their code: a venue admin can confirm their
+  // Instagram in person when they show it at a fan club (and check them in at the same time).
+  const instagramRequired = needsInstagram(store, user);
   let code = user.fanClubCode;
   if (!code || !/^[A-Z2-9]{6}$/.test(code) || legacyCode(user)) {
     code = ensureFanClubCode(store, user);
@@ -148,6 +150,7 @@ fanclubRouter.get('/fanclub/my-status', (req, res) => {
   res.json({
     ...base,
     signedIn: true,
+    ...(instagramRequired ? { instagramRequired: true } : {}),
     fanClubCode: code,
     qrPayload: QR_PREFIX + code,
     checkedIn: Boolean(cur.match && user.fanClubCheckIns?.some(c => c.matchId === cur.match!.id)),
@@ -594,10 +597,17 @@ fanclubRouter.post('/fanclub/admin/checkin', requireFanClubs, wrap(async (req, r
     if (!club.active) return { status: 409, error: 'This fan club is switched off' };
     const fan = fanByCode(store, b.code ?? b.qrPayload);
     if (!fan) return { status: 404, error: 'No fan has this code. Ask the fan to show the code on their Fan Club page.' };
-    if (needsInstagram(store, fan)) return { status: 409, error: `${fan.name} has not verified Instagram yet. They can do it on ADT10fans.com now, then check in.` };
     const match = matchFor(store, b.matchId, club);
     if (!match) return { status: 409, error: 'There is no match to check in for' };
     if (!clubHasMatch(store, club, match)) return { status: 409, error: `Match ${match.matchNo} is not one of ${club.name}’s matches. An admin can add it on the club’s Matches tab.` };
+    // With verifyInstagram, the venue admin confirms the fan's Instagram in person as part of the check-in.
+    if (needsInstagram(store, fan)) {
+      if (!b.verifyInstagram) return { status: 409, error: `${fan.name} has not verified Instagram yet. Check their Instagram on their phone, then use “Confirm Instagram and check in”.` };
+      const w0 = checkInWindow(store, match);
+      if (!w0.open) return { status: 409, error: `Check-in for Match ${match.matchNo} is not open, so use “Confirm Instagram only”.` };
+      const err = verifyInPerson(store, fan, `${admin.email} at ${club.name}`, b.handle);
+      if (err) return { status: 409, error: err };
+    }
     const w = checkInWindow(store, match);
     if (!w.open) {
       const opens = new Date(w.opensAt);
@@ -619,6 +629,24 @@ fanclubRouter.post('/fanclub/admin/checkin', requireFanClubs, wrap(async (req, r
     if (store.fanClubCheckIns.length > 50_000) store.fanClubCheckIns.length = 50_000;
     fan.fanClubCheckIns.push({ matchId: match.id, matchNo: match.matchNo, fanClubId: club.id, fanClubName: club.name, checkedInAt: at, pointsAwarded: points });
     return { ok: { pointsAwarded: points, fan: { id: fan.id, name: fan.name, avatar: fan.avatar, teamId: fan.teamId, points: fan.points }, match, checkInRecord: rec, offers: club.offers.filter(o => offerLive(o)).map(o => ({ ...publicOffer(o), used: (fan.claimedVenueOfferIds || []).includes(o.id) })) } };
+  });
+  if ('error' in r) return bad(res, r.error!, r.status);
+  res.json({ success: true, ...r.ok });
+}));
+
+/** A venue admin confirms a fan's Instagram in person (no check-in), e.g. when there is no match today. */
+fanclubRouter.post('/fanclub/admin/verify-instagram', requireFanClubs, wrap(async (req, res) => {
+  const admin = userOf(req);
+  const b = req.body || {};
+  const r = await db.mutate(store => {
+    const club = store.fanClubs.find(c => c.id === String(b.fanClubId || ''));
+    if (!club) return { status: 404, error: 'Fan club not found' };
+    if (!canManageFanClub(admin, club.id)) return { status: 403, error: 'You do not run this fan club' };
+    const fan = fanByCode(store, b.code);
+    if (!fan) return { status: 404, error: 'No fan has this code.' };
+    const err = verifyInPerson(store, fan, `${admin.email} at ${club.name}`, b.handle);
+    if (err) return { status: 409, error: err };
+    return { ok: { fan: { id: fan.id, name: fan.name, instagramHandle: fan.instagramHandle } } };
   });
   if ('error' in r) return bad(res, r.error!, r.status);
   res.json({ success: true, ...r.ok });

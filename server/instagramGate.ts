@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import type { NextFunction, Request, Response } from 'express';
 import type { AppStore, User } from './db';
+import { awardPoints } from './points';
 import { db } from './db';
 import { getAuthUser } from './auth';
 
@@ -193,4 +194,28 @@ export function instagramGate(req: Request, res: Response, next: NextFunction) {
   if (!needsInstagram(store, user)) return next();
   const g = gateSettings(store);
   return res.status(403).json({ error: `Verify your Instagram first: follow ${g.target} and confirm your username.`, code: 'instagram_required' });
+}
+
+/** The one-off points for a verified Instagram (Admin → Settings). Returns the points given. */
+export function grantWelcome(store: AppStore, u: User) {
+  u.badges ||= [];
+  if (u.badges.includes('social-instagram')) return 0;
+  u.badges.push('social-instagram');
+  const pts = gateSettings(store).welcomePoints;
+  return pts ? awardPoints(store, u, pts, 'social-follow', 'Instagram verified', u.id) : 0;
+}
+
+/**
+ * A venue admin confirms, in person, that the fan follows the account and commented (e.g. they were
+ * shown the phone). Returns an error message, or null when the fan is now verified.
+ */
+export function verifyInPerson(store: AppStore, fan: User, by: string, rawHandle?: unknown): string | null {
+  if (isVerified(fan)) return null;
+  const handle = cleanUsername(rawHandle ?? fan.instagramHandle);
+  if (!USERNAME_RE.test(handle)) return 'Enter the fan’s Instagram username first.';
+  if (takenBy(store, handle, fan.id)) return `@${handle} is already verified on another ADT10fans account.`;
+  fan.instagramHandle = handle;
+  markVerified(fan, by);
+  grantWelcome(store, fan);
+  return null;
 }

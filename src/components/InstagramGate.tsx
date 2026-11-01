@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, Clipboard, ExternalLink, Instagram, Loader2 } from 'lucide-react';
+import QRCode from 'qrcode';
+import { CheckCircle2, Clipboard, ExternalLink, Instagram, Loader2, QrCode } from 'lucide-react';
 import { useApp } from '../state';
 import { api } from '../api';
 import { useT } from '../i18n';
-import { useRoute } from '../router';
+import { navigate, useRoute } from '../router';
 import { Button, inputCls } from './ui';
 import type { InstagramView } from '../types';
 
@@ -27,32 +28,58 @@ export function InstagramGate() {
   const [handle, setHandle] = useState('');
   const [busy, setBusy] = useState<'' | 'start' | 'check' | 'review'>('');
   const [message, setMessage] = useState('');
+  const [pass, setPass] = useState<{ code: string; qr: string } | null>(null);
 
   const required = config?.requireInstagramFollow !== false;
   const exempt = !required || OPEN_ROUTES.has(route.name) || user?.role === 'admin' || user?.instagramFollowed;
 
+  // Once verified (by the comment check, an organiser, or a venue admin who confirmed the fan in
+  // person), move on: a fan checked in at a fan club goes straight to the team games.
+  const onVerified = async (points?: number) => {
+    toast(points ? t('Instagram verified! +{n} points', { n: points }) : t('Instagram verified!'));
+    await refreshUser().catch(() => undefined);
+    const st = await api.getFanClubStatus().catch(() => null);
+    if (st?.checkedInRecord || st?.gamesTeamId) navigate('/team-games');
+  };
+
   useEffect(() => {
     if (!user || exempt) return;
     let stop = false;
+    let done = false;
     const load = () =>
       api
         .instagramStatus()
         .then(v => {
-          if (stop) return;
+          if (stop || done) return;
           setView(v);
           if (v.handle) setHandle(h => h || v.handle!);
-          if (v.status === 'verified') refreshUser().catch(() => undefined);
+          if (v.status === 'verified') {
+            done = true;
+            onVerified();
+          }
         })
         .catch(() => undefined);
     load();
-    // While an organiser is looking, check back now and then.
-    const id = setInterval(() => view?.status === 'review' && load(), 20_000);
+    // Check every few seconds, so the screen moves on by itself when a venue admin or an organiser
+    // confirms the fan.
+    const id = setInterval(load, 5_000);
     return () => {
       stop = true;
       clearInterval(id);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, exempt, view?.status]);
+  }, [user?.id, exempt]);
+
+  // The fan's fan club code and QR, for a venue admin to scan at a fan club.
+  useEffect(() => {
+    if (!user || exempt) return;
+    api
+      .getFanClubStatus()
+      .then(async st => {
+        if (st.fanClubCode && st.qrPayload) setPass({ code: st.fanClubCode, qr: await QRCode.toDataURL(st.qrPayload, { width: 280, margin: 1, errorCorrectionLevel: 'M' }) });
+      })
+      .catch(() => undefined);
+  }, [user?.id, exempt]);
 
   if (!ready || exempt) return null;
 
@@ -66,10 +93,7 @@ export function InstagramGate() {
       const v = kind === 'start' ? await api.instagramStart(handle) : kind === 'check' ? await api.instagramCheck() : await api.instagramRequestReview();
       setView(v);
       if (v.reason) setMessage(v.reason);
-      if (v.verified || v.status === 'verified') {
-        toast(v.pointsAwarded ? t('Instagram verified! +{n} points', { n: v.pointsAwarded }) : t('Instagram verified!'));
-        await refreshUser();
-      }
+      if (v.verified || v.status === 'verified') await onVerified(v.pointsAwarded);
     } catch (e: any) {
       setMessage(e?.message || t('Something went wrong. Please try again.'));
     } finally {
@@ -155,9 +179,15 @@ export function InstagramGate() {
                     {view.code} <Clipboard className="w-4 h-4 text-slate-400" />
                   </button>
                   {view.postUrl && (
-                    <a href={view.postUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-300 underline">
-                      {t('Open the post')} <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
+                    <span className="flex flex-wrap items-center gap-3">
+                      {/* Same tab: on phones this opens the Instagram app on the post. */}
+                      <a href={view.postUrl} rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-300 underline" data-testid="ig-open-post">
+                        {t('Open the post')} <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                      <button type="button" onClick={() => copy(view.postUrl!)} className="text-xs font-bold text-slate-300 underline">
+                        {t('Copy the post link')}
+                      </button>
+                    </span>
                   )}
                   <p className="text-xs text-slate-400">{t('Comment from @{handle}. We only use the comment to confirm the account is yours.', { handle: view.handle || '' })}</p>
                   {step === 'review' ? (
@@ -180,6 +210,17 @@ export function InstagramGate() {
               </li>
             )}
           </ol>
+
+          {pass && (
+            <div className="rounded-2xl border border-slate-700 bg-slate-950/70 p-4 text-center space-y-2" data-testid="ig-fanclub-pass">
+              <p className="text-sm font-bold text-white inline-flex items-center gap-1.5">
+                <QrCode className="w-4 h-4 text-amber-400" /> {t('At a fan club? Show this to the venue admin')}
+              </p>
+              <img src={pass.qr} alt={t('Your fan club QR code')} className="mx-auto w-40 h-40 rounded-xl bg-white p-2" />
+              <p className="font-mono text-2xl font-black tracking-[0.25em] text-amber-300" data-testid="ig-fanclub-code">{pass.code}</p>
+              <p className="text-xs text-slate-400">{t('They can confirm your Instagram and check you in. This screen moves on by itself.')}</p>
+            </div>
+          )}
 
           {view?.status === 'rejected' && view.note && <p className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-200">{view.note}</p>}
           {message && <p className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-xs text-amber-100" role="status">{message}</p>}

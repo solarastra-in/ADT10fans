@@ -1019,7 +1019,7 @@ ok('robots.txt blocks admin and API', /Disallow: \/admin/.test((await html('/rob
   const st1 = (await get('/api/fanclub/my-status', IG)).json;
   ok('a verified fan has a random fan club code and QR', /^[A-Z2-9]{6}$/.test(st1.fanClubCode) && st1.qrPayload === `ADT10FC:${st1.fanClubCode}`, st1);
   const unv = await login('clubunverified@test.dev', undefined, { instagram: false });
-  ok('a fan who has not verified Instagram gets no code', (await get('/api/fanclub/my-status', unv.token)).json.instagramRequired === true);
+  ok('a fan who has not verified Instagram is flagged on their fan club pass', (await get('/api/fanclub/my-status', unv.token)).json.instagramRequired === true);
   const far = (await post('/api/matches', { teamA: 'aces', teamB: 'eagles', startsAt: inMinutes(3 * 60) }, A)).json.targetMatch;
   const tooEarly = await post('/api/fanclub/admin/checkin', { fanClubId: lounge.id, code: st1.fanClubCode, matchId: far.id }, CA);
   ok('check-in is not open three hours before the match', tooEarly.status === 409 && /opens 90 minutes/.test(tooEarly.json.error), tooEarly.json);
@@ -1052,6 +1052,22 @@ ok('robots.txt blocks admin and API', /Disallow: \/admin/.test((await html('/rob
     const cafeIds = (await get('/api/fanclub/admin/clubs', A)).json.clubs.find(c => c.id === cafe.id).matchIds;
     ok('other clubs keep the default', cafeIds.includes(mAces.id) && cafeIds.includes(far.id) && !cafeIds.includes(other.id), cafeIds);
   }
+  // A fan who has not verified Instagram shows their code at the venue; the venue admin confirms
+  // their Instagram in person and checks them in at the same time.
+  const vf = await login('venuefan@test.dev', undefined, { instagram: false });
+  const vst = (await get('/api/fanclub/my-status', vf.token)).json;
+  ok('a fan who has not verified Instagram still gets a fan club code', vst.instagramRequired === true && /^[A-Z2-9]{6}$/.test(vst.fanClubCode), vst);
+  ok('checking them in needs the venue admin to confirm Instagram', (await post('/api/fanclub/admin/checkin', { fanClubId: lounge.id, code: vst.fanClubCode, matchId: mAces.id }, CA)).status === 409);
+  ok('the venue admin must enter their Instagram username', /username/.test((await post('/api/fanclub/admin/checkin', { fanClubId: lounge.id, code: vst.fanClubCode, matchId: mAces.id, verifyInstagram: true }, CA)).json.error));
+  ok('a venue admin cannot confirm fans at another club', (await post('/api/fanclub/admin/verify-instagram', { fanClubId: cafe.id, code: vst.fanClubCode, handle: 'venue.fan' }, CA)).status === 403);
+  const vci = await post('/api/fanclub/admin/checkin', { fanClubId: lounge.id, code: vst.fanClubCode, matchId: mAces.id, verifyInstagram: true, handle: '@Venue.Fan' }, CA);
+  const vme = await me(vf.token);
+  ok('confirm Instagram and check in: verified, checked in here, points given', vci.status === 200 && vme.instagramFollowed === true && vme.instagramHandle === 'venue.fan' && vme.fanClubCheckIns?.[0]?.fanClubId === lounge.id && vci.json.pointsAwarded === 120, { vci: vci.json, vme });
+  ok('the fan can play straight away, and only the Aces games', (await get('/api/team-games', vf.token)).json.onlyTeamGames === true && (await post('/api/checkin', {}, vf.token)).status === 200);
+  const vf2 = await login('venuefan2@test.dev', undefined, { instagram: false });
+  const v2code = (await get('/api/fanclub/my-status', vf2.token)).json.fanClubCode;
+  ok('a venue admin can confirm Instagram without a check-in', (await post('/api/fanclub/admin/verify-instagram', { fanClubId: lounge.id, code: v2code, handle: 'venue.fan2' }, CA)).status === 200 && (await me(vf2.token)).instagramFollowed === true && !((await me(vf2.token)).fanClubCheckIns || []).length);
+  ok('an Instagram account confirmed for one fan cannot be used by another', (await post('/api/fanclub/admin/verify-instagram', { fanClubId: lounge.id, code: (await get('/api/fanclub/my-status', unv.token)).json.fanClubCode, handle: 'venue.fan' }, CA)).status === 409);
   const hist = (await get('/api/me/points', IG)).json;
   ok('the check-in is in the fan’s points history', JSON.stringify(hist).includes('fanclub-checkin'));
   const red = await post('/api/fanclub/admin/redeem-offer', { fanClubId: lounge.id, offerId: offer.id, code: st1.fanClubCode }, CA);
@@ -1059,7 +1075,7 @@ ok('robots.txt blocks admin and API', /Disallow: \/admin/.test((await html('/rob
   ok('each offer once per fan', (await post('/api/fanclub/admin/redeem-offer', { fanClubId: lounge.id, offerId: offer.id, code: st1.fanClubCode }, CA)).status === 409);
   ok('an unverified fan cannot be checked in', (await post('/api/fanclub/admin/checkin', { fanClubId: lounge.id, code: 'ZZZZZZ', matchId: mAces.id }, CA)).status === 404);
   const stats = (await get(`/api/fanclub/admin/stats?fanClubId=${lounge.id}`, CA)).json;
-  ok('the desk counts check-ins, offers and points given', stats.totalCheckIns === 2 && stats.totalRedemptions === 1 && stats.pointsGiven === 255, stats);
+  ok('the desk counts check-ins, offers and points given', stats.totalCheckIns === 3 && stats.totalRedemptions === 1 && stats.pointsGiven === 375, stats);
   ok('a fan club admin cannot read another club’s numbers', (await get(`/api/fanclub/admin/stats?fanClubId=${cafe.id}`, CA)).status === 403);
 
   // --- Test match: league admins try check-in without a real match; removing it takes the points back ---

@@ -2,10 +2,9 @@ import { Router } from 'express';
 import { db, User } from '../db';
 import { rateLimit, requireAdmin, requireUser, selfUser } from '../auth';
 import { bad, str, userOf, wrap } from '../http';
-import { awardPoints } from '../points';
 import {
   USERNAME_RE, cleanUsername, commentCheckConfigured, diagnose, gateSettings, hideComment, markVerified,
-  newCode, proofIn, recentComments, statusOf, takenBy,
+  newCode, proofIn, recentComments, statusOf, takenBy, grantWelcome,
 } from '../instagramGate';
 
 /** The Instagram check fans pass before playing (see instagramGate.ts). */
@@ -28,13 +27,7 @@ function view(u: User | null) {
   };
 }
 
-function welcome(store: ReturnType<typeof db.get>, u: User) {
-  u.badges ||= [];
-  if (u.badges.includes('social-instagram')) return 0;
-  u.badges.push('social-instagram');
-  const pts = gateSettings(store).welcomePoints;
-  return pts ? awardPoints(store, u, pts, 'social-follow', 'Instagram verified', u.id) : 0;
-}
+const welcome = grantWelcome;
 
 instagramRouter.get('/instagram/status', requireUser, (req, res) => res.json(view(userOf(req))));
 
