@@ -6,12 +6,13 @@ import { useT } from '../i18n';
 import { Link, usePageMeta } from '../router';
 import { Button, Card, Countdown, EmptyState, ErrorBox, PageHeader, Pill, Spinner, TeamBadge, cx, useFormat, ROLE_SHORT } from '../components/ui';
 import { ContestCard } from './ContestsPage';
+import { FanOffers } from '../components/FanOffers';
 import { Pick5Rules } from '../components/Pick5Rules';
 import type { FanClubStatusResponse } from '../types';
 
 /** The team games: Pick 5 and the team predictions for each of the fan club team's matches. */
 /** Where the fan is checked in today and that club's offers for the match (the fan club landing). */
-function FanClubToday({ status }: { status: FanClubStatusResponse }) {
+function FanClubToday({ status, onChanged }: { status: FanClubStatusResponse; onChanged?: () => void }) {
   const { teamById } = useApp();
   const t = useT();
   const f = useFormat();
@@ -31,18 +32,10 @@ function FanClubToday({ status }: { status: FanClubStatusResponse }) {
       {status.todayOffers?.length ? (
         <div className="space-y-2">
           <p className="text-xs font-black uppercase tracking-wider text-slate-400">{t('Offers for you here today')}</p>
-          <ul className="space-y-2" data-testid="fanclub-today-offers">
-            {status.todayOffers.map(o => (
-              <li key={o.id} className={cx('rounded-xl border p-3 text-sm', o.used ? 'border-slate-800 opacity-60' : 'border-emerald-500/30 bg-slate-950/60')}>
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-white flex-1">{o.title}</span>
-                  {o.used ? <Pill>{t('Used')}</Pill> : o.bonusPoints ? <Pill tone="amber">+{o.bonusPoints}</Pill> : null}
-                </div>
-                {o.description && <p className="text-xs text-slate-400 mt-1">{o.description}</p>}
-                {!o.used && <p className="text-[11px] text-slate-500 mt-1">{t('Show your code at the desk to use it.')}</p>}
-              </li>
-            ))}
-          </ul>
+          {v.offersOpenAt && +new Date(v.offersOpenAt) > Date.now() && (
+            <p className="text-xs text-slate-400">{t('Offers open at {time} and run until the match ends.', { time: f.time(v.offersOpenAt) })}</p>
+          )}
+          <FanOffers offers={status.todayOffers} onChanged={onChanged} />
         </div>
       ) : (
         <p className="text-xs text-slate-400">{t('No offers at this fan club for this match.')}</p>
@@ -57,6 +50,13 @@ export default function TeamGamesPage() {
   const t = useT();
   const f = useFormat();
   const games = useLoad(() => api.teamGames(), [user?.id]);
+  // Offers open during the match: check again every 30 seconds.
+  useEffect(() => {
+    if (!user) return;
+    const id = setInterval(() => fc.reload(), 30_000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
   const contests = useLoad(() => api.getContests(), [user?.id]);
   const team = games.data?.team;
   usePageMeta(team ? t('{team} games: Pick 5 and predictions', { team: team.name }) : t('Team games'), undefined, config?.brandName);
@@ -78,12 +78,7 @@ export default function TeamGamesPage() {
         title={t('{team} games', { team: team.name })}
         subtitle={t('Pick 5 of the {team} players for each match, and predict their total, score after 5 overs, sixes, fours and wickets. Free for every fan.', { team: team.short || team.name })}
       />
-      {fc.data && <FanClubToday status={fc.data} />}
-      {games.data.onlyTeamGames && (
-        <p className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-100" data-testid="team-games-only">
-          {t('You checked in at a fan club, so these are your games this season.')}
-        </p>
-      )}
+      {fc.data && <FanClubToday status={fc.data} onChanged={fc.reload} />}
       <Pick5Rules divisor={games.data.fanPointsDivisor} />
 
       <section className="space-y-3" data-testid="team-games-upcoming">

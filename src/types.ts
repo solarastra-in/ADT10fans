@@ -116,7 +116,11 @@ export interface VenueOffer {
   bonusPoints?: number;
   /** Only for these matches (empty = all of the club's matches). */
   matchIds?: string[];
+  /** Total redemptions at the venue (0 = no limit). */
   limit?: number;
+  /** How many times one fan can use it (default 1). */
+  perUserLimit?: number;
+  imageUrl?: string;
   redeemed?: number;
   remaining?: number | null;
   startsAt?: string;
@@ -177,6 +181,9 @@ export interface FanClubAdminView {
   fanClubTeamId: string;
   /** Today in Abu Dhabi (YYYY-MM-DD). */
   today: string;
+  /** Offers open this many minutes after the first ball, and close this long after it (the match length). */
+  offerOpensAfterMins?: number;
+  matchMins?: number;
   matches: FanClubMatchRef[];
   clubs: FanClubAdminClub[];
 }
@@ -210,13 +217,27 @@ export interface FanClubRedemption {
   at: string;
 }
 
+/** An offer as one fan sees it, for their check-in at the club. */
+export interface FanOffer extends VenueOffer {
+  clubName: string;
+  matchId: string | null;
+  window: { opensAt: string; closesAt: string | null; open: boolean } | null;
+  /** How many times this fan has used it. */
+  used: number;
+  usedUp: boolean;
+  canRedeem: boolean;
+  /** Why it cannot be used now (null while it is waiting to open). */
+  reason: string | null;
+  opensAt: string | null;
+}
+
 export interface FanClubFanLookup {
   fan: { id: string; name: string; avatar: string; teamId: string | null; points: number; instagramVerified: boolean; instagramHandle: string | null };
   match: FanClubMatchRef | null;
   window: { open: boolean; opensAt: string; closesAt: string } | null;
   checkedIn: FanClubVisit | null;
   checkedInHereToday: boolean;
-  offers: (VenueOffer & { used: boolean })[];
+  offers: FanOffer[];
 }
 
 export interface FanClubStatusResponse {
@@ -231,8 +252,8 @@ export interface FanClubStatusResponse {
   checkIns?: FanClubVisit[];
   gamesTeamId?: string | null;
   /** Where the fan is checked in today (last 12 hours). */
-  todayVisit?: { fanClubId: string; fanClubName: string; city: string; matchId: string; matchNo: number; teamA?: string; teamB?: string; startsAt?: string; checkedInAt: string; pointsAwarded: number } | null;
-  todayOffers?: (VenueOffer & { used: boolean; clubName: string })[];
+  todayVisit?: { fanClubId: string; fanClubName: string; city: string; matchId: string; matchNo: number; teamA?: string; teamB?: string; startsAt?: string; checkedInAt: string; pointsAwarded: number; offersOpenAt?: string | null } | null;
+  todayOffers?: FanOffer[];
   fanClubCode?: string;
   qrPayload?: string;
   fanClubs: FanClub[];
@@ -1139,6 +1160,8 @@ export interface SystemSettings {
   instagramHideVerifyComments?: boolean;
   instagramWelcomePoints?: number;
   fanClubCheckInOpensMins?: number;
+  fanClubOfferOpensAfterMins?: number;
+  fanClubMatchMins?: number;
   fanClubTeamId?: string;
 }
 

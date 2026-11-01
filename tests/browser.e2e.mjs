@@ -355,7 +355,8 @@ for (const lang of ['ar', 'ur']) {
   await fan.page.waitForSelector('[data-testid="fanclub-code"]');
   const fanCode = (await fan.page.locator('[data-testid="fanclub-code"]').innerText()).trim();
   ok('the fan sees their fan club pass', /^[A-Z2-9]{6}$/.test(fanCode) && (await noOverflow(fan.page)));
-  const desk = await newPage(390, 844, await apiLogin('desk@test.dev'));
+  const deskToken = await apiLogin('desk@test.dev');
+  const desk = await newPage(390, 844, deskToken);
   await go(desk.page, '/staff');
   await desk.page.waitForURL(u => new URL(u).pathname === '/venue', { timeout: 10000 });
   ok('a fan venue admin opening the staff page goes to their desk at /venue', true);
@@ -398,7 +399,7 @@ for (const lang of ['ar', 'ur']) {
   await qrFan.page.waitForSelector('[data-testid="ig-fanclub-code"]');
   const qrCode = (await qrFan.page.locator('[data-testid="ig-fanclub-code"]').innerText()).trim();
   ok('the Instagram screen shows the fan club QR and code on a phone', /^[A-Z2-9]{6}$/.test(qrCode) && (await qrFan.page.locator('[data-testid="ig-fanclub-pass"] img').count()) === 1 && (await noOverflow(qrFan.page)));
-  const desk2 = await newPage(390, 844, await apiLogin('desk@test.dev'));
+  const desk2 = await newPage(390, 844, deskToken);
   await go(desk2.page, '/venue');
   await desk2.page.waitForSelector('[data-testid="desk-code"]');
   await desk2.page.selectOption('#fc-match', soon.id);
@@ -438,6 +439,51 @@ for (const lang of ['ar', 'ur']) {
   await go(fan.page, '/prizes');
   await fan.page.waitForSelector('[data-testid="reward-tiers"]');
   ok('the prize tiers come from the prizes', (await fan.page.locator('[data-testid="tier-points"]').first().innerText()).trim() === '10+');
+
+  // Until the match ends the fan's other games are out of sight, without a notice about it.
+  await go(fan.page, '/team-games');
+  await fan.page.waitForSelector('[data-testid="fanclub-today"]');
+  const tgText = await fan.page.locator('main').innerText();
+  ok('no “fan club member” notices on the Aces games page', !/these are your games this season|As a fan club member/i.test(tgText));
+  ok('the Daily games links are hidden', (await fan.page.locator('a[href="/games"]').count()) === 0);
+  await go(fan.page, '/games');
+  await fan.page.waitForURL(u => new URL(u).pathname === '/team-games', { timeout: 10000 });
+  ok('opening /games goes to the Aces games', true);
+
+  // The venue adds an offer: a limit per fan and for the venue; the times come from the match.
+  const desk3 = await newPage(390, 844, deskToken);
+  await go(desk3.page, '/venue');
+  await desk3.page.waitForSelector('[data-testid="desk-code"]');
+  await desk3.page.locator('[role="tab"], button', { hasText: /^Offers/ }).first().click();
+  await desk3.page.waitForSelector('[data-testid="offer-add"]');
+  await desk3.page.locator('[data-testid="offer-add"]').click();
+  await desk3.page.fill('#of-title', 'Free Aces scarf');
+  await desk3.page.fill('#of-perk', 'Free scarf');
+  await desk3.page.fill('[data-testid="offer-per-user"]', '1');
+  await desk3.page.fill('[data-testid="offer-limit"]', '20');
+  ok('the offer form asks for no dates, and has the image upload', (await desk3.page.locator('input[type="datetime-local"]').count()) === 0 && (await desk3.page.locator('[data-testid="offer-image"]').count()) === 1 && (await noOverflow(desk3.page)));
+  await desk3.page.locator('[data-testid="offer-save"]').click();
+  await desk3.page.waitForSelector('[data-testid="offer-row"]:has-text("Free Aces scarf")');
+  ok('the offer is saved', /20/.test(await desk3.page.locator('[data-testid="offer-row"]:has-text("Free Aces scarf")').innerText()) && desk3.errors.length === 0, desk3.errors);
+  await desk3.ctx.close();
+
+  // Before 30 minutes into the match the offer shows when it opens.
+  await go(fan.page, '/team-games');
+  await fan.page.waitForSelector('[data-testid="fan-offer-opens"]');
+  ok('before it opens, the fan sees when it opens', (await fan.page.locator('[data-testid="fan-offer-redeem"]').count()) === 0);
+  // 40 minutes into the match: the fan redeems it on their phone, in front of the staff.
+  await api('POST', '/api/matches', { id: soon.id, startsAt: new Date(Date.now() - 40 * 60_000).toISOString() }, A);
+  await go(fan.page, '/team-games');
+  await fan.page.waitForSelector('[data-testid="fan-offer-redeem"]');
+  await fan.page.locator('[data-testid="fan-offer-redeem"]').first().click();
+  await fan.page.waitForSelector('[data-testid="fan-offer-confirm"]');
+  ok('redeeming asks the fan to show the screen to the staff', (await noOverflow(fan.page)));
+  await fan.page.locator('[data-testid="fan-offer-confirm-redeem"]').click();
+  await fan.page.waitForSelector('[data-testid="fan-offer-done"]');
+  ok('the fan’s phone shows the offer redeemed', /Free Aces scarf/.test(await fan.page.locator('[data-testid="fan-offer-done"]').innerText()) && (await noOverflow(fan.page)) && fan.errors.length === 0, fan.errors);
+  await fan.page.locator('[data-testid="fan-offer-done-close"]').click();
+  await fan.page.waitForTimeout(800);
+  ok('once used it cannot be redeemed again', (await fan.page.locator('[data-testid="fan-offer-redeem"]').count()) === 0 && /Used/.test(await fan.page.locator('[data-testid="fanclub-today-offers"]').innerText()));
   await fan.ctx.close();
 }
 

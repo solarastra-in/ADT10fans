@@ -6,6 +6,7 @@ import { api } from '../../api';
 import { useT } from '../../i18n';
 import { Link, usePageMeta } from '../../router';
 import { Avatar, Button, Card, EmptyState, ErrorBox, Field, Modal, PageHeader, Pill, Spinner, Tabs, inputCls, useFormat } from '../ui';
+import { preparePhoto } from '../../utils/photo';
 import type { FanClubAdminClub, FanClubFanLookup, VenueOffer } from '../../types';
 
 const CLUB_KEY = 'fanclub_admin_club';
@@ -352,16 +353,21 @@ function Desk({ club, view, onChange }: { club: FanClubAdminClub; view: NonNulla
                 <div key={o.id} className="flex items-center gap-2 rounded-xl border border-slate-800 p-2.5">
                   <Gift className="w-4 h-4 text-emerald-300 shrink-0" />
                   <span className="flex-1 text-sm text-white">{o.title}{o.bonusPoints ? <span className="text-amber-300 font-bold"> · +{o.bonusPoints}</span> : null}</span>
-                  {o.used ? (
+                  {o.usedUp ? (
                     <Pill>{t('Used')}</Pill>
-                  ) : (
-                    <Button size="sm" variant="secondary" onClick={() => redeem(o)} loading={busy === o.id} disabled={!fan.checkedInHereToday} data-testid="desk-redeem">
+                  ) : o.canRedeem ? (
+                    <Button size="sm" variant="secondary" onClick={() => redeem(o)} loading={busy === o.id} data-testid="desk-redeem">
                       {t('Redeem')}
                     </Button>
+                  ) : (
+                    <span className="text-[11px] text-slate-400 text-end max-w-[45%]" data-testid="desk-offer-state">
+                      {o.reason || (o.opensAt ? t('Opens at {time}', { time: f.time(o.opensAt) }) : '')}
+                    </span>
                   )}
                 </div>
               ))}
               {!fan.checkedInHereToday && <p className="text-[11px] text-slate-500">{t('Offers can be redeemed once the fan is checked in here.')}</p>}
+              <p className="text-[11px] text-slate-500">{t('Fans can also redeem on their own phone: they tap Redeem in front of you.')}</p>
             </div>
           )}
         </Card>
@@ -374,8 +380,7 @@ function Desk({ club, view, onChange }: { club: FanClubAdminClub; view: NonNulla
   );
 }
 
-const emptyOffer: Partial<VenueOffer> = { title: '', description: '', perk: '', badge: '', bonusPoints: 0, limit: 0, startsAt: '', expiresAt: '', active: true };
-const toLocal = (iso?: string) => (iso ? new Date(new Date(iso).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '');
+const emptyOffer: Partial<VenueOffer> = { title: '', description: '', perk: '', badge: '', bonusPoints: 0, perUserLimit: 1, limit: 0, imageUrl: '', active: true };
 
 function Offers({ club, view, onChange }: { club: FanClubAdminClub; view: NonNullable<Awaited<ReturnType<typeof api.fanClubAdmin>>>; onChange: () => void }) {
   const { toast, teamById } = useApp();
@@ -389,16 +394,30 @@ function Offers({ club, view, onChange }: { club: FanClubAdminClub; view: NonNul
   const f = useFormat();
   const [edit, setEdit] = useState<Partial<VenueOffer> | null>(null);
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const opensAfter = view.offerOpensAfterMins ?? 30;
+  const length = view.matchMins ?? 90;
+
+  const pickImage = async (file?: File | null) => {
+    if (!file || !edit) return;
+    setUploading(true);
+    try {
+      const p = await preparePhoto(file, 1200);
+      const r = await api.fanClubOfferImage(p.dataUrl);
+      setEdit(e => (e ? { ...e, imageUrl: r.url } : e));
+    } catch (e: any) {
+      toast(e.message || t('Could not upload the image'), 'error');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const save = async () => {
     if (!edit) return;
     setBusy(true);
     try {
-      await api.fanClubSaveOffer(club.id, {
-        ...edit,
-        startsAt: edit.startsAt ? new Date(edit.startsAt).toISOString() : '',
-        expiresAt: edit.expiresAt ? new Date(edit.expiresAt).toISOString() : '',
-      });
+      const { startsAt: _s, expiresAt: _e, ...rest } = edit;
+      await api.fanClubSaveOffer(club.id, rest);
       toast(t('Offer saved'));
       setEdit(null);
       onChange();
@@ -421,9 +440,11 @@ function Offers({ club, view, onChange }: { club: FanClubAdminClub; view: NonNul
   return (
     <div className="space-y-3">
       <Button onClick={() => setEdit({ ...emptyOffer })} data-testid="offer-add"><Plus className="w-4 h-4" /> {t('Add an offer')}</Button>
+      <p className="text-xs text-slate-400" data-testid="offer-timing">{t('Fans checked in for the match can redeem offers from {a} minutes after the first ball until the match ends ({b} minutes after the start). The times come from the match.', { a: opensAfter, b: length })}</p>
       {club.offers.length === 0 && <p className="text-sm text-slate-400">{t('No offers yet. Offers are perks for fans checked in here, like a free drink or a discount. An offer can also give bonus points.')}</p>}
       {club.offers.map(o => (
         <Card key={o.id} className="p-3 flex items-start gap-3" data-testid="offer-row">
+          {o.imageUrl && <img src={o.imageUrl} alt="" className="w-14 h-14 rounded-lg object-cover shrink-0" />}
           <div className="flex-1 min-w-0">
             <p className="font-bold text-white">{o.title} {o.active === false && <Pill>{t('Off')}</Pill>}</p>
             {o.description && <p className="text-xs text-slate-400">{o.description}</p>}
@@ -431,13 +452,13 @@ function Offers({ club, view, onChange }: { club: FanClubAdminClub; view: NonNul
               {o.bonusPoints ? `+${o.bonusPoints} ${t('points')} · ` : ''}
               {t('{n} used', { n: o.redeemed || 0 })}
               {o.limit ? ` / ${o.limit}` : ''}
-              {o.expiresAt ? ` · ${t('until {d}', { d: f.dateTime(o.expiresAt) })}` : ''}
+              {` · ${t('{n} per fan', { n: o.perUserLimit || 1 })}`}
             </p>
             <p className="text-[11px] text-sky-300 mt-0.5" data-testid="offer-matches">
               {o.matchIds?.length ? o.matchIds.map(matchLabel).join(', ') : t('Every match at this club')}
             </p>
           </div>
-          <Button size="sm" variant="ghost" onClick={() => setEdit({ ...o, startsAt: toLocal(o.startsAt), expiresAt: toLocal(o.expiresAt) })} aria-label={t('Edit')}><Pencil className="w-4 h-4" /></Button>
+          <Button size="sm" variant="ghost" onClick={() => setEdit({ ...o })} aria-label={t('Edit')}><Pencil className="w-4 h-4" /></Button>
           <Button size="sm" variant="ghost" onClick={() => remove(o)} aria-label={t('Remove')}><Trash2 className="w-4 h-4" /></Button>
         </Card>
       ))}
@@ -449,11 +470,21 @@ function Offers({ club, view, onChange }: { club: FanClubAdminClub; view: NonNul
             <div className="grid grid-cols-2 gap-3">
               <Field label={t('Short label')} hint={t('e.g. Free drink')} htmlFor="of-perk"><input id="of-perk" className={inputCls} value={edit.perk || ''} onChange={e => setEdit({ ...edit, perk: e.target.value })} maxLength={80} /></Field>
               <Field label={t('Bonus points')} hint={t('Given when redeemed')} htmlFor="of-pts"><input id="of-pts" type="number" min={0} max={500} className={inputCls} value={edit.bonusPoints ?? 0} onChange={e => setEdit({ ...edit, bonusPoints: Number(e.target.value) })} /></Field>
-              <Field label={t('How many fans')} hint={t('0 = no limit')} htmlFor="of-limit"><input id="of-limit" type="number" min={0} className={inputCls} value={edit.limit ?? 0} onChange={e => setEdit({ ...edit, limit: Number(e.target.value) })} /></Field>
+              <Field label={t('Max per fan')} hint={t('How many times one fan can use it')} htmlFor="of-per-user"><input id="of-per-user" type="number" min={1} max={20} className={inputCls} value={edit.perUserLimit ?? 1} onChange={e => setEdit({ ...edit, perUserLimit: Number(e.target.value) })} data-testid="offer-per-user" /></Field>
+              <Field label={t('Max for this venue')} hint={t('In total. 0 = no limit')} htmlFor="of-limit"><input id="of-limit" type="number" min={0} className={inputCls} value={edit.limit ?? 0} onChange={e => setEdit({ ...edit, limit: Number(e.target.value) })} data-testid="offer-limit" /></Field>
               <Field label={t('Active')} htmlFor="of-active"><select id="of-active" className={inputCls} value={edit.active === false ? 'no' : 'yes'} onChange={e => setEdit({ ...edit, active: e.target.value === 'yes' })}><option value="yes">{t('Yes')}</option><option value="no">{t('No')}</option></select></Field>
-              <Field label={t('Starts')} htmlFor="of-start"><input id="of-start" type="datetime-local" className={inputCls} value={edit.startsAt || ''} onChange={e => setEdit({ ...edit, startsAt: e.target.value })} /></Field>
-              <Field label={t('Ends')} htmlFor="of-end"><input id="of-end" type="datetime-local" className={inputCls} value={edit.expiresAt || ''} onChange={e => setEdit({ ...edit, expiresAt: e.target.value })} /></Field>
             </div>
+            <Field label={t('Image (optional)')} htmlFor="of-image">
+              {edit.imageUrl ? (
+                <div className="flex items-center gap-3">
+                  <img src={edit.imageUrl} alt="" className="w-24 h-24 rounded-xl object-cover" data-testid="offer-image-preview" />
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setEdit({ ...edit, imageUrl: '' })}><Trash2 className="w-4 h-4" /> {t('Remove')}</Button>
+                </div>
+              ) : (
+                <input id="of-image" type="file" accept="image/*" className="block w-full text-xs text-slate-300 file:me-3 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-white" disabled={uploading} onChange={e => pickImage(e.target.files?.[0])} data-testid="offer-image" />
+              )}
+              {uploading && <p className="text-xs text-slate-400 mt-1">{t('Uploading…')}</p>}
+            </Field>
             <Field label={t('Which matches')} hint={t('None ticked = every match at this club.')}>
               <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-800 divide-y divide-slate-800">
                 {offerMatches.length === 0 && <p className="p-2 text-xs text-slate-500">{t('No upcoming matches.')}</p>}
@@ -473,7 +504,7 @@ function Offers({ club, view, onChange }: { club: FanClubAdminClub; view: NonNul
                 ))}
               </div>
             </Field>
-            <Button type="submit" loading={busy} data-testid="offer-save">{t('Save offer')}</Button>
+            <Button type="submit" loading={busy} disabled={uploading} data-testid="offer-save">{t('Save offer')}</Button>
           </form>
         )}
       </Modal>

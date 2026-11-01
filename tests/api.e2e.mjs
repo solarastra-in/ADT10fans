@@ -1022,7 +1022,7 @@ ok('robots.txt blocks admin and API', /Disallow: \/admin/.test((await html('/rob
   ok('a fan who has not verified Instagram is flagged on their fan club pass', (await get('/api/fanclub/my-status', unv.token)).json.instagramRequired === true);
   const far = (await post('/api/matches', { teamA: 'aces', teamB: 'eagles', startsAt: inMinutes(3 * 60) }, A)).json.targetMatch;
   const tooEarly = await post('/api/fanclub/admin/checkin', { fanClubId: lounge.id, code: st1.fanClubCode, matchId: far.id }, CA);
-  ok('check-in is not open three hours before the match', tooEarly.status === 409 && /opens 90 minutes/.test(tooEarly.json.error), tooEarly.json);
+  ok('check-in is not open three hours before the match', tooEarly.status === 409 && /opens 45 minutes/.test(tooEarly.json.error), tooEarly.json);
   const mAces = (await post('/api/matches', { teamA: 'aces', teamB: 'tigers', startsAt: inMinutes(30) }, A)).json.targetMatch;
   const look = (await get(`/api/fanclub/admin/fan?fanClubId=${lounge.id}&code=${st1.fanClubCode}&matchId=${mAces.id}`, CA)).json;
   ok('the desk looks the fan up by code', look.fan.name && look.fan.instagramVerified === true && look.window.open === true && look.checkedIn === null, look);
@@ -1070,6 +1070,14 @@ ok('robots.txt blocks admin and API', /Disallow: \/admin/.test((await html('/rob
   ok('an Instagram account confirmed for one fan cannot be used by another', (await post('/api/fanclub/admin/verify-instagram', { fanClubId: lounge.id, code: (await get('/api/fanclub/my-status', unv.token)).json.fanClubCode, handle: 'venue.fan' }, CA)).status === 409);
   const hist = (await get('/api/me/points', IG)).json;
   ok('the check-in is in the fan’s points history', JSON.stringify(hist).includes('fanclub-checkin'));
+  const tooSoon = await post('/api/fanclub/admin/redeem-offer', { fanClubId: lounge.id, offerId: offer.id, code: st1.fanClubCode }, CA);
+  ok('offers open 30 minutes after the first ball', tooSoon.status === 409 && /30 minutes after the first ball/.test(tooSoon.json.error), tooSoon.json);
+  {
+    const v = (await get(`/api/fanclub/admin/fan?fanClubId=${lounge.id}&code=${st1.fanClubCode}&matchId=${mAces.id}`, CA)).json.offers.find(o => o.id === offer.id);
+    ok('the fan sees when the offer opens: 30 minutes after the start', v && !v.canRedeem && !v.reason && +new Date(v.opensAt) === +new Date(mAces.startsAt) + 30 * 60_000, v);
+  }
+  // The Aces match started 40 minutes ago.
+  ok('(the match moves to 40 minutes ago)', (await post('/api/matches', { id: mAces.id, startsAt: inMinutes(-40) }, A)).status === 200);
   const red = await post('/api/fanclub/admin/redeem-offer', { fanClubId: lounge.id, offerId: offer.id, code: st1.fanClubCode }, CA);
   ok('redeeming an offer gives its bonus points', red.status === 200 && red.json.bonusPoints === 15 && (await me(IG)).points === before + 255, red.json);
   ok('each offer once per fan', (await post('/api/fanclub/admin/redeem-offer', { fanClubId: lounge.id, offerId: offer.id, code: st1.fanClubCode }, CA)).status === 409);
@@ -1077,6 +1085,45 @@ ok('robots.txt blocks admin and API', /Disallow: \/admin/.test((await html('/rob
   const stats = (await get(`/api/fanclub/admin/stats?fanClubId=${lounge.id}`, CA)).json;
   ok('the desk counts check-ins, offers and points given', stats.totalCheckIns === 3 && stats.totalRedemptions === 1 && stats.pointsGiven === 375, stats);
   ok('a fan club admin cannot read another club’s numbers', (await get(`/api/fanclub/admin/stats?fanClubId=${cafe.id}`, CA)).status === 403);
+
+  // --- Offers: a limit per fan and for the venue; fans redeem on their own phone ---
+  const multi = (await post(`/api/fanclub/admin/clubs/${lounge.id}/offers`, { title: 'Half-price wings', perk: '50% off wings', perUserLimit: 2, limit: 3, startsAt: inMinutes(-600), expiresAt: inMinutes(-500) }, CA)).json.offer;
+  ok('an offer has a limit per fan and for the venue, and no dates of its own', multi.perUserLimit === 2 && multi.limit === 3 && !multi.startsAt && !multi.expiresAt, multi);
+  const mine = id => post(`/api/fanclub/offers/${id}/redeem`, {}, IG);
+  const r1 = await mine(multi.id);
+  ok('a checked-in fan redeems an offer on their phone', r1.status === 200 && r1.json.offer.used === 1 && r1.json.offer.canRedeem === true && /on their phone/.test(r1.json.redemption.adminName), r1.json);
+  ok('and again, up to the limit per fan', (await mine(multi.id)).json.offer?.usedUp === true);
+  const r3 = await mine(multi.id);
+  ok('not more than the limit per fan', r3.status === 409 && /used this offer/.test(r3.json.error), r3.json);
+  ok('another checked-in fan redeems it', (await post(`/api/fanclub/offers/${multi.id}/redeem`, {}, vf.token)).status === 200);
+  const vfAgain = await post(`/api/fanclub/offers/${multi.id}/redeem`, {}, vf.token);
+  ok('once the venue limit is reached nobody can redeem it', vfAgain.status === 409 && /run out/.test(vfAgain.json.error), vfAgain.json);
+  ok('a fan not checked in here cannot redeem', /Check in/.test((await post(`/api/fanclub/offers/${offer.id}/redeem`, {}, F1)).json.error || ''));
+  const lkMulti = (await get(`/api/fanclub/admin/fan?fanClubId=${lounge.id}&code=${st1.fanClubCode}&matchId=${mAces.id}`, CA)).json.offers.find(o => o.id === multi.id);
+  ok('the desk sees the offer is used up for the fan', lkMulti.usedUp === true && lkMulti.canRedeem === false, lkMulti);
+  ok('the desk cannot redeem it either', (await post('/api/fanclub/admin/redeem-offer', { fanClubId: lounge.id, offerId: multi.id, code: st1.fanClubCode }, CA)).status === 409);
+  {
+    const zlib = await import('node:zlib');
+    const crc = b => { let c = ~0; for (const x of b) { c ^= x; for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1)); } return ~c >>> 0; };
+    const ch = (type, data) => { const l = Buffer.alloc(4); l.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type), data]); const c = Buffer.alloc(4); c.writeUInt32BE(crc(td)); return Buffer.concat([l, td, c]); };
+    const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(240, 0); ihdr.writeUInt32BE(240, 4); ihdr[8] = 8; ihdr[9] = 2;
+    const raw = Buffer.alloc((240 * 3 + 1) * 240, 0x33); for (let y = 0; y < 240; y++) raw[y * (240 * 3 + 1)] = 0;
+    const img = `data:image/png;base64,${Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), ch('IHDR', ihdr), ch('IDAT', zlib.deflateSync(raw)), ch('IEND', Buffer.alloc(0))]).toString('base64')}`;
+    ok('fans cannot upload offer images', (await post('/api/fanclub/admin/offer-image', { photo: img }, F1)).status === 403);
+    const up = await post('/api/fanclub/admin/offer-image', { photo: img }, CA);
+    ok('a fan club admin uploads an offer image', up.status === 200 && /^\/uploads\//.test(up.json.url), up.json);
+    const withImg = (await post(`/api/fanclub/admin/clubs/${lounge.id}/offers`, { id: multi.id, imageUrl: up.json.url }, CA)).json.offer;
+    ok('and adds it to the offer', withImg?.imageUrl === up.json.url, withImg);
+    ok('offer images must be uploaded here', (await post(`/api/fanclub/admin/clubs/${lounge.id}/offers`, { title: 'x', imageUrl: 'javascript:alert(1)' }, CA)).status === 400);
+    ok('fans see the offer image', (await get('/api/fanclub/my-status', IG)).json.todayOffers.find(o => o.id === multi.id)?.imageUrl === up.json.url);
+  }
+  // Check-in fans play only the team games until the match ends.
+  ok('(match length set to 30 minutes)', (await post('/api/admin/settings', { fanClubMatchMins: 30 }, A)).status === 200);
+  ok('after the match the fan plays every game again', (await get('/api/team-games', vf.token)).json.onlyTeamGames === false);
+  const ended = await post(`/api/fanclub/offers/${offer.id}/redeem`, {}, vf.token);
+  ok('and the match’s offers have ended', ended.status === 409, ended.json);
+  ok('(match length back to 90 minutes)', (await post('/api/admin/settings', { fanClubMatchMins: 90 }, A)).status === 200 && (await get('/api/team-games', vf.token)).json.onlyTeamGames === true);
+  ok('(the Aces match moves back to 30 minutes from now)', (await post('/api/matches', { id: mAces.id, startsAt: inMinutes(30) }, A)).status === 200);
 
   // --- Test match: league admins try check-in without a real match; removing it takes the points back ---
   ok('a fan club admin cannot start a test match', (await post('/api/fanclub/admin/test-match', {}, CA)).status === 403);
@@ -1102,7 +1149,8 @@ ok('robots.txt blocks admin and API', /Disallow: \/admin/.test((await html('/rob
   ok('the desk shows a match’s own offers only for that match', !lkOther.offers.some(o => o.id === offAces.id) && lkAces.offers.some(o => o.id === offAces.id));
   const today = (await get('/api/fanclub/my-status', IG)).json;
   ok('the fan sees where they are checked in today and that match’s offers', today.todayVisit?.fanClubId === lounge.id && today.todayVisit.matchId === other.id && !today.todayOffers.some(o => o.id === offAces.id) && today.todayOffers.some(o => o.id === offAll.id), today.todayOffers);
-  ok('an offer for another match cannot be redeemed', /another match/.test((await post('/api/fanclub/admin/redeem-offer', { fanClubId: lounge.id, offerId: offAces.id, code: st1.fanClubCode }, CA)).json.error || ''));
+  const offOther = (await post(`/api/fanclub/admin/clubs/${lounge.id}/offers`, { title: 'Bulls night nachos', matchIds: [other.id] }, CA)).json.offer;
+  ok('an offer for a match the fan did not check in for cannot be redeemed', /Check in/.test((await post(`/api/fanclub/offers/${offOther.id}/redeem`, {}, vf.token)).json.error || ''));
 
   // --- Scorecards entered by team admins or league admins when live scores are not available ---
   const scard = { innings1: { teamId: 'aces', totalRuns: 98, wickets: 3, overs: '10', batting: [{ batsman: 'Moeen Ali', dismissal: 'not out', runs: 40, balls: 20, fours: 3, sixes: 2 }], bowling: [] }, innings2: { teamId: 'eagles', totalRuns: 90, wickets: 5, overs: '10', batting: [], bowling: [] } };

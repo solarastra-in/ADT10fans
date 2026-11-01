@@ -3,6 +3,7 @@ import { Award, CalendarDays, ChevronDown, Coins, Gamepad2, Home, LayoutGrid, Lo
 import { Link, navigate, Route, RouteName } from '../router';
 import { useApp } from '../state';
 import { LANGUAGES, useI18n, useT } from '../i18n';
+import { useTeamGamesOnly } from './TeamGamesOnlyNotice';
 import { NotificationCenter } from './NotificationCenter';
 import { Avatar, Button, cx } from './ui';
 
@@ -52,6 +53,7 @@ export function LanguagePicker({ className }: { className?: string }) {
 
 export function UserDropdown() {
   const { user, logout, openTeamPicker, openQrPass, teamById, toast } = useApp();
+  const teamOnly = useTeamGamesOnly();
   const t = useT();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -181,7 +183,7 @@ export function UserDropdown() {
               <Coins className="w-4 h-4 text-emerald-400" />
               {t('Points History')}
             </Link>
-            <Link
+            {!teamOnly && <Link
               to="/games"
               onClick={() => setOpen(false)}
               className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-200 hover:text-white hover:bg-slate-800/80"
@@ -189,7 +191,7 @@ export function UserDropdown() {
             >
               <Gamepad2 className="w-4 h-4 text-sky-400" />
               {t('Daily Games')}
-            </Link>
+            </Link>}
             {user.role === 'admin' && (user.adminRole === 'team_official' || user.isSuperAdmin) && (
               <Link
                 to="/team-portal"
@@ -288,9 +290,13 @@ export function Header({ route }: { route: Route }) {
   );
 }
 
+/** Fans checked in at a fan club play the team games until the match ends: these links are hidden then. */
+const HIDDEN_WHEN_TEAM_ONLY = new Set(['/games', '/fantasy']);
+
 export function BottomNav({ route }: { route: Route }) {
   const t = useT();
   const { user, logout, toast, openQrPass } = useApp();
+  const teamOnly = useTeamGamesOnly();
   const [more, setMore] = useState(false);
   const current = SECTION_OF[route.name];
   const items: [string, string, React.FC<{ className?: string }>, string][] = [
@@ -403,10 +409,11 @@ export function BottomNav({ route }: { route: Route }) {
 export function Footer() {
   const { config } = useApp();
   const t = useT();
+  const teamOnly = useTeamGamesOnly();
   const year = new Date().getFullYear();
   const cols: [string, [string, string][]][] = [
     [t('Season'), [['/matches', t('Matches')], ['/teams', t('Teams')], ['/players', t('Players')], ['/videos', t('Videos')], ['/news', t('News')]]],
-    [t('Play'), [['/team-games', t('Team games')], ['/fanclub', t('Fan club pass')], ['/fantasy', t('Pick XI')], ['/games', t('Daily games')], ['/contests', t('Predictions')], ['/prizes', t('Prizes & draws')], ['/leaderboard', t('Leaderboard')]]],
+    [t('Play'), ([['/team-games', t('Team games')], ['/fanclub', t('Fan club pass')], ['/fantasy', t('Pick XI')], ['/games', t('Daily games')], ['/contests', t('Predictions')], ['/prizes', t('Prizes & draws')], ['/leaderboard', t('Leaderboard')]] as [string, string][]).filter(([to]) => !teamOnly || !HIDDEN_WHEN_TEAM_ONLY.has(to))],
     [t('Community'), [['/fanwall', t('Fan wall')], ['/forum', t('Forum')], ['/fans', t('Fan base')], ['/fanspaces', t('Fan Spaces')], ['/social', t('Social')]]],
     [t('About'), [['/rules', t('Rules')], ['/privacy', t('Privacy')], ['/terms', t('Terms')], ['/staff', t('Staff sign-in')]]],
   ];

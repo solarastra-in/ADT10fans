@@ -1,7 +1,8 @@
 import crypto from 'crypto';
 import { Router } from 'express';
 import { db, AppStore, FanClub, FanClubCheckInRecord, Match, User, VenueOffer } from '../db';
-import { canManageFanClub, fanClubScopeOf, getAuthUser, hasPermission, requireAdmin, requireUser } from '../auth';
+import { canManageFanClub, fanClubScopeOf, getAuthUser, hasPermission, rateLimit, requireAdmin, requireUser } from '../auth';
+import { photoStorage, readPhoto, storePhoto } from '../uploads';
 import { bad, num, str, userOf, wrap } from '../http';
 import { awardPoints } from '../points';
 import { gameSecret } from '../games';
@@ -48,13 +49,33 @@ const codeFrom = (raw: unknown) => {
   return /^[A-Z2-9]{6}$/.test(m) ? m : null;
 };
 
-const opensMins = (store: AppStore) => Math.max(15, Math.min(24 * 60, store.settings.fanClubCheckInOpensMins || 90));
+const opensMins = (store: AppStore) => Math.max(15, Math.min(24 * 60, store.settings.fanClubCheckInOpensMins || 45));
+const offerOpensAfter = (store: AppStore) => Math.max(0, Math.min(240, store.settings.fanClubOfferOpensAfterMins ?? 30));
+const matchMins = (store: AppStore) => Math.max(30, Math.min(600, store.settings.fanClubMatchMins || 90));
+
+/**
+ * When a match is over, for fan club purposes: when it is marked completed or abandoned, otherwise
+ * matchMins after the first ball (a match still live runs on until it is completed).
+ */
+export function matchOver(store: AppStore, m: Match, now = Date.now()) {
+  if (m.status === 'completed' || m.status === 'abandoned') return true;
+  if (m.status === 'live') return false;
+  return now > +new Date(m.startsAt) + matchMins(store) * 60_000;
+}
+
+/** When a match's offers can be redeemed: from offerOpensAfter minutes after the first ball until the match ends. */
+export function offerWindow(store: AppStore, m: Match, now = Date.now()) {
+  const opensAt = +new Date(m.startsAt) + offerOpensAfter(store) * 60_000;
+  const closesAt = m.status === 'live' && now > +new Date(m.startsAt) + matchMins(store) * 60_000 ? null : +new Date(m.startsAt) + matchMins(store) * 60_000;
+  return { open: now >= opensAt && !matchOver(store, m, now), opensAt: new Date(opensAt).toISOString(), closesAt: closesAt ? new Date(closesAt).toISOString() : null };
+}
 
 /** Whether check-in is open for this match now. */
 export function checkInWindow(store: AppStore, m: Match, now = Date.now()) {
   const start = +new Date(m.startsAt);
   const opensAt = start - opensMins(store) * 60_000;
-  const closesAt = m.status === 'completed' ? (m.updatedAt ? +new Date(m.updatedAt) : start) + 30 * 60_000 : start + 4 * 3600_000;
+  // Check-in stays open until the match ends.
+  const closesAt = m.status === 'completed' ? (m.updatedAt ? +new Date(m.updatedAt) : start) + 30 * 60_000 : m.status === 'live' ? start + 6 * 3600_000 : start + matchMins(store) * 60_000;
   return { open: now >= opensAt && now <= closesAt && m.status !== 'abandoned', opensAt: new Date(opensAt).toISOString(), closesAt: new Date(closesAt).toISOString() };
 }
 
@@ -94,10 +115,47 @@ export function currentMatch(store: AppStore, now = Date.now(), club?: FanClub |
 /** Whether an offer applies to this match (offers without matches apply to all of the club's matches). */
 const offerForMatch = (o: VenueOffer, matchId?: string | null) => !o.matchIds?.length || (Boolean(matchId) && o.matchIds.includes(String(matchId)));
 
-const offerLive = (o: VenueOffer, now = Date.now()) =>
-  o.active && (!o.startsAt || +new Date(o.startsAt) <= now) && (!o.expiresAt || +new Date(o.expiresAt) > now) && (!o.limit || (o.redeemed || 0) < o.limit);
+/** An offer that is switched on and not run out. When fans can use it comes from the match (offerWindow). */
+const offerLive = (o: VenueOffer, _now = Date.now()) => Boolean(o.active) && (!o.limit || (o.redeemed || 0) < o.limit);
 
-const publicOffer = (o: VenueOffer) => ({ id: o.id, fanClubId: o.fanClubId, matchIds: o.matchIds || [], title: o.title, description: o.description, badge: o.badge, perk: o.perk, bonusPoints: o.bonusPoints || 0, startsAt: o.startsAt, expiresAt: o.expiresAt, remaining: o.limit ? Math.max(0, o.limit - (o.redeemed || 0)) : null });
+const publicOffer = (o: VenueOffer) => ({ id: o.id, fanClubId: o.fanClubId, matchIds: o.matchIds || [], title: o.title, description: o.description, badge: o.badge, perk: o.perk, imageUrl: o.imageUrl, bonusPoints: o.bonusPoints || 0, perUserLimit: o.perUserLimit || 1, limit: o.limit || 0, remaining: o.limit ? Math.max(0, o.limit - (o.redeemed || 0)) : null });
+
+const usedBy = (store: AppStore, userId: string, offerId: string) => store.fanClubRedemptions.filter(r => r.userId === userId && r.offerId === offerId).length;
+
+/** The fan's offer at a club for their check-in there: whether they can redeem it now, and why not. */
+function offerForFan(store: AppStore, fan: User, club: FanClub, o: VenueOffer, now = Date.now(), matchId?: string | null) {
+  const visits = store.fanClubCheckIns.filter(c => c.userId === fan.id && c.fanClubId === club.id);
+  const all = allMatches(store);
+  // The fan's check-in here for a match this offer is for, that has not ended (one whose offers
+  // are open now first).
+  const live = visits.filter(v => {
+    const m = all.find(x => x.id === v.matchId);
+    return m && offerForMatch(o, m.id) && !matchOver(store, m, now) && (!matchId || m.id === matchId);
+  });
+  const visit = live.find(v => offerWindow(store, all.find(x => x.id === v.matchId)!, now).open) || live[0];
+  const m = visit ? all.find(x => x.id === visit.matchId) || null : null;
+  const used = usedBy(store, fan.id, o.id);
+  const perUser = o.perUserLimit || 1;
+  const w = m ? offerWindow(store, m, now) : null;
+  const soldOut = Boolean(o.limit) && (o.redeemed || 0) >= (o.limit || 0);
+  const reason = !o.active ? 'This offer is switched off.' : !m ? 'Check in at this fan club for the match first.' : used >= perUser ? 'You have used this offer.' : soldOut ? 'This offer has run out.' : !w!.open ? (now < +new Date(w!.opensAt) ? 'opens' : 'This offer has ended.') : null;
+  return { ...publicOffer(o), clubName: club.name, matchId: m?.id || null, window: w, used, usedUp: used >= perUser, canRedeem: !reason, reason: reason === 'opens' ? null : reason, opensAt: w?.opensAt || null };
+}
+
+/** Redeem one of an offer for a fan (on the fan's phone, or at the desk). Returns an error message or the redemption. */
+function redeemFor(store: AppStore, fan: User, club: FanClub, offer: VenueOffer, by: { id: string; name?: string; email: string }) {
+  const view = offerForFan(store, fan, club, offer);
+  if (!view.canRedeem) return { error: view.reason || `This offer opens ${offerOpensAfter(store)} minutes after the first ball.` };
+  fan.claimedVenueOfferIds ||= [];
+  if (!fan.claimedVenueOfferIds.includes(offer.id)) fan.claimedVenueOfferIds.push(offer.id);
+  offer.redeemed = (offer.redeemed || 0) + 1;
+  const bonus = offer.bonusPoints || 0;
+  if (bonus) awardPoints(store, fan, bonus, 'fanclub-offer', `${offer.title} · ${club.name}`, offer.id, by.email);
+  const rec = { id: 'fcr-' + crypto.randomUUID().slice(0, 10), userId: fan.id, userName: fan.name, fanClubId: club.id, offerId: offer.id, offerTitle: offer.title, matchId: view.matchId || undefined, bonusPoints: bonus, adminId: by.id, adminName: by.name, at: new Date().toISOString() };
+  store.fanClubRedemptions.unshift(rec);
+  if (store.fanClubRedemptions.length > 50_000) store.fanClubRedemptions.length = 50_000;
+  return { redemption: rec, offer: offerForFan(store, fan, club, offer), bonusPoints: bonus };
+}
 
 const publicClub = (c: FanClub, now = Date.now()) => ({
   id: c.id, name: c.name, city: c.city, country: c.country, address: c.address, region: c.region, capacity: c.capacity,
@@ -117,7 +175,15 @@ export function fanClubGamesTeam(store: AppStore, user: User | null | undefined)
   const teamId = store.settings.fanClubTeamId || 'aces';
   if (!store.teams.some(t => t.id === teamId)) return null;
   const clubs = new Map(store.fanClubs.map(c => [c.id, c]));
-  return user.fanClubCheckIns.some(ci => (clubs.get(ci.fanClubId)?.gamesMode || 'team') === 'team') ? teamId : null;
+  const all = allMatches(store);
+  // From the check-in until that match ends.
+  return user.fanClubCheckIns.some(ci => {
+    if ((clubs.get(ci.fanClubId)?.gamesMode || 'team') !== 'team') return false;
+    const m = all.find(x => x.id === ci.matchId);
+    return Boolean(m) && !matchOver(store, m!, Date.now());
+  })
+    ? teamId
+    : null;
 }
 
 // ---------- Fans ----------
@@ -157,15 +223,20 @@ fanclubRouter.get('/fanclub/my-status', (req, res) => {
     checkedInRecord: cur.match ? user.fanClubCheckIns?.find(c => c.matchId === cur.match!.id) || null : null,
     checkIns: [...(user.fanClubCheckIns || [])].reverse().slice(0, 30),
     gamesTeamId: fanClubGamesTeam(store, user),
-    // Where the fan is checked in today (last 12 hours), and that club's offers for that match.
+    // Where the fan is checked in now (until that match ends), and that club's offers for the match.
     ...(() => {
-      const visit = store.fanClubCheckIns.find(c => c.userId === user.id && Date.now() - +new Date(c.checkedInAt) < 12 * 3600_000);
+      const all = allMatches(store);
+      const visit = [...store.fanClubCheckIns].sort((a, b) => String(b.checkedInAt).localeCompare(String(a.checkedInAt))).find(c => {
+        if (c.userId !== user.id) return false;
+        const m = all.find(x => x.id === c.matchId);
+        return Boolean(m) && !matchOver(store, m!, now);
+      });
       const club = visit && store.fanClubs.find(c => c.id === visit.fanClubId);
       if (!visit || !club) return { todayVisit: null, todayOffers: [] };
-      const m = [...store.matches, ...(store.fanClubTestMatches || [])].find(x => x.id === visit.matchId);
+      const m = all.find(x => x.id === visit.matchId);
       return {
-        todayVisit: { fanClubId: club.id, fanClubName: club.name, city: club.city, matchId: visit.matchId, matchNo: visit.matchNo, teamA: m?.teamA, teamB: m?.teamB, startsAt: m?.startsAt, checkedInAt: visit.checkedInAt, pointsAwarded: visit.pointsAwarded },
-        todayOffers: club.offers.filter(o => offerLive(o, now) && offerForMatch(o, visit.matchId)).map(o => ({ ...publicOffer(o), clubName: club.name, used: claimed.has(o.id) })),
+        todayVisit: { fanClubId: club.id, fanClubName: club.name, city: club.city, matchId: visit.matchId, matchNo: visit.matchNo, teamA: m?.teamA, teamB: m?.teamB, startsAt: m?.startsAt, checkedInAt: visit.checkedInAt, pointsAwarded: visit.pointsAwarded, offersOpenAt: m ? offerWindow(store, m, now).opensAt : null },
+        todayOffers: club.offers.filter(o => o.active && offerForMatch(o, visit.matchId)).map(o => offerForFan(store, user, club, o, now, visit.matchId)),
       };
     })(),
     activeOffers: clubs.flatMap(c => (c.offers || []).filter(o => offerLive(o, now)).map(o => ({ ...publicOffer(o), clubName: c.name, used: claimed.has(o.id) }))),
@@ -221,6 +292,8 @@ fanclubRouter.get('/fanclub/admin/clubs', requireFanClubs, (req, res) => {
     opensAt: cur.opensAt || null,
     fanClubTeamId: clubTeam(store),
     today: uaeDay(Date.now()),
+    offerOpensAfterMins: offerOpensAfter(store),
+    matchMins: matchMins(store),
     matches: allMatches(store).sort(byStart).map(m => {
       const w = checkInWindow(store, m);
       return { id: m.id, matchNo: m.matchNo, teamA: m.teamA, teamB: m.teamB, startsAt: m.startsAt, status: m.status, open: w.open, opensAt: w.opensAt, day: uaeDay(m.startsAt), test: isTest(m) };
@@ -421,15 +494,9 @@ fanclubRouter.post('/fanclub/admin/clubs/:id/admins', requireFanClubs, (req, res
 function readOffer(b: any, club: FanClub, existing: VenueOffer | null, by: string): VenueOffer | string {
   const title = str(b.title ?? existing?.title, 120);
   if (!title) return 'Give the offer a title';
-  const date = (v: unknown, fallback?: string) => {
-    if (v === '' || v === null) return undefined;
-    if (v === undefined) return fallback;
-    const d = new Date(String(v));
-    return isNaN(+d) ? fallback : d.toISOString();
-  };
-  const startsAt = date(b.startsAt, existing?.startsAt);
-  const expiresAt = date(b.expiresAt, existing?.expiresAt);
-  if (startsAt && expiresAt && +new Date(expiresAt) <= +new Date(startsAt)) return 'The offer must end after it starts';
+  // No dates: an offer runs with its match (from offerOpensAfter minutes after the first ball to the end).
+  const imageUrl = b.imageUrl !== undefined ? str(b.imageUrl, 500) : existing?.imageUrl;
+  if (imageUrl && !/^(https:\/\/|\/uploads\/)/.test(imageUrl)) return 'The image must be uploaded here';
   return {
     id: existing?.id || 'off-' + crypto.randomUUID().slice(0, 10),
     fanClubId: club.id,
@@ -437,12 +504,12 @@ function readOffer(b: any, club: FanClub, existing: VenueOffer | null, by: strin
     description: str(b.description ?? existing?.description, 400),
     perk: str(b.perk ?? existing?.perk, 80) || title,
     badge: str(b.badge ?? existing?.badge, 40) || undefined,
+    imageUrl: imageUrl || undefined,
     bonusPoints: Math.max(0, Math.min(500, Math.round(num(b.bonusPoints ?? existing?.bonusPoints, 0)))),
     matchIds: Array.isArray(b.matchIds) ? b.matchIds.map((x: unknown) => str(x, 80)).filter(Boolean).slice(0, 100) : existing?.matchIds || [],
+    perUserLimit: Math.max(1, Math.min(20, Math.round(num(b.perUserLimit ?? existing?.perUserLimit, 1)))),
     limit: Math.max(0, Math.round(num(b.limit ?? existing?.limit, 0))) || undefined,
     redeemed: existing?.redeemed || 0,
-    startsAt,
-    expiresAt,
     active: b.active !== undefined ? Boolean(b.active) : existing?.active ?? true,
     createdBy: existing?.createdBy || by,
     createdAt: existing?.createdAt || new Date().toISOString(),
@@ -591,7 +658,7 @@ fanclubRouter.get('/fanclub/admin/fan', requireFanClubs, (req, res) => {
     matchAtThisClub: match ? clubHasMatch(store, club, match) : false,
     checkedIn,
     checkedInHereToday: hereToday(store, fan, club.id),
-    offers: club.offers.filter(o => offerLive(o) && offerForMatch(o, match?.id)).map(o => ({ ...publicOffer(o), used: claimed.has(o.id) })),
+    offers: club.offers.filter(o => o.active && offerForMatch(o, match?.id)).map(o => offerForFan(store, fan, club, o, Date.now(), match?.id)),
   });
 });
 
@@ -640,7 +707,7 @@ fanclubRouter.post('/fanclub/admin/checkin', requireFanClubs, wrap(async (req, r
     store.fanClubCheckIns.unshift(rec);
     if (store.fanClubCheckIns.length > 50_000) store.fanClubCheckIns.length = 50_000;
     fan.fanClubCheckIns.push({ matchId: match.id, matchNo: match.matchNo, fanClubId: club.id, fanClubName: club.name, checkedInAt: at, pointsAwarded: points });
-    return { ok: { pointsAwarded: points, fan: { id: fan.id, name: fan.name, avatar: fan.avatar, teamId: fan.teamId, points: fan.points }, match, checkInRecord: rec, offers: club.offers.filter(o => offerLive(o) && offerForMatch(o, match.id)).map(o => ({ ...publicOffer(o), used: (fan.claimedVenueOfferIds || []).includes(o.id) })) } };
+    return { ok: { pointsAwarded: points, fan: { id: fan.id, name: fan.name, avatar: fan.avatar, teamId: fan.teamId, points: fan.points }, match, checkInRecord: rec, offers: club.offers.filter(o => o.active && offerForMatch(o, match.id)).map(o => offerForFan(store, fan, club, o, Date.now(), match.id)) } };
   });
   if ('error' in r) return bad(res, r.error!, r.status);
   res.json({ success: true, ...r.ok });
@@ -676,22 +743,47 @@ fanclubRouter.post('/fanclub/admin/redeem-offer', requireFanClubs, wrap(async (r
     if (!fan) return { status: 404, error: 'Fan not found' };
     const offer = club.offers.find(o => o.id === String(b.offerId || ''));
     if (!offer) return { status: 404, error: 'This offer is not one of this club’s offers' };
-    if (!offerLive(offer)) return { status: 409, error: 'This offer is not available now' };
-    if (!hereToday(store, fan, club.id)) return { status: 409, error: `Check ${fan.name} in here first. Offers are for fans checked in at this club.` };
-    const visit = store.fanClubCheckIns.find(c => c.userId === fan.id && c.fanClubId === club.id && Date.now() - +new Date(c.checkedInAt) < 12 * 3600_000);
-    if (!offerForMatch(offer, visit?.matchId)) return { status: 409, error: 'This offer is for another match.' };
-    fan.claimedVenueOfferIds ||= [];
-    if (fan.claimedVenueOfferIds.includes(offer.id)) return { status: 409, error: `${fan.name} already used this offer.` };
-    fan.claimedVenueOfferIds.push(offer.id);
-    offer.redeemed = (offer.redeemed || 0) + 1;
-    const bonus = offer.bonusPoints || 0;
-    if (bonus) awardPoints(store, fan, bonus, 'fanclub-offer', `${offer.title} · ${club.name}`, offer.id, admin.email);
-    store.fanClubRedemptions.unshift({ id: 'fcr-' + crypto.randomUUID().slice(0, 10), userId: fan.id, userName: fan.name, fanClubId: club.id, offerId: offer.id, offerTitle: offer.title, matchId: visit?.matchId || currentMatch(store, Date.now(), club).match?.id, bonusPoints: bonus, adminId: admin.id, adminName: admin.name, at: new Date().toISOString() });
-    if (store.fanClubRedemptions.length > 50_000) store.fanClubRedemptions.length = 50_000;
-    return { ok: { message: `${offer.title}: redeemed for ${fan.name}.${bonus ? ` +${bonus} points.` : ''}`, offer: publicOffer(offer), bonusPoints: bonus, fan: { id: fan.id, name: fan.name, points: fan.points } } };
+    const r2 = redeemFor(store, fan, club, offer, admin);
+    if ('error' in r2) return { status: 409, error: r2.error };
+    const bonus = r2.bonusPoints;
+    return { ok: { message: `${offer.title}: redeemed for ${fan.name}.${bonus ? ` +${bonus} points.` : ''}`, offer: r2.offer, bonusPoints: bonus, fan: { id: fan.id, name: fan.name, points: fan.points } } };
   });
   if ('error' in r) return bad(res, r.error!, r.status);
   res.json({ success: true, ...r.ok });
+}));
+
+/**
+ * The fan redeems an offer on their own phone, in front of the venue staff: only at the club they
+ * are checked in at, for that match, while the offer is open, within the per-fan and venue limits.
+ */
+fanclubRouter.post('/fanclub/offers/:offerId/redeem', requireUser, rateLimit('offer-redeem', 20, 60_000), wrap(async (req, res) => {
+  const me = userOf(req);
+  const r = await db.mutate(store => {
+    const club = store.fanClubs.find(c => c.offers.some(o => o.id === req.params.offerId));
+    const offer = club?.offers.find(o => o.id === req.params.offerId);
+    const fan = store.users.find(u => u.id === me.id);
+    if (!club || !offer || !fan) return { status: 404, error: 'Offer not found' };
+    if (!club.active) return { status: 409, error: 'This fan club is switched off' };
+    const r2 = redeemFor(store, fan, club, offer, { id: fan.id, name: `${fan.name} (on their phone)`, email: fan.email });
+    if ('error' in r2) return { status: 409, error: r2.error };
+    return { ok: r2 };
+  });
+  if ('error' in r) return bad(res, r.error!, r.status);
+  res.json({ success: true, ...r.ok });
+}));
+
+/** A picture for an offer (fan club admins). Returns its address, to save with the offer. */
+fanclubRouter.post('/fanclub/admin/offer-image', requireFanClubs, wrap(async (req, res) => {
+  if (photoStorage().mode === 'off') return bad(res, 'Image uploads are not set up.', 503);
+  const r = readPhoto(req.body?.photo);
+  if ('error' in r) return bad(res, r.error);
+  try {
+    const stored = await storePhoto(r.bytes, r.info);
+    res.json({ success: true, url: stored.url });
+  } catch (e: any) {
+    console.error('[FANCLUB] offer image upload failed:', e?.message);
+    bad(res, 'The image could not be saved. Please try again.', 502);
+  }
 }));
 
 /** Check-ins and redemptions at a club (or every club this admin runs). */
