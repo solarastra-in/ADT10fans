@@ -66,7 +66,7 @@ export function AuthModal() {
     setCode('');
     toast(created ? t('Welcome to the fan hub, {name}!', { name: user.name }) : t('Signed in as {name}', { name: user.name }));
     await reloadAll().catch(() => undefined);
-    if (!user.teamId) openTeamPicker();
+    if (!user.teamId && user.role !== 'admin') openTeamPicker();
   };
 
   const google = async () => {

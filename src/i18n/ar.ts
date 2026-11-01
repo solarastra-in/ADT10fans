@@ -1252,4 +1252,5 @@ export const ar: Record<string, string> = {
   "Top Seeded Squad": "الفريق الأعلى",
   "View Full Leaderboard": "اعرض الترتيب كاملًا",
   "Be the first to register a Pick XI squad for this match!": "كن أول من يسجل فريق Pick XI لهذه المباراة!",
+  "Staff sign-in": "دخول الموظفين",
 };

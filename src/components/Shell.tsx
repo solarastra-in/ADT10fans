@@ -408,7 +408,7 @@ export function Footer() {
     [t('Season'), [['/matches', t('Matches')], ['/teams', t('Teams')], ['/players', t('Players')], ['/videos', t('Videos')], ['/news', t('News')]]],
     [t('Play'), [['/team-games', t('Team games')], ['/fanclub', t('Fan club pass')], ['/fantasy', t('Pick XI')], ['/games', t('Daily games')], ['/contests', t('Predictions')], ['/prizes', t('Prizes & draws')], ['/leaderboard', t('Leaderboard')]]],
     [t('Community'), [['/fanwall', t('Fan wall')], ['/forum', t('Forum')], ['/fans', t('Fan base')], ['/fanspaces', t('Fan Spaces')], ['/social', t('Social')]]],
-    [t('About'), [['/rules', t('Rules')], ['/privacy', t('Privacy')], ['/terms', t('Terms')]]],
+    [t('About'), [['/rules', t('Rules')], ['/privacy', t('Privacy')], ['/terms', t('Terms')], ['/staff', t('Staff sign-in')]]],
   ];
   return (
     <footer className="border-t border-slate-900 bg-slate-950 pt-10 pb-28 lg:pb-10 text-sm text-slate-400">

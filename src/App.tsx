@@ -70,6 +70,7 @@ const ProposalPage = safeLazy(() => import('./pages/ProposalPage'));
 const TeamGamesPage = safeLazy(() => import('./pages/TeamGamesPage'));
 const Pick5Page = safeLazy(() => import('./pages/TeamGamesPage').then(m => ({ default: m.Pick5Page })));
 const FanClubPage = safeLazy(() => import('./pages/FanClubPage'));
+const StaffPage = safeLazy(() => import('./pages/StaffPage'));
 import { InstagramGate } from './components/InstagramGate';
 
 function Page() {
@@ -90,6 +91,7 @@ function Page() {
     case 'teamGames': return <TeamGamesPage />;
     case 'pick5': return <Pick5Page id={p.id} />;
     case 'fanclub': return <FanClubPage />;
+    case 'staff': return <StaffPage />;
     case 'fantasy': return <FantasyPage />;
     case 'fantasyMatch': return <FantasyMatchPage id={p.id} />;
     case 'games': return <GamesPage />;

@@ -322,6 +322,12 @@ for (const lang of ['ar', 'ur']) {
   await go(anon.page, '/rules');
   await anon.page.waitForSelector('main');
   ok('the rules stay readable without it', (await anon.page.locator('[data-testid="instagram-gate"]').count()) === 0);
+  for (const p of ['/staff', '/admin', '/team-portal', '/venue', '/admin/fanclub']) {
+    await go(anon.page, p);
+    await anon.page.waitForSelector('main');
+    await anon.page.waitForTimeout(300);
+    ok(`staff page ${p} has no Instagram check and offers sign-in`, (await anon.page.locator('[data-testid="instagram-gate"]').count()) === 0 && /sign in/i.test(await anon.page.locator('main').innerText()) && (await noOverflow(anon.page)));
+  }
   await anon.ctx.close();
 
   const fanToken = await apiLogin('gatefan@test.dev');
@@ -350,7 +356,10 @@ for (const lang of ['ar', 'ur']) {
   const fanCode = (await fan.page.locator('[data-testid="fanclub-code"]').innerText()).trim();
   ok('the fan sees their fan club pass', /^[A-Z2-9]{6}$/.test(fanCode) && (await noOverflow(fan.page)));
   const desk = await newPage(390, 844, await apiLogin('desk@test.dev'));
-  await go(desk.page, '/admin/fanclub');
+  await go(desk.page, '/staff');
+  await desk.page.waitForURL(u => new URL(u).pathname === '/venue', { timeout: 10000 });
+  ok('a fan venue admin opening the staff page goes to their desk at /venue', true);
+  await go(desk.page, '/venue');
   await desk.page.waitForSelector('[data-testid="desk-code"]');
   await desk.page.selectOption('#fc-match', soon.id);
   await desk.page.fill('[data-testid="desk-code"]', fanCode);
