@@ -11,7 +11,7 @@ import type {
   AdminFanPoints, PointsHistory, PointsEntry, PlayerWithForm, LineupPreset, MatchSwingInsights, PlayerDetail,
   ConnectionsState, GridState, StatQuestion, StatWarsResult, DuelView, FanPostView, FanPostKind, FanWallResponse, FanOfTheDayView,
   FanClub, FanClubCheckInRecord, FanClubStatusResponse, VenueOffer, FanClubAdminView, FanClubFanLookup, FanClubMatchRef, FanClubRedemption,
-  InstagramView, InstagramAdminView, TeamGamesView, Pick5View,
+  InstagramView, InstagramAdminView, TeamGamesView, Pick5View, MatchRegisteredTeamsResponse,
 } from './types';
 
 const TOKEN_KEY = 't10_auth_token';
@@ -118,9 +118,9 @@ export const api = {
   getProfile: () => req<ProfileResponse>('/api/me/profile'),
   updateProfile: (data: { name?: string; avatar?: string; country?: string; city?: string; bio?: string }) => post<Ok & { user: User }>('/api/me/profile/update', data),
   deleteAccount: () => del<Ok>('/api/me', { confirm: 'DELETE' }),
-  loginGoogle: (idToken: string, ref?: string) => post<{ token: string; user: User; created: boolean }>('/api/auth/google', { idToken, ref }),
+  loginGoogle: (idToken: string, ref?: string, instagramHandle?: string, verificationCode?: string) => post<{ token: string; user: User; created: boolean }>('/api/auth/google', { idToken, ref, instagramHandle, verificationCode }),
   requestOtp: (email: string) => post<{ success: boolean; message: string; devCode?: string }>('/api/auth/otp/request', { email }),
-  verifyOtp: (email: string, code: string, ref?: string) => post<{ token: string; user: User; created: boolean }>('/api/auth/otp/verify', { email, code, ref }),
+  verifyOtp: (email: string, code: string, ref?: string, instagramHandle?: string, verificationCode?: string) => post<{ token: string; user: User; created: boolean }>('/api/auth/otp/verify', { email, code, ref, instagramHandle, verificationCode }),
   logout: () => post<Ok>('/api/auth/logout'),
   claimBadge: (badgeId: string) => post<Ok & { pointsAdded: number; user: User }>('/api/me/claim-badge', { badgeId }),
   checkin: () => post<Ok & { user: User; pointsAdded: number }>('/api/checkin'),
@@ -183,6 +183,7 @@ export const api = {
   getFantasyHub: () => req<{ rules: DreamXIRules; matches: FantasyMatchSummary[]; season: { points: number; matches: number; best: number } | null }>('/api/fantasy'),
   getFantasyRules: () => req<{ rules: DreamXIRules; scoring: { group: string; rules: [string, number | string][] }[] }>('/api/fantasy/rules'),
   getFantasy: (matchId: string) => req<{ match: Match; locked: boolean; opensAt?: string; open?: boolean; rules: DreamXIRules; pool: PlayerWithForm[]; fantasyTeam: FantasyTeam | null; fantasyTeams?: FantasyTeam[]; lineups: number; presets?: LineupPreset[]; swingInsights?: MatchSwingInsights }>(`/api/fantasy/${encodeURIComponent(matchId)}`),
+  getMatchRegisteredTeams: (matchId: string) => pub<MatchRegisteredTeamsResponse>(`/api/fantasy/${encodeURIComponent(matchId)}/registered-teams`),
   submitFantasy: (matchId: string, playerIds: string[], captainId: string, viceCaptainId: string, variationId?: string, variationName?: string) => post<Ok & { fantasyTeam: FantasyTeam; fantasyTeams: FantasyTeam[]; credits: number; user: User }>(`/api/fantasy/${encodeURIComponent(matchId)}`, { playerIds, captainId, viceCaptainId, variationId, variationName }),
   deleteFantasy: (matchId: string, variationId?: string) => del<Ok & { fantasyTeams: FantasyTeam[] }>(`/api/fantasy/${encodeURIComponent(matchId)}${variationId ? `?variationId=${encodeURIComponent(variationId)}` : ''}`),
   getFantasyLeaderboard: (matchId?: string) => pub<{ rows: LeaderRow[] }>(`/api/fantasy/leaderboard${qs({ matchId })}`),

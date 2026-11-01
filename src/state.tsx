@@ -29,6 +29,12 @@ interface AppState {
   teamPickerOpen: boolean;
   openTeamPicker: () => void;
   closeTeamPicker: () => void;
+  qrPassOpen: boolean;
+  openQrPass: () => void;
+  closeQrPass: () => void;
+  instaModalOpen: boolean;
+  openInstaModal: () => void;
+  closeInstaModal: () => void;
   toasts: Toast[];
   toast: (text: string, kind?: Toast['kind']) => void;
   dismissToast: (id: number) => void;
@@ -46,6 +52,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [authOpen, setAuthOpen] = useState(false);
   const [authReason, setAuthReason] = useState('');
   const [teamPickerOpen, setTeamPickerOpen] = useState(false);
+  const [qrPassOpen, setQrPassOpen] = useState(false);
+  const [instaModalOpen, setInstaModalOpen] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastId = useRef(0);
 
@@ -135,11 +143,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       teamPickerOpen,
       openTeamPicker: () => setTeamPickerOpen(true),
       closeTeamPicker: () => setTeamPickerOpen(false),
+      qrPassOpen,
+      openQrPass: () => setQrPassOpen(true),
+      closeQrPass: () => setQrPassOpen(false),
+      instaModalOpen,
+      openInstaModal: () => setInstaModalOpen(true),
+      closeInstaModal: () => setInstaModalOpen(false),
       toasts,
       toast,
       dismissToast: (id: number) => setToasts(t => t.filter(x => x.id !== id)),
     }),
-    [ready, bootError, config, user, teams, matches, refreshTeams, refreshMatches, refreshUser, reloadAll, authOpen, authReason, teamPickerOpen, toasts, toast],
+    [ready, bootError, config, user, teams, matches, refreshTeams, refreshMatches, refreshUser, reloadAll, authOpen, authReason, teamPickerOpen, qrPassOpen, instaModalOpen, toasts, toast],
   );
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

@@ -129,6 +129,9 @@ export interface User {
   instagramVerifiedBy?: string;
   instagramReviewNote?: string;
   instagramRequestedAt?: string;
+  /** Older builds: a code the browser made up; not used. */
+  instagramVerificationCode?: string;
+  instagramLikedPost?: boolean;
   xFollowed?: boolean;
   xHandle?: string;
   claimedVenueOfferIds?: string[];
@@ -610,6 +613,8 @@ export interface SystemSettings {
   cricbuzzSeriesUrl?: string;
   requireInstagramFollow?: boolean;
   instagramTargetHandle?: string;
+  instagramPinnedPostUrl?: string;
+  instagramGatekeeperMode?: 'blocking' | 'optional';
   requireTwitterFollow?: boolean;
   twitterTargetHandle?: string;
   fanClubCheckInPoints?: number;
@@ -828,6 +833,7 @@ export interface FanClub {
   region?: string;
   capacity?: number;
   contactPerson?: string;
+  managerEmails?: string[];
   active: boolean;
   offers: VenueOffer[];
   /** Points for checking in here; unset = the site default (Admin → Settings). */
@@ -859,6 +865,7 @@ export interface FanClubCheckInRecord {
   userName: string;
   userAvatar?: string;
   userTeamId?: string | null;
+  userInstagramHandle?: string;
   fanClubId: string;
   fanClubName: string;
   matchId: string;

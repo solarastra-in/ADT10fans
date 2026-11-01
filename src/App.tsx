@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { AppProvider, useApp } from './state';
 import { useRoute } from './router';
 import { useT } from './i18n';
-import { BottomNav, Footer, Header, Toasts } from './components/Shell';
+import { BottomNav, FloatingQRButton, Footer, Header, Toasts } from './components/Shell';
 import { AuthModal, completeRedirectSignIn } from './components/AuthModal';
 import { TeamPickerModal } from './components/TeamPickerModal';
 import { PlayerCardHost } from './components/PlayerCard';
@@ -10,41 +10,66 @@ import { ErrorBox, Spinner } from './components/ui';
 
 import HomePage from './pages/HomePage';
 import NotFoundPage from './pages/NotFoundPage';
+import { QuickQRPassModal } from './components/QuickQRPassModal';
+
+// Resilient lazy loader that retries failed chunk fetches (e.g. during server restarts or transient drops)
+function safeLazy<T extends React.ComponentType<any>>(
+  importer: () => Promise<{ default: T } | T>
+): React.LazyExoticComponent<T> {
+  return React.lazy(async () => {
+    try {
+      const mod = await importer();
+      return 'default' in mod ? (mod as { default: T }) : { default: mod as T };
+    } catch (err: any) {
+      console.warn('Dynamic import chunk failed, retrying after backoff...', err);
+      await new Promise(res => setTimeout(res, 500));
+      try {
+        const mod = await importer();
+        return 'default' in mod ? (mod as { default: T }) : { default: mod as T };
+      } catch (err2: any) {
+        await new Promise(res => setTimeout(res, 1000));
+        const mod = await importer();
+        return 'default' in mod ? (mod as { default: T }) : { default: mod as T };
+      }
+    }
+  });
+}
+
 
 // Every page except the home page is its own chunk, loaded when it is first opened: visitors no
 // longer download the admin console, the Pick XI analytics and the charts just to read a score.
-const MatchesPage = React.lazy(() => import('./pages/MatchesPage'));
-const MatchPage = React.lazy(() => import('./pages/MatchPage'));
-const TeamsPage = React.lazy(() => import('./pages/TeamsPage'));
-const TeamPage = React.lazy(() => import('./pages/TeamPage'));
-const PlayersPage = React.lazy(() => import('./pages/PlayersPage'));
-const PlayerPage = React.lazy(() => import('./pages/PlayerPage'));
-const SocialPage = React.lazy(() => import('./pages/SocialPage'));
-const PlayPage = React.lazy(() => import('./pages/PlayPage'));
-const FantasyPage = React.lazy(() => import('./pages/FantasyPage'));
-const FantasyMatchPage = React.lazy(() => import('./pages/FantasyMatchPage'));
-const GamesPage = React.lazy(() => import('./pages/GamesPage'));
-const DuelPage = React.lazy(() => import('./pages/DuelPage'));
-const FanWallPage = React.lazy(() => import('./pages/FanWallPage'));
-const FanPostPage = React.lazy(() => import('./pages/FanPostPage'));
-const ContestsPage = React.lazy(() => import('./pages/ContestsPage'));
-const PrizesPage = React.lazy(() => import('./pages/PrizesPage'));
-const LeaderboardPage = React.lazy(() => import('./pages/LeaderboardPage'));
-const FansPage = React.lazy(() => import('./pages/FansPage'));
-const ForumPage = React.lazy(() => import('./pages/ForumPage'));
-const ThreadPage = React.lazy(() => import('./pages/ThreadPage'));
-const FanSpacesPage = React.lazy(() => import('./pages/FanSpacesPage'));
-const GrowthPage = React.lazy(() => import('./pages/GrowthPage'));
-const ProfilePage = React.lazy(() => import('./pages/ProfilePage'));
-const InfoPage = React.lazy(() => import('./pages/InfoPage'));
-const AdminPage = React.lazy(() => import('./pages/AdminPage'));
-const FanClubAdminPage = React.lazy(() => import('./components/admin/FanClubDesk').then(m => ({ default: m.FanClubAdminPage })));
-const TeamPortalPage = React.lazy(() => import('./pages/TeamPortalPage'));
-const TeamInvitePage = React.lazy(() => import('./pages/TeamInvitePage'));
-const ProposalPage = React.lazy(() => import('./pages/ProposalPage'));
-const TeamGamesPage = React.lazy(() => import('./pages/TeamGamesPage'));
-const Pick5Page = React.lazy(() => import('./pages/TeamGamesPage').then(m => ({ default: m.Pick5Page })));
-const FanClubPage = React.lazy(() => import('./pages/FanClubPage'));
+const MatchesPage = safeLazy(() => import('./pages/MatchesPage'));
+const MatchPage = safeLazy(() => import('./pages/MatchPage'));
+const TeamsPage = safeLazy(() => import('./pages/TeamsPage'));
+const TeamPage = safeLazy(() => import('./pages/TeamPage'));
+const PlayersPage = safeLazy(() => import('./pages/PlayersPage'));
+const PlayerPage = safeLazy(() => import('./pages/PlayerPage'));
+const SocialPage = safeLazy(() => import('./pages/SocialPage'));
+const PlayPage = safeLazy(() => import('./pages/PlayPage'));
+const FantasyPage = safeLazy(() => import('./pages/FantasyPage'));
+const FantasyMatchPage = safeLazy(() => import('./pages/FantasyMatchPage'));
+const GamesPage = safeLazy(() => import('./pages/GamesPage'));
+const DuelPage = safeLazy(() => import('./pages/DuelPage'));
+const FanWallPage = safeLazy(() => import('./pages/FanWallPage'));
+const FanPostPage = safeLazy(() => import('./pages/FanPostPage'));
+const ContestsPage = safeLazy(() => import('./pages/ContestsPage'));
+const PrizesPage = safeLazy(() => import('./pages/PrizesPage'));
+const LeaderboardPage = safeLazy(() => import('./pages/LeaderboardPage'));
+const FansPage = safeLazy(() => import('./pages/FansPage'));
+const ForumPage = safeLazy(() => import('./pages/ForumPage'));
+const ThreadPage = safeLazy(() => import('./pages/ThreadPage'));
+const FanSpacesPage = safeLazy(() => import('./pages/FanSpacesPage'));
+const GrowthPage = safeLazy(() => import('./pages/GrowthPage'));
+const ProfilePage = safeLazy(() => import('./pages/ProfilePage'));
+const InfoPage = safeLazy(() => import('./pages/InfoPage'));
+const AdminPage = safeLazy(() => import('./pages/AdminPage'));
+const FanClubAdminPage = safeLazy(() => import('./components/admin/FanClubDesk').then(m => ({ default: m.FanClubAdminPage })));
+const TeamPortalPage = safeLazy(() => import('./pages/TeamPortalPage'));
+const TeamInvitePage = safeLazy(() => import('./pages/TeamInvitePage'));
+const ProposalPage = safeLazy(() => import('./pages/ProposalPage'));
+const TeamGamesPage = safeLazy(() => import('./pages/TeamGamesPage'));
+const Pick5Page = safeLazy(() => import('./pages/TeamGamesPage').then(m => ({ default: m.Pick5Page })));
+const FanClubPage = safeLazy(() => import('./pages/FanClubPage'));
 import { InstagramGate } from './components/InstagramGate';
 
 function Page() {
@@ -92,13 +117,15 @@ function Page() {
   }
 }
 
-class PageBoundary extends React.Component<{ children: React.ReactNode; resetKey: string }, { error: Error | null }> {
-  state = { error: null as Error | null };
+class PageBoundary extends React.Component<{ children: React.ReactNode; resetKey: string }, { error: Error | null; retrySeq: number }> {
+  state = { error: null as Error | null, retrySeq: 0 };
   static getDerivedStateFromError(error: Error) {
     return { error };
   }
   componentDidUpdate(prev: { resetKey: string }) {
-    if (prev.resetKey !== this.props.resetKey && this.state.error) this.setState({ error: null });
+    if (prev.resetKey !== this.props.resetKey && this.state.error) {
+      this.setState({ error: null, retrySeq: 0 });
+    }
   }
   componentDidCatch(error: Error) {
     const msg = error?.message || String(error);
@@ -111,28 +138,30 @@ class PageBoundary extends React.Component<{ children: React.ReactNode; resetKey
       }
     }
   }
+  handleRetry = () => {
+    sessionStorage.removeItem('auto_reload_chunk');
+    this.setState(s => ({ error: null, retrySeq: s.retrySeq + 1 }));
+  };
   render() {
     if (this.state.error) {
       const msg = this.state.error.message || String(this.state.error);
       const isChunkError = /Failed to fetch dynamically imported module|Importing a module script failed|valid JavaScript MIME type/i.test(msg);
       return (
-        <ErrorBox
-          message={isChunkError ? 'A fresh version of this page is ready. Reload to load the latest updates.' : `This page hit an issue: ${msg}`}
-          onRetry={() => {
-            sessionStorage.removeItem('auto_reload_chunk');
-            this.setState({ error: null });
-            if (isChunkError) window.location.reload();
-          }}
-        />
+        <div className="py-6">
+          <ErrorBox
+            message={isChunkError ? 'This page is updating. Click Retry to load the latest version.' : `This page hit an issue: ${msg}`}
+            onRetry={this.handleRetry}
+          />
+        </div>
       );
     }
-    return this.props.children;
+    return <React.Fragment key={this.state.retrySeq}>{this.props.children}</React.Fragment>;
   }
 }
 
 function Shell() {
   const route = useRoute();
-  const { ready, bootError, reloadAll, setUser, toast } = useApp();
+  const { ready, bootError, reloadAll, setUser, toast, qrPassOpen, closeQrPass } = useApp();
   const t = useT();
 
   useEffect(() => {
@@ -169,6 +198,8 @@ function Shell() {
       </main>
       <Footer />
       <BottomNav route={route} />
+      <FloatingQRButton />
+      <QuickQRPassModal isOpen={qrPassOpen} onClose={closeQrPass} />
       <InstagramGate />
       <AuthModal />
       <TeamPickerModal />

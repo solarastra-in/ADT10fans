@@ -49,6 +49,7 @@ export interface User {
   instagramFollowed?: boolean;
   instagramHandle?: string;
   instagramStatus?: InstagramStatus;
+  instagramVerifiedAt?: string;
   xFollowed?: boolean;
   xHandle?: string;
   claimedVenueOfferIds?: string[];
@@ -107,7 +108,7 @@ export interface FanClubVisit {
 
 export interface VenueOffer {
   id: string;
-  fanClubId: string;
+  fanClubId?: string;
   title: string;
   description: string;
   badge?: string;
@@ -171,6 +172,7 @@ export interface FanClubCheckInRecord {
   userName: string;
   userAvatar?: string;
   userTeamId?: string | null;
+  userInstagramHandle?: string;
   fanClubId: string;
   fanClubName: string;
   matchId: string;
@@ -642,6 +644,59 @@ export interface FantasyTeam {
   updatedAt?: string;
 }
 
+export interface RegisteredTeamPlayerDetail {
+  playerId: string;
+  name: string;
+  teamId: string;
+  role: string;
+  photoUrl?: string;
+  isCaptain: boolean;
+  isViceCaptain: boolean;
+  multiplier: number;
+  basePoints: number;
+  totalPoints: number;
+  detail: string;
+}
+
+export interface RegisteredFantasyTeam {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  userCity?: string;
+  userTeamId?: string | null;
+  variationId?: string;
+  variationName: string;
+  captainId: string;
+  captainName: string;
+  viceCaptainId: string;
+  viceCaptainName: string;
+  points: number;
+  rank: number;
+  isHighest: boolean;
+  playerCount: number;
+  players: RegisteredTeamPlayerDetail[];
+  updatedAt: string;
+}
+
+export interface MatchRegisteredTeamsResponse {
+  matchId: string;
+  matchNo: number;
+  status: string;
+  hasScorecard: boolean;
+  totalRegistered: number;
+  topScore: number;
+  topTeam: RegisteredFantasyTeam | null;
+  teams: RegisteredFantasyTeam[];
+  playerScorecardPoints: Array<{
+    playerId: string;
+    name: string;
+    teamId: string;
+    points: number;
+    detail: string[];
+  }>;
+}
+
 export type FormTrend = 'hot' | 'rising' | 'stable' | 'cold';
 export type PlayerTier = 'star' | 'core' | 'value' | 'budget';
 
@@ -1084,6 +1139,8 @@ export interface PublicConfig {
   referralMaxRewarded: number;
   requireInstagramFollow?: boolean;
   instagramTargetHandle?: string;
+  instagramPinnedPostUrl?: string;
+  instagramGatekeeperMode?: 'blocking' | 'optional';
   requireTwitterFollow?: boolean;
   twitterTargetHandle?: string;
   fanClubCheckInPoints?: number;

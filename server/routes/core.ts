@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { Router } from 'express';
+import { cleanUsername, takenBy, USERNAME_RE } from '../instagramGate';
 import { db } from '../db';
 import {
   firebaseProjectId, getAuthUser, requireUser, upsertUser, createSession, revokeSession, verifyFirebaseIdToken, rateLimit,
@@ -76,9 +77,14 @@ coreRouter.get('/me', (req, res) => {
   res.json({ user: u ? selfUser(u) : null });
 });
 
-function onSignIn(email: string, provider: 'google' | 'email', profile: { name?: string; avatar?: string }, ref: unknown) {
+function onSignIn(email: string, provider: 'google' | 'email', profile: { name?: string; avatar?: string }, ref: unknown, instagramHandle?: string) {
+  const store = db.get();
   const { user, created } = upsertUser(email, provider, profile);
-  if (created) attachReferral(db.get(), user, ref);
+  if (created) attachReferral(store, user, ref);
+  // A username given at sign-in only pre-fills the Instagram check; it does not verify anyone
+  // (see instagramGate.ts: the fan must comment their code, or an organiser approves them).
+  const handle = cleanUsername(instagramHandle);
+  if (handle && USERNAME_RE.test(handle) && !user.instagramFollowed && !takenBy(store, handle, user.id)) user.instagramHandle = handle;
   db.save();
   return { token: createSession(user.id), user: selfUser(user), created };
 }
@@ -92,7 +98,12 @@ coreRouter.post('/auth/google', rateLimit('google', 20, 60_000), wrap(async (req
   } catch (e: any) {
     return bad(res, e?.message?.includes('not configured') ? e.message : 'Google sign-in could not be verified. Please try again.', 401);
   }
-  res.json(onSignIn(profile.email, 'google', { name: profile.name, avatar: profile.picture }, req.body?.ref));
+  const insta = typeof req.body?.instagramHandle === 'string' ? req.body.instagramHandle : undefined;
+  try {
+    res.json(onSignIn(profile.email, 'google', { name: profile.name, avatar: profile.picture }, req.body?.ref, insta));
+  } catch (err: any) {
+    return bad(res, err.message || 'Sign in failed');
+  }
 }));
 
 coreRouter.post('/auth/otp/request', rateLimit('otp-req', 5, 10 * 60_000), wrap(async (req, res) => {
@@ -138,7 +149,12 @@ coreRouter.post('/auth/otp/verify', rateLimit('otp-verify', 20, 10 * 60_000), (r
     return bad(res, 'That code is not correct');
   }
   otp.used = true;
-  res.json(onSignIn(email, 'email', {}, req.body?.ref));
+  const insta = typeof req.body?.instagramHandle === 'string' ? req.body.instagramHandle : undefined;
+  try {
+    res.json(onSignIn(email, 'email', {}, req.body?.ref, insta));
+  } catch (err: any) {
+    return bad(res, err.message || 'Sign in failed');
+  }
 });
 
 coreRouter.post('/auth/logout', (req, res) => {

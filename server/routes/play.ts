@@ -7,7 +7,7 @@ import { bad, isoOrEmpty, newId, num, str, userOf, wrap } from '../http';
 import { dispatchNotification } from '../notify';
 import { matchOpen, matchOpensAt } from '../matchWindow';
 import { settleContest } from '../predictions';
-import { creditsFor, DREAM_XI, fantasySeasonTotals, lineupLocked, lineupPool, scoreMatchFantasy, scoringRules, validateLineup, lineupPoolWithForm, generateLineupVariations, getMatchSwingInsights } from '../fantasy';
+import { creditsFor, DREAM_XI, fantasySeasonTotals, lineupLocked, lineupPool, scoreMatchFantasy, scoringRules, validateLineup, lineupPoolWithForm, generateLineupVariations, getMatchSwingInsights, computePlayerPoints, scoreLineup } from '../fantasy';
 import { GameError, guessView, playBall, submitGuess, superOverState, todayLeaderboard, dubaiDay, Shot } from '../games';
 import { notifyFantasyResults } from '../reminders';
 import { awardPoints } from '../points';
@@ -232,6 +232,122 @@ playRouter.get('/fantasy/leaderboard', (req, res) => {
   }
   const rows = fantasySeasonTotals(store).slice(0, 100).map((r, i) => ({ ...r, rank: i + 1, name: users.get(r.userId)?.name || 'Fan', avatar: users.get(r.userId)?.avatar || '', teamId: users.get(r.userId)?.teamId || null }));
   res.json({ rows });
+});
+
+playRouter.get('/fantasy/:matchId/registered-teams', (req, res) => {
+  const store = db.get();
+  const match = store.matches.find(m => m.id === req.params.matchId);
+  if (!match) return bad(res, 'Match not found', 404);
+
+  const pool = lineupPool(store, match);
+  const poolMap = new Map(pool.map(p => [p.id, p]));
+  const usersMap = new Map(store.users.map(u => [u.id, u]));
+
+  const playerPointsMap = computePlayerPoints(store, match);
+  const hasScorecard = Boolean(match.scorecard && (match.scorecard.innings1 || match.scorecard.innings2));
+
+  const rawTeams = store.fantasyTeams.filter(f => f.matchId === match.id);
+
+  const teams = rawTeams.map(ft => {
+    const user = usersMap.get(ft.userId);
+    const { total, breakdown } = scoreLineup(ft, playerPointsMap, pool);
+
+    const players = ft.playerIds.map(id => {
+      const p = poolMap.get(id);
+      const bd = breakdown.find(b => b.playerId === id);
+      const isCaptain = id === ft.captainId;
+      const isViceCaptain = id === ft.viceCaptainId;
+      const multiplier = isCaptain ? DREAM_XI.captainMultiplier : isViceCaptain ? DREAM_XI.viceCaptainMultiplier : 1;
+      const basePoints = bd?.base || 0;
+      const totalPoints = bd?.total || 0;
+      const detail = bd?.detail || 'did not play / score';
+
+      return {
+        playerId: id,
+        name: p?.name || bd?.name || id,
+        teamId: p?.teamId || '',
+        role: p?.role || 'batter',
+        photoUrl: p?.photoUrl,
+        isCaptain,
+        isViceCaptain,
+        multiplier,
+        basePoints,
+        totalPoints,
+        detail,
+      };
+    });
+
+    const capObj = poolMap.get(ft.captainId);
+    const vcObj = poolMap.get(ft.viceCaptainId || '');
+
+    return {
+      id: `${ft.userId}-${ft.matchId}-${ft.variationId || 'var-1'}`,
+      userId: ft.userId,
+      userName: user?.name || 'Fan',
+      userAvatar: user?.avatar || '',
+      userCity: user?.city || '',
+      userTeamId: user?.teamId || null,
+      variationId: ft.variationId || 'var-1',
+      variationName: ft.variationName || 'Team 1',
+      captainId: ft.captainId,
+      captainName: capObj?.name || 'Captain',
+      viceCaptainId: ft.viceCaptainId || '',
+      viceCaptainName: vcObj?.name || 'Vice-Captain',
+      points: total,
+      rank: 0,
+      isHighest: false,
+      playerCount: ft.playerIds.length,
+      players,
+      updatedAt: ft.updatedAt || ft.createdAt || new Date().toISOString(),
+    };
+  });
+
+  // Sort descending by points, then by registration date
+  teams.sort((a, b) => {
+    if (b.points !== a.points) return b.points - a.points;
+    return +new Date(a.updatedAt) - +new Date(b.updatedAt);
+  });
+
+  // Assign ranks
+  let currentRank = 0;
+  let previousPoints: number | null = null;
+  teams.forEach((t, index) => {
+    if (t.points !== previousPoints) {
+      currentRank = index + 1;
+      previousPoints = t.points;
+    }
+    t.rank = currentRank;
+  });
+
+  const topTeam = teams.length > 0 ? teams[0] : null;
+  const topScore = topTeam ? topTeam.points : 0;
+  if (topTeam && topScore > 0) {
+    teams.forEach(t => {
+      if (t.points === topScore && topScore > 0) {
+        t.isHighest = true;
+      }
+    });
+  }
+
+  const playerScorecardPoints = Array.from(playerPointsMap.values()).map(r => ({
+    playerId: r.playerId,
+    name: r.name,
+    teamId: r.teamId,
+    points: r.points,
+    detail: r.detail,
+  })).sort((a, b) => b.points - a.points);
+
+  res.json({
+    matchId: match.id,
+    matchNo: match.matchNo,
+    status: match.status,
+    hasScorecard,
+    totalRegistered: teams.length,
+    topScore,
+    topTeam,
+    teams,
+    playerScorecardPoints,
+  });
 });
 
 playRouter.get('/fantasy/:matchId', (req, res) => {

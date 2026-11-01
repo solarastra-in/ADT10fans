@@ -35,7 +35,7 @@ function useSignIn() {
 
 export function SquadConnections({ state, onChange }: { state: ConnectionsState; onChange: (s: ConnectionsState) => void }) {
   const t = useT();
-  const { setUser, toast } = useApp();
+  const { user, setUser, toast } = useApp();
   const signedIn = useSignIn();
   const [picked, setPicked] = useState<string[]>([]);
   const [order, setOrder] = useState<GamePlayer[]>(state.remaining || []);
@@ -43,7 +43,10 @@ export function SquadConnections({ state, onChange }: { state: ConnectionsState;
   useEffect(() => setOrder(state.remaining || []), [state.remaining]);
 
   if (!state.available) return <Notice>{t('Squad Connections starts once squads are published.')}</Notice>;
-  const toggle = (id: string) => setPicked(p => (p.includes(id) ? p.filter(x => x !== id) : p.length < 4 ? [...p, id] : p));
+  const toggle = (id: string) => {
+    if (!signedIn()) return;
+    setPicked(p => (p.includes(id) ? p.filter(x => x !== id) : p.length < 4 ? [...p, id] : p));
+  };
   const submit = async () => {
     if (!signedIn() || picked.length !== 4) return;
     setBusy(true);
@@ -84,6 +87,13 @@ export function SquadConnections({ state, onChange }: { state: ConnectionsState;
           </div>
         ))}
       </div>
+
+      {!user && (
+        <div className="p-3 rounded-xl bg-slate-950/60 border border-amber-500/30 flex items-center justify-between gap-3 text-xs">
+          <span className="text-slate-300 font-medium">{t('Sign in to select player tiles and solve connections.')}</span>
+          <Button size="sm" onClick={() => signedIn()} className="shrink-0 font-bold">{t('Sign In')}</Button>
+        </div>
+      )}
 
       {!state.finished && (
         <>
@@ -141,7 +151,7 @@ export function SquadConnections({ state, onChange }: { state: ConnectionsState;
 
 export function CricketGrid({ state, players, onChange }: { state: GridState; players: { id: string; name: string; teamId: string }[]; onChange: (s: GridState) => void }) {
   const t = useT();
-  const { setUser, toast, teamById } = useApp();
+  const { user, setUser, toast, teamById } = useApp();
   const signedIn = useSignIn();
   const [cell, setCell] = useState<string | null>(null);
   const [q, setQ] = useState('');
@@ -179,6 +189,13 @@ export function CricketGrid({ state, players, onChange }: { state: GridState; pl
         </div>
         <p className="text-sm text-slate-400 mt-1">{t('Name a player who fits both the team and the trait for each square. Nine guesses; rarer correct picks score more.')}</p>
       </div>
+
+      {!user && (
+        <div className="p-3 rounded-xl bg-slate-950/60 border border-amber-500/30 flex items-center justify-between gap-3 text-xs">
+          <span className="text-slate-300 font-medium">{t('Sign in to fill grid cells with players and earn points.')}</span>
+          <Button size="sm" onClick={() => signedIn()} className="shrink-0 font-bold">{t('Sign In')}</Button>
+        </div>
+      )}
       <div className="grid grid-cols-4 gap-1.5 text-center">
         <div className="flex items-center justify-center text-[11px] text-slate-400 font-bold">
           {t('{n} left', { n: state.guessesLeft ?? 9 })}
@@ -387,7 +404,7 @@ function StatWarsReview({ r }: { r: StatWarsResult }) {
 
 export function StatWars({ state, onChange }: { state: StatWarsState; onChange: (s: StatWarsState) => void }) {
   const t = useT();
-  const { toast } = useApp();
+  const { user, toast } = useApp();
   const signedIn = useSignIn();
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<StatWarsResult | null>(null);
@@ -420,6 +437,15 @@ export function StatWars({ state, onChange }: { state: StatWarsState; onChange: 
       </div>
       {!state.available ? (
         <Notice>{t('Stat Wars opens after the first matches of the season, when there are real figures to compare.')}</Notice>
+      ) : !user ? (
+        <div className="p-4 rounded-xl bg-slate-950/60 border border-amber-500/30 text-center space-y-2">
+          <p className="text-xs text-slate-300 font-medium">
+            {t('Sign in to start today’s 60-second Stat Wars run and challenge friends to duels.')}
+          </p>
+          <Button size="sm" onClick={() => signedIn()} className="font-bold">
+            {t('Sign In to Play')}
+          </Button>
+        </div>
       ) : running ? (
         <StatWarsRun
           onCancel={() => setRunning(false)}

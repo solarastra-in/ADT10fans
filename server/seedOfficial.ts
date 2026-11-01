@@ -110,6 +110,7 @@ export function initializeStore(store: AppStore): boolean {
   }
   if (removeUnverifiedSeeds(store)) changed = true;
   if (upgradeSignedBatPrizes(store)) changed = true;
+  if (raisePrizeFloorOnce(store, now)) changed = true;
   if (ensureMatchPredictions(store)) changed = true;
   if (ensureTeamGames(store)) changed = true;
   if (!store.jobLog['game-secret'] && !process.env.GAME_SECRET) {
@@ -181,6 +182,18 @@ const OLD_BAT_DRAW_TITLES: Record<string, number> = {
   'dre russ explosive signed bat & t-shirt mega draw': 2,
   'liam livingstone signed matchday bundle draw': 3,
 };
+
+/**
+ * November 2026: prizes now start at 1,000 points (the season prize list was repriced). Raise any
+ * cheaper prize and draw once, so admins can still set their own prices afterwards.
+ */
+export function raisePrizeFloorOnce(store: AppStore, now = new Date().toISOString()): boolean {
+  if (store.jobLog['prizes:floor-1000']) return false;
+  for (const p of store.prizes) if (p.pointsCost < 1000) p.pointsCost = Math.max(1000, p.pointsCost >= 250 ? p.pointsCost * 5 : 1000);
+  for (const d of store.draws) if ((d.minPoints || 0) < 1000) d.minPoints = 1000;
+  store.jobLog['prizes:floor-1000'] = now;
+  return true;
+}
 
 export function upgradeSignedBatPrizes(store: AppStore): boolean {
   let changed = false;
@@ -310,6 +323,28 @@ export function removeUnverifiedSeeds(store: AppStore): boolean {
   const usedClubs = new Set((store.fanClubCheckIns || []).map(c => c.fanClubId));
   const clubs = (store.fanClubs || []).filter(c => !UNVERIFIED_FAN_CLUB_IDS.has(c.id) || usedClubs.has(c.id) || c.createdBy);
   if (clubs.length !== (store.fanClubs || []).length) { store.fanClubs = clubs; changed = true; }
+  // Made-up fan accounts (stock photos, @arabianaces.fans emails) and their Pick XI teams from the
+  // same build: never real people.
+  const fake = new Set(store.users.filter(u => /^usr-fan-/.test(u.id) && /@arabianaces\.fans$/.test(u.email)).map(u => u.id));
+  if (fake.size) {
+    store.users = store.users.filter(u => !fake.has(u.id));
+    store.fantasyTeams = store.fantasyTeams.filter(f => !fake.has(f.userId));
+    store.contestEntries = store.contestEntries.filter(e => !fake.has(e.userId));
+    changed = true;
+  }
+  // Fan club managers named by email in that build become fan club admins of those clubs.
+  for (const c of (store.fanClubs || []) as any[]) {
+    for (const email of (c.managerEmails || []) as string[]) {
+      const e = String(email).trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e)) continue;
+      const rec = store.adminUsers.find(a => a.email.toLowerCase() === e);
+      if (!rec) store.adminUsers.push({ email: e, name: e.split('@')[0], role: 'fanclub_admin', permissions: ['fanclubs'], fanClubIds: [c.id], addedBy: 'migration', addedAt: new Date().toISOString() });
+      else if (rec.role === 'fanclub_admin' && !(rec.fanClubIds || []).includes(c.id)) rec.fanClubIds = [...(rec.fanClubIds || []), c.id];
+      else continue;
+      changed = true;
+    }
+    if (c.managerEmails) { delete c.managerEmails; changed = true; }
+  }
   const entered = new Set((store.contestEntries || []).map(e => e.contestId));
   const contests = (store.contests || []).filter(c => !/^contest-m\d+$/.test(c.id) || entered.has(c.id));
   if (contests.length !== (store.contests || []).length) { store.contests = contests; changed = true; }
